@@ -15,10 +15,13 @@ from lasagne import init
 from lasagne import nonlinearities
 from lasagne.layers import get_output
 
+conv = lasagne.theano_extensions.conv
 
+
+delta = 0.001
 
 class CoupledDenseLayer(lasagne.layers.base.Layer):    
-    def __init__(self, incoming, num_units, W=init.Normal(0.001),
+    def __init__(self, incoming, num_units, W=init.Normal(0.01),
                  b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
                  **kwargs):
         super(CoupledDenseLayer, self).__init__(incoming, **kwargs)
@@ -73,9 +76,102 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
         
         return output, ls.sum(1)
 
+
+class CoupledConv1DLayer(lasagne.layers.base.Layer):
+    """
+    shape[1] should be even number
+    """
+    def __init__(self, incoming, num_units, filter_size,
+                 W=init.GlorotUniform(),
+                 b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
+                 flip_filters=True, convolution=conv.conv1d_mc0, **kwargs):
+        super(CoupledConv1DLayer, self).__init__(incoming, **kwargs)
+        self.nonlinearity = (nonlinearities.identity if nonlinearity is None
+                             else nonlinearity)
+        self.filter_size = filter_size
+        self.num_units = num_units
+        self.flip_filters = flip_filters
+        self.convolution = convolution
+
+        
+        W1_shape = (num_units,1,filter_size)
+        W21_shape = (1,num_units,filter_size)
+        W22_shape = (1,num_units,filter_size)
+        
+        self.W1 = self.add_param(W, W1_shape, name="W1")
+        self.W21 = self.add_param(W, W21_shape, name="W21")
+        self.W22 = self.add_param(W, W22_shape, name="W22")
+        if b is None:
+            self.b1 = None
+            self.b21 = None
+            self.b22 = None
+        else:
+            self.b1 = self.add_param(b, (num_units,), name="b1",
+                                     regularizable=False)
+            self.b21 = self.add_param(b, (1,), name="b21",
+                                      regularizable=False)
+            self.b22 = self.add_param(b, (1,), name="b22",
+                                      regularizable=False)
+            
+    def get_output_shape_for(self, input_shape):
+        return input_shape
+
+    def get_output_for(self, input, **kwargs):
+        border_mode = 'half'
+        
+        num_units = self.num_units
+        filter_size = self.filter_size
+        W1_shape = (num_units,1,filter_size)
+        W21_shape = (1,num_units,filter_size)
+        W22_shape = (1,num_units,filter_size)
+        num_inputs = self.input_shape[1]
+        input1 = input[:,:num_inputs/2]
+        input2 = input[:,num_inputs/2:]
+        output1 = input1
+        
+        input_shape = self.input_shape 
+        input1_shape = (input_shape[0], 1, num_inputs/2)
+        h_shape = (input_shape[0], num_units, num_inputs/2)
+        conved = self.convolution(input1.reshape((-1,1,num_inputs/2)), self.W1,
+                                  input1_shape, W1_shape,
+                                  subsample=(1,),
+                                  border_mode=border_mode,
+                                  filter_flip=self.flip_filters)
+
+        if self.b1 is not None:
+            a = conved + self.b1.dimshuffle('x',0,'x')
+        h = self.nonlinearity(a)
+        
+        conved = self.convolution(h, self.W21,
+                                  h_shape, W21_shape,
+                                  subsample=(1,),
+                                  border_mode=border_mode,
+                                  filter_flip=self.flip_filters)
+        
+        if self.b21 is not None:
+            s_ = conved + self.b21.dimshuffle('x',0,'x')
+        s = T.nnet.softplus(s_).reshape((-1,num_inputs/2)) + delta
+        ls = T.log(s)
+        
+        conved = self.convolution(h, self.W22,
+                                  h_shape, W22_shape,
+                                  subsample=(1,),
+                                  border_mode=border_mode,
+                                  filter_flip=self.flip_filters)
+        
+        if self.b22 is not None:
+            m = conved + self.b22.dimshuffle('x',0,'x')
+        m = m.reshape((-1,num_inputs/2))
+        
+        output2 = s * input2 + m
+        output = T.concatenate([output1,output2],1)
+
+        return output, ls.sum(1)
+
+
 class LinearFlowLayer(lasagne.layers.base.Layer):    
-    def __init__(self, incoming, W=init.Normal(0.001),
-                 b=init.Constant(0.),
+    def __init__(self, incoming, W=init.Normal(0.01,-3),
+                 b=init.Normal(0.01,0),
                  **kwargs):
         super(LinearFlowLayer, self).__init__(incoming, **kwargs)
         
@@ -93,11 +189,12 @@ class LinearFlowLayer(lasagne.layers.base.Layer):
         return input_shape
 
     def get_output_for(self, input, **kwargs):
-        output = input * (T.exp(self.W) + 0.001)
+        s = T.exp(self.W) + delta
+        output = input * s
         if self.b is not None:
             output = output + self.b
         
-        return output, (T.ones_like(input)*self.W).sum(1)
+        return output, (T.ones_like(input)*T.log(s)).sum(1)
 
 
 class IndexLayer(lasagne.layers.Layer):
@@ -133,8 +230,8 @@ class PermuteLayer(lasagne.layers.Layer):
 if __name__ == '__main__':
     
     """
-        an example of using invertible transformation to fit a complicated 
-        density function that is hard to sample from
+    an example of using invertible transformation to fit a complicated 
+    density function that is hard to sample from
     """
     
     def U(Z):
