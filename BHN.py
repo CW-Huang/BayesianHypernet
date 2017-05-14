@@ -94,9 +94,9 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--perdatapoint',default=0,type=bool)    
-    parser.add_argument('--coupling',default=0,type=bool)  
-    parser.add_argument('--size',default=10000,type=bool)  
+    parser.add_argument('--perdatapoint',default=0,type=bool)
+    parser.add_argument('--coupling',default=0,type=bool)
+    parser.add_argument('--size',default=10000,type=bool)
     args = parser.parse_args()
     print args
 
@@ -105,12 +105,11 @@ def main():
     size = max(10,min(50000,args.size))
     clip_grad = 100
     max_norm = 1000
-    
+
     # load dataset
-    filename = r''
+    filename = r'/data/lisa/data/mnist/mnist.pkl.gz'
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
-    
-    
+
     input_var = T.matrix('input_var')
     target_var = T.matrix('target_var')
     dataset_size = T.scalar('dataset_size')
