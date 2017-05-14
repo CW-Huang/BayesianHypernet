@@ -132,7 +132,7 @@ if 1:
         weight_shapes.append((784, 10))
     else:
         weight_shapes.append((784, primary_hids))
-        for _ in primary_layers:
+        for _ in xrange(primary_layers):
             weight_shapes.append((primary_hids, primary_hids))
         weight_shapes.append((primary_hids, 10))
     
