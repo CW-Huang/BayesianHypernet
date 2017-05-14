@@ -6,8 +6,8 @@ Created on Fri May 12 17:46:38 2017
 """
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer
-from modules import CoupledDenseLayer, stochasticDenseLayer2
-from utils import log_normal, log_stdnormal
+from modules import CoupledDenseLayer, CoupledConv1DLayer, stochasticDenseLayer
+from utils import log_stdnormal
 from ops import load_mnist
 import theano
 import theano.tensor as T
@@ -16,11 +16,13 @@ srng = RandomStreams(seed=427)
 floatX = theano.config.floatX
 
 import lasagne
-from lasagne import init
 from lasagne import nonlinearities
 from lasagne.layers import get_output
 from lasagne.objectives import categorical_crossentropy as cc
 import numpy as np
+
+
+
 
 
 
@@ -60,34 +62,31 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
 
 
 
+
 def main():
     """
     MNIST example
-    weight norm reparameterized MLP with prior on rescaling parameters
     """
     
     import argparse
     
+    parser = argparse.ArgumentParser()
     parser = argparse.ArgumentParser()
     parser.add_argument('--perdatapoint',action='store_true')    
     parser.add_argument('--coupling',action='store_true')  
     parser.add_argument('--size',default=10000,type=int)  
     parser.add_argument('--lrdecay',action='store_true')  
     parser.add_argument('--lr0',default=0.1,type=float)  
-    parser.add_argument('--lbda',default=0.01,type=float)  
-    parser.add_argument('--bs',default=50,type=int)  
+    parser.add_argument('--lbda',default=10,type=float)  
+    parser.add_argument('--bs',default=50,type=int)   
     args = parser.parse_args()
     print args
-    
+
     perdatapoint = args.perdatapoint
-    coupling = 1#args.coupling
-    lr0 = args.lr0
-    lrdecay = args.lrdecay
-    lbda = np.cast[floatX](args.lbda)
-    bs = args.bs
+    coupling = args.coupling
     size = max(10,min(50000,args.size))
-    clip_grad = 100
-    max_norm = 100
+    clip_grad = 10
+    max_norm = 1000
     
     # load dataset
     filename = '/data/lisa/data/mnist.pkl.gz'
@@ -100,17 +99,18 @@ def main():
     lr = T.scalar('lr') 
     
     # 784 -> 20 -> 10
-    weight_shapes = [(784, 200),
-                     (200,  10)]
+    weight_shapes = [(784, 20),
+                     (20, 20),
+                     (20,  10)]
     
-    num_params = sum(ws[1] for ws in weight_shapes)
+    num_params = sum(np.prod(ws) for ws in weight_shapes)
     if perdatapoint:
         wd1 = input_var.shape[0]
     else:
         wd1 = 1
 
     # stochastic hypernet    
-    ep = srng.normal(std=0.01,size=(wd1,num_params),dtype=floatX)
+    ep = srng.normal(size=(wd1,num_params),dtype=floatX)
     logdets_layers = []
     h_layer = lasagne.layers.InputLayer([None,num_params])
     
@@ -119,13 +119,13 @@ def main():
     logdets_layers.append(IndexLayer(layer_temp,1))
     
     if coupling:
-        layer_temp = CoupledDenseLayer(h_layer,200)
+        layer_temp = CoupledConv1DLayer(h_layer,16,5)
         h_layer = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
         h_layer = PermuteLayer(h_layer,num_params)
         
-        layer_temp = CoupledDenseLayer(h_layer,200)
+        layer_temp = CoupledConv1DLayer(h_layer,16,5)
         h_layer = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
     
@@ -136,12 +136,12 @@ def main():
     layer = lasagne.layers.InputLayer([None,784])
     inputs = {layer:input_var}
     for ws in weight_shapes:
-        num_param = ws[1]
-        w_layer = lasagne.layers.InputLayer((None,ws[1]))
-        weight = weights[:,t:t+num_param].reshape((wd1,ws[1]))
+        num_param = np.prod(ws)
+        print t, t+num_param
+        w_layer = lasagne.layers.InputLayer((None,)+ws)
+        weight = weights[:,t:t+num_param].reshape((wd1,)+ws)
         inputs[w_layer] = weight
-        layer = stochasticDenseLayer2([layer,w_layer],ws[1])
-        print layer.output_shape
+        layer = stochasticDenseLayer([layer,w_layer],ws[1])
         t += num_param
         
     layer.nonlinearity = nonlinearities.softmax
@@ -150,7 +150,6 @@ def main():
     # loss terms
     logdets = sum([get_output(logdet,ep) for logdet in logdets_layers])
     logqw = - (0.5*(ep**2).sum(1) + 0.5*T.log(2*np.pi)*num_params + logdets)
-    #logpw = log_normal(weights,0.,-T.log(lbda)).sum(1)
     logpw = log_stdnormal(weights).sum(1)
     kl = (logqw - logpw).mean()
     logpyx = - cc(y,target_var).mean()
@@ -161,8 +160,8 @@ def main():
     mgrads = lasagne.updates.total_norm_constraint(grads,
                                                    max_norm=max_norm)
     cgrads = [T.clip(g, -clip_grad, clip_grad) for g in mgrads]
-    updates = lasagne.updates.adam(cgrads, params, 
-                                   learning_rate=lr)
+    updates = lasagne.updates.nesterov_momentum(cgrads, params, 
+                                                learning_rate=lr)
                                             
     
     train = theano.function([input_var,target_var,dataset_size,lr],
@@ -171,11 +170,28 @@ def main():
     
     records = train_model(train,predict,
                           train_x[:size],train_y[:size],
-                          valid_x,valid_y,
-                          lr0,lrdecay,bs)
+                          valid_x,valid_y)
     
-    
+    output_probs = theano.function([input_var],y)
+    MCt = np.zeros((100,1000,10))
+    MCv = np.zeros((100,1000,10))
+    for i in range(100):
+        MCt[i] = output_probs(train_x[:1000])
+        MCv[i] = output_probs(valid_x[:1000])
+        
+    tr = np.equal(MCt.mean(0).argmax(-1),train_y[:1000].argmax(-1)).mean()
+    va = np.equal(MCv.mean(0).argmax(-1),valid_y[:1000].argmax(-1)).mean()
+    print "train perf=", tr
+    print "valid perf=", va
+
+
+    for ii in range(15): 
+        print np.round(MCt[ii][0] * 1000)
     
 if __name__ == '__main__':
     main()
+
+    #TODO: 
+    #g=theano.function([input_var,target_var],T.grad(-logyx,params[0]))
+    #g(train_x[:2],train_y[:2])[:7840]  ----> all zeros if use > 2 layers!
 
