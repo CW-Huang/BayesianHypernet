@@ -2,7 +2,7 @@ import lasagne
 import numpy as np
 import theano
 import theano.tensor as T
-
+floatX = theano.config.floatX
 
 def log_abs_det_T(W):
     return T.log(T.abs_(T.nlinalg.det(W)))
@@ -99,7 +99,7 @@ def simple_test(X, y, n_epochs, n_batch, init_lr, vis_freq=100):
             x_batch = X[ii * n_batch:(ii + 1) * n_batch]
             y_batch = y[ii * n_batch:(ii + 1) * n_batch]
 
-            z_noise = np.random.randn(D)
+            z_noise = np.random.randn(D).astype(floatX)
             loss = trainer(x_batch, y_batch, z_noise, current_lr)
 
             if t % vis_freq == 0:
@@ -118,9 +118,9 @@ if __name__ == '__main__':
     D = 5
     N = 1000
 
-    theta_0 = np.random.randn(D)
-    X = np.random.randn(N, D)
-    y = np.dot(X, theta_0) + np.random.randn(N)
+    theta_0 = np.random.randn(D).astype(floatX)
+    X = np.random.randn(N, D).astype(floatX)
+    y = (np.dot(X, theta_0) + np.random.randn(N)).astype(floatX)
 
     W, b = simple_test(X, y, n_epochs, n_batch, init_lr)
     posterior_cov = np.dot(W.T, W)
