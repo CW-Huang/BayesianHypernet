@@ -56,7 +56,14 @@ def build_trainer(phi_shared, N, loglik_primary_f, logprior_f, hypernet_f,
     updates = lasagne.updates.adam(grads, phi_shared, learning_rate=lr)
 
     trainer = theano.function([X, y, z_noise, lr], loss, updates=updates)
-    return trainer
+
+    # Build get_err in case you want to check Jacobian logic
+    elbo_no_J = hypernet_elbo(X, y, loglik_primary_f, logprior_f, hypernet_f,
+                              z_noise, N)
+    err = T.abs_(elbo - elbo_no_J)
+    get_err = theano.function([X, y, z_noise], err)
+
+    return trainer, get_err
 
 # ============================================================================
 # Example with learning Gaussian for linear predictor
@@ -88,9 +95,10 @@ def simple_test(X, y, n_epochs, n_batch, init_lr, vis_freq=100):
 
     hypernet_f = lambda z: T.dot(z, W) + b
     log_det_dtheta_dz_f = lambda z: T.log(T.abs_(T.nlinalg.det(W)))
-    trainer = build_trainer(phi_shared, N,
-                            loglik_primary_f_0, logprior_f_0, hypernet_f,
-                            log_det_dtheta_dz_f=log_det_dtheta_dz_f)
+    R = build_trainer(phi_shared, N,
+                      loglik_primary_f_0, logprior_f_0, hypernet_f,
+                      log_det_dtheta_dz_f=log_det_dtheta_dz_f)
+    trainer, get_err = R
 
     t = 0
     for e in range(n_epochs):
@@ -104,6 +112,8 @@ def simple_test(X, y, n_epochs, n_batch, init_lr, vis_freq=100):
 
             if t % vis_freq == 0:
                 print 'loss %f' % loss
+                err = get_err(x_batch, y_batch, z_noise)
+                print 'log10 jac err %f' % np.log10(err)
             t += 1
     return W.get_value(), b.get_value()
 
@@ -111,8 +121,8 @@ def simple_test(X, y, n_epochs, n_batch, init_lr, vis_freq=100):
 if __name__ == '__main__':
     np.random.seed(5645)
 
-    init_lr = 0.1
-    n_epochs = 500
+    init_lr = 0.0001
+    n_epochs = 5000
     n_batch = 32
 
     D = 5
