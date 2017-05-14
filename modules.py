@@ -20,6 +20,8 @@ conv = lasagne.theano_extensions.conv
 
 delta = 0.001
 
+# TODO: no sigma option
+# TODO: deep coupling function
 class CoupledDenseLayer(lasagne.layers.base.Layer):    
     def __init__(self, incoming, num_units, W=init.Normal(0.01),
                  b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
@@ -77,6 +79,7 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
         return output, ls.sum(1)
 
 
+# to cut down on params; probably unneccessary
 class CoupledConv1DLayer(lasagne.layers.base.Layer):
     """
     shape[1] should be even number
@@ -169,7 +172,9 @@ class CoupledConv1DLayer(lasagne.layers.base.Layer):
         return output, ls.sum(1)
 
 
+# element-wise multiplication
 class LinearFlowLayer(lasagne.layers.base.Layer):    
+    #def __init__(self, incoming, W=init.Normal(0.01,-7.5),
     def __init__(self, incoming, W=init.Normal(0.01,-3),
                  b=init.Normal(0.01,0),
                  **kwargs):
