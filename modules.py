@@ -20,13 +20,15 @@ conv = lasagne.theano_extensions.conv
 
 delta = 0.001
 
-# TODO: no sigma option
 # TODO: deep coupling function
 class CoupledDenseLayer(lasagne.layers.base.Layer):    
     def __init__(self, incoming, num_units, W=init.Normal(0.01),
+                 fix_sigma=0,
                  b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
                  **kwargs):
         super(CoupledDenseLayer, self).__init__(incoming, **kwargs)
+        self.__dict__.update(locals())
+
         self.nonlinearity = (nonlinearities.identity if nonlinearity is None
                              else nonlinearity)
 
@@ -35,17 +37,20 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
         num_inputs = int(np.prod(self.input_shape[1]/2))
 
         self.W1 = self.add_param(W, (num_inputs, num_units), name="W1")
-        self.W21 = self.add_param(W, (num_units, num_inputs), name="W21")
+        if not self.fix_sigma:
+            self.W21 = self.add_param(W, (num_units, num_inputs), name="W21")
         self.W22 = self.add_param(W, (num_units, num_inputs), name="W22")
         if b is None:
             self.b1 = None
-            self.b21 = None
+            if not self.fix_sigma:
+                self.b21 = None
             self.b22 = None
         else:
             self.b1 = self.add_param(b, (num_units,), name="b1",
                                      regularizable=False)
-            self.b21 = self.add_param(b, (num_inputs,), name="b21",
-                                      regularizable=False)
+            if not self.fix_sigma:
+                self.b21 = self.add_param(b, (num_inputs,), name="b21",
+                                          regularizable=False)
             self.b22 = self.add_param(b, (num_inputs,), name="b22",
                                       regularizable=False)
             
@@ -63,20 +68,27 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
             a = a + self.b1
         h = self.nonlinearity(a)
         
-        s_ = T.dot(h,self.W21)
-        if self.b21 is not None:
-            s_ = s_ + self.b21
-        s = T.nnet.softplus(s_) + 0.001
-        ls = T.log(s)
+        if not self.fix_sigma:
+            s_ = T.dot(h,self.W21)
+            if self.b21 is not None:
+                s_ = s_ + self.b21
+            s = T.nnet.softplus(s_) + 0.001
+            ls = T.log(s)
         
         m = T.dot(h,self.W22)
         if self.b22 is not None:
             m = m + self.b22
             
-        output2 = s * input2 + m
+        if not self.fix_sigma:
+            output2 = s * input2 + m
+        else:
+            output2 = input2 + m
         output = T.concatenate([output1,output2],1)
         
-        return output, ls.sum(1)
+        if not self.fix_sigma:
+            return output, ls.sum(1)
+        else:
+            return output, T.constant(np.float32(0.))
 
 
 # to cut down on params; probably unneccessary
@@ -174,8 +186,8 @@ class CoupledConv1DLayer(lasagne.layers.base.Layer):
 
 # element-wise multiplication
 class LinearFlowLayer(lasagne.layers.base.Layer):    
-    #def __init__(self, incoming, W=init.Normal(0.01,-7.5),
-    def __init__(self, incoming, W=init.Normal(0.01,-3),
+    def __init__(self, incoming, W=init.Normal(0.01,-7.5),
+    #def __init__(self, incoming, W=init.Normal(0.01,-3),
                  b=init.Normal(0.01,0),
                  **kwargs):
         super(LinearFlowLayer, self).__init__(incoming, **kwargs)
