@@ -1,5 +1,7 @@
 # Ryan Turner (turnerry@iro.umontreal.ca)
 import numpy as np
+from scipy.misc import logsumexp
+import theano
 import theano.tensor as T
 import hypernet_trainer as ht
 import ign.ign as ign
@@ -45,8 +47,9 @@ def logprior_f(theta):
     return logprior
 
 
-def simple_test(X, y, n_epochs, n_batch, init_lr, weight_shapes,
-                n_layers=5, vis_freq=100):
+def simple_test(X, y, X_valid, y_valid,
+                n_epochs, n_batch, init_lr, weight_shapes,
+                n_layers=5, vis_freq=100, n_samples=100):
     N, D = X.shape
     assert(y.shape == (N, 1))  # Univariate for now
     num_params = sum(np.prod(ws) for ws in weight_shapes)
@@ -63,9 +66,18 @@ def simple_test(X, y, n_epochs, n_batch, init_lr, weight_shapes,
                          log_det_dtheta_dz_f=log_det_dtheta_dz_f)
     trainer, get_err = R
 
+    # Build test loglik function
+    # TODO move to hyper-trainer
+    X_ = T.matrix('X')
+    y_ = T.matrix('y')
+    z_ = T.vector('z')
+    test_loglik = T.mean(ll_primary_f(X_, y_, hypernet_f(z_)))
+    test_f = theano.function([X_, y_, z_], test_loglik)
+
     batch_order = np.arange(int(N / n_batch))
 
     cost_hist = np.zeros(n_epochs)
+    loglik_valid = np.zeros(n_epochs)
     for epoch in xrange(n_epochs):
         np.random.shuffle(batch_order)
 
@@ -81,8 +93,16 @@ def simple_test(X, y, n_epochs, n_batch, init_lr, weight_shapes,
         print cost
         cost_hist[epoch] = cost
 
+        loglik_valid_samples = np.zeros(n_samples)
+        for ss in xrange(n_samples):
+            z_noise = np.random.randn(num_params)
+            loglik_valid_samples[ss] = test_f(X_valid, y_valid, z_noise)
+        # TODO double check
+        loglik_valid[epoch] = logsumexp(loglik_valid_samples - np.log(n_samples))
+        print 'valid %f' % loglik_valid[epoch]
+
     phi = make_unshared_dict(phi_shared)
-    return phi, cost_hist
+    return phi, cost_hist, loglik_valid
 
 
 if __name__ == '__main__':
@@ -102,6 +122,8 @@ if __name__ == '__main__':
                      (hidden_dim, output_dim), (output_dim,)]
 
     X, y = dm_example(N)
-    phi, cost_hist = \
-        simple_test(X, y, n_epochs, n_batch, init_lr, weight_shapes,
+    X_valid, y_valid = dm_example(N)
+    phi, cost_hist, loglik_valid = \
+        simple_test(X, y, X_valid, y_valid,
+                    n_epochs, n_batch, init_lr, weight_shapes,
                     n_layers=2)
