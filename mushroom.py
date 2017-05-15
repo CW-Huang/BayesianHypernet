@@ -16,6 +16,19 @@ TODO:
 
 """
 
+
+# TODO: make it work!!!
+#   am I doing it wrong????
+# what is different??
+"""
+initialization
+optimization
+features (binary vs. categorical)
+experience sampling
+
+"""
+
+
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer
 from modules import CoupledDenseLayer, CoupledConv1DLayer
 from utils import log_stdnormal
@@ -82,7 +95,8 @@ if 1:
     
     parser = argparse.ArgumentParser()
     # different noise for each datapoint (vs. each minibatch)
-    parser.add_argument('--bs',default=32,type=int)  
+    parser.add_argument('--bs',default=64,type=int)  
+    parser.add_argument('--burn_in',default=100,type=int)  
     parser.add_argument('--coupling',default=0,type=bool)  
     parser.add_argument('--epochs',default=50000,type=int)  
     parser.add_argument('--init_lr',default=.1,type=float)  
@@ -110,13 +124,18 @@ if 1:
     
     # THEANO VARS
     input_var = T.matrix('input_var')
+    input_var.tag.test_value = np.random.randn(bs, 119).astype('float32')
+    #action_var = T.matrix('input_var')
     target_var = T.matrix('target_var')
+    target_var.tag.test_value = np.random.randn(bs, 1).astype('float32')
     dataset_size = T.scalar('dataset_size')
+    dataset_size.tag.test_value = np.float32(bs)
     lr = T.scalar('lr') 
+    lr.tag.test_value = np.float32(1.)
     
     weight_shapes = [(119, num_hids),
                      (num_hids, num_hids),
-                     (num_hids,  2)]
+                     (num_hids,  1)]
 
     num_params = sum(np.prod(ws) for ws in weight_shapes)
     if perdatapoint:
@@ -171,9 +190,7 @@ if 1:
     logqw = - (0.5*(ep**2).sum(1) + 0.5*T.log(2*np.pi)*num_params + logdets)
     logpw = log_stdnormal(weights).sum(1)
     kl = (logqw - logpw).mean()
-    # FIXME: should this be summed across examples?
     logpyx = - ((y - target_var)**2).mean()
-    # FIXME: shouldn't this be the batch_size??
     loss = - (logpyx - kl/T.cast(dataset_size,floatX))
     outputs = [loss, logpyx, logdets]
     
@@ -201,60 +218,68 @@ if 1:
     eat = np.array([1,0]).astype('float32')
     dont = np.array([0,1]).astype('float32')
 
-    # experience replay
-    context_buffer = []
-    action_buffer = []
-    reward_buffer = []
+    # experience replay (TODO: these should really be arrays....)
+    context_buffer = np.empty((mem_size, 117)).astype('float32')
+    action_buffer = np.empty((mem_size, 2)).astype('float32')
+    reward_buffer = np.empty((mem_size, 1)).astype('float32')
 
     # logging 
     cum_regret = 0
     cum_regrets = np.zeros(epochs)
 
     for interaction in range(epochs):
+        memory_ind = interaction % mem_size
         
         print "interaction", interaction
         
         # train (TODO: start training after 64 interactions??)
-        if interaction > 0:
+        if interaction > burn_in:
             for _ in range(64):
-                batch = np.random.choice(exp_buffer, bs)
-                train(*batch)
+                # TODO
+                batch = np.random.choice(range(min(mem_size, interaction)), bs) # replacement?
+                contexts = context_buffer[batch]
+                actions = action_buffer[batch]
+                rewards = reward_buffer[batch]
+                inputs = np.hstack((contexts, actions))
+                train(inputs, rewards, bs, init_lr)
 
         # sample context
         ind = np.random.choice(range(len(X)))
         context = X[[ind]]
-        y = Y[[ind]]
+        is_edible = Y[ind]
 
         # predict reward
-        expected_reward = [np.mean([predict(context, eat) for sample in range(2)]),
-                           np.mean([predict(context, dont) for sample in range(2)])]
+        expected_reward = [np.mean([predict(np.hstack((context, eat.reshape((1, 2))))) for sample in range(2)]),
+                           np.mean([predict(np.hstack((context, dont.reshape((1, 2))))) for sample in range(2)])]
 
         # select action
         if expected_reward[0] > expected_reward[1]:
             action = eat
         else:
             action = dont
-        action_buffer.append(action)
 
         # take action and collect reward
-        if action == eat:
-            if y == 0: # incorrect!
-                reward = 5. - 40 * (np.random.rand() > .5)
-                cum_regrets[interaction] = cum_regret - 15.
-            else: # correct!
+        if is_edible:
+            if np.all(action == eat):
                 reward = 5.
                 cum_regrets[interaction] = cum_regret
-        else:
-            reward = 0.
-            if y == 0: # correct!
+            else:
+                reward = 0.
+                cum_regret += 5.
                 cum_regrets[interaction] = cum_regret
-            else: # incorrect!
-                cum_regrets[interaction] = cum_regret - 5.
+        else: # POISON!!!!!!!!!!!!!!!!!!!!
+            if np.all(action == eat):
+                reward = 5. - 40 * (np.random.rand() > .5)
+                cum_regret += 15.
+                cum_regrets[interaction] = cum_regret
+            else:
+                reward = 0.
+                cum_regrets[interaction] = cum_regret
 
-        # forget old memories
-        context_buffer = context_buffer[-mem_size:]
-        action_buffer = action_buffer[-mem_size:]
-        reward_buffer = reward_buffer[-mem_size:]
+        # record experience
+        context_buffer[memory_ind] = context
+        action_buffer[memory_ind] = action
+        reward_buffer[memory_ind] = reward
 
     # END TRAIN MODEL
     ###########################
