@@ -16,7 +16,7 @@ def to_categorical(y, nb_classes):
     return Y
 
 # load training and testing data
-def load_data10(randomize=True, return_val=False, one_hot=False, dirname="cifar-10-batches-py"):
+def load_data10(randomize=True, return_val=False, one_hot=False, dirname="cifar-10-batches-py", mnistify=False):
     tarpath = maybe_download("cifar-10-python.tar.gz",
                              "http://www.cs.toronto.edu/~kriz/", dirname)
     X_train = []
@@ -70,7 +70,8 @@ def load_data10(randomize=True, return_val=False, one_hot=False, dirname="cifar-
 
 def load_batch(fpath):
     with open(fpath, 'rb') as f:
-        d = pickle.load(f, encoding='latin1')
+        #d = pickle.load(f, encoding='latin1')
+        d = pickle.load(f)
     data = d["data"]
     labels = d["labels"]
     return data, labels
