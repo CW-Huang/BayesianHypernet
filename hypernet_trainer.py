@@ -68,7 +68,10 @@ def build_trainer(phi_shared, N, loglik_primary_f, logprior_f, hypernet_f,
     err = T.abs_(elbo - elbo_no_J)
     get_err = theano.function([X, y, z_noise], err)
 
-    return trainer, get_err
+    test_loglik = loglik_primary_f(X, y, hypernet_f(z_noise))
+    test_f = theano.function([X, y, z_noise], test_loglik)
+
+    return trainer, get_err, test_f
 
 # ============================================================================
 # Example with learning Gaussian for linear predictor
@@ -102,7 +105,7 @@ def simple_test(X, y, n_epochs, n_batch, init_lr, vis_freq=100):
     R = build_trainer(phi_shared, N,
                       loglik_primary_f_0, logprior_f_0, hypernet_f,
                       log_det_dtheta_dz_f=log_det_dtheta_dz_f)
-    trainer, get_err = R
+    trainer, get_err, _ = R
 
     t = 0
     for e in range(n_epochs):

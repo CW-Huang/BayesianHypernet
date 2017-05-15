@@ -51,7 +51,10 @@ def simple_test(X, y, X_valid, y_valid,
                 n_epochs, n_batch, init_lr, weight_shapes,
                 n_layers=5, vis_freq=100, n_samples=100):
     N, D = X.shape
+    N_valid = X_valid.shape[0]
     assert(y.shape == (N, 1))  # Univariate for now
+    assert(X_valid.shape == (N_valid, D) and y_valid.shape == (N_valid, 1))
+
     num_params = sum(np.prod(ws) for ws in weight_shapes)
 
     layers = ign.init_ign(n_layers, num_params)
@@ -64,15 +67,7 @@ def simple_test(X, y, X_valid, y_valid,
 
     R = ht.build_trainer(phi_shared.values(), N, ll_primary_f, logprior_f, hypernet_f,
                          log_det_dtheta_dz_f=log_det_dtheta_dz_f)
-    trainer, get_err = R
-
-    # Build test loglik function
-    # TODO move to hyper-trainer
-    X_ = T.matrix('X')
-    y_ = T.matrix('y')
-    z_ = T.vector('z')
-    test_loglik = T.mean(ll_primary_f(X_, y_, hypernet_f(z_)))
-    test_f = theano.function([X_, y_, z_], test_loglik)
+    trainer, get_err, test_loglik = R
 
     batch_order = np.arange(int(N / n_batch))
 
@@ -93,12 +88,11 @@ def simple_test(X, y, X_valid, y_valid,
         print cost
         cost_hist[epoch] = cost
 
-        loglik_valid_samples = np.zeros(n_samples)
+        loglik_valid_s = np.zeros((N_valid, n_samples))
         for ss in xrange(n_samples):
             z_noise = np.random.randn(num_params)
-            loglik_valid_samples[ss] = test_f(X_valid, y_valid, z_noise)
-        # TODO double check
-        loglik_valid[epoch] = logsumexp(loglik_valid_samples - np.log(n_samples))
+            loglik_valid_s[:, ss] = test_loglik(X_valid, y_valid, z_noise)
+        loglik_valid[epoch] = np.mean(logsumexp(loglik_valid_s - np.log(n_samples), axis=1))
         print 'valid %f' % loglik_valid[epoch]
 
     phi = make_unshared_dict(phi_shared)
