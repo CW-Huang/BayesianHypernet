@@ -1,0 +1,8 @@
+Use the virtualenv in /Users/Riashat/Documents/PhD_Research/BASIC_ALGORITHMS/My_Implementations
+
+
+export PYTHONPATH=$PYTHONPATH:/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/Hypernetwork_Uncertainty/DQN_Uncertainty/
+
+
+Update:
+Dropout_Exploration_Boltzmann_DQN.py runs for now!
