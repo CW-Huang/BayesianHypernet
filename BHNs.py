@@ -6,9 +6,9 @@ Created on Sun May 14 17:58:58 2017
 """
 
 
-from modules import LinearFlowLayer, IndexLayer, PermuteLayer
+from modules import LinearFlowLayer, IndexLayer, PermuteLayer, SplitLayer
 from modules import CoupledDenseLayer, stochasticDenseLayer2, \
-                    stochasticConv2DLayer, SplitLayer, IndexLayer
+                    stochasticConv2DLayer
 from utils import log_normal
 import theano
 import theano.tensor as T
@@ -35,11 +35,13 @@ class Base_BHN(object):
     def __init__(self,
                  lbda=1.,
                  perdatapoint=False,
-                 srng = RandomStreams(seed=427)):
+                 srng = RandomStreams(seed=427),
+                 prior = log_normal):
         
         self.lbda = lbda
         self.perdatapoint = perdatapoint
         self.srng = srng
+        self.prior = prior
         
         
         self._get_theano_variables()
@@ -110,9 +112,9 @@ class Base_BHN(object):
         """
         originally...
         logqw = - (0.5*(ep**2).sum(1)+0.5*T.log(2*np.pi)*num_params+logdets)
-            --> constants are neglected in this wrapper
+            --> constants are neglected in this wrapperfrom utils import log_laplace
         """
-        logpw = log_normal(self.weights,0.,-T.log(self.lbda)).sum(1)
+        logpw = self.prior(self.weights,0.,-T.log(self.lbda)).sum(1)
         """
         using normal prior centered at zero, with lbda being the inverse 
         of the variance
@@ -156,12 +158,14 @@ class MLPWeightNorm_BHN(Base_BHN):
                  lbda=1,
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
+                 prior = log_normal,
                  coupling=True):
         
         self.coupling = coupling
         super(MLPWeightNorm_BHN, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
-                                                srng=srng)
+                                                srng=srng,
+                                                prior=prior)
         
     
     def _get_hyper_net(self):
@@ -253,12 +257,14 @@ class Conv2D_BHN(Base_BHN):
                  lbda=1,
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
+                 prior = log_normal,
                  coupling=True):
         
         self.coupling = coupling
         super(Conv2D_BHN, self).__init__(lbda=lbda,
                                          perdatapoint=perdatapoint,
-                                         srng=srng)
+                                         srng=srng,
+                                         prior=prior)
     
     def _get_theano_variables(self):
         # redefine a 4-d tensor for convnet
@@ -368,12 +374,14 @@ class Conv2D_shared_BHN(Base_BHN):
                  lbda=1,
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
+                 prior = log_normal,
                  coupling=True):
         
         self.coupling = coupling
         super(Conv2D_shared_BHN, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
-                                                srng=srng)
+                                                srng=srng,
+                                                prior=prior)
     
     def _get_theano_variables(self):
         # redefine a 4-d tensor for convnet

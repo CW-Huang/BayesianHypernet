@@ -7,6 +7,7 @@ Created on Sun May 14 19:49:51 2017
 
 from BHNs import MLPWeightNorm_BHN
 from ops import load_mnist
+from utils import log_normal, log_laplace
 import numpy as np
 
 
@@ -89,6 +90,7 @@ if __name__ == '__main__':
     parser.add_argument('--size',default=10000,type=int)      
     parser.add_argument('--bs',default=20,type=int)  
     parser.add_argument('--epochs',default=50,type=int)
+    parser.add_argument('--prior',default='log_normal',type=str)
     args = parser.parse_args()
     print args
     
@@ -99,12 +101,17 @@ if __name__ == '__main__':
     lbda = np.cast['float32'](args.lbda)
     bs = args.bs
     epochs = args.epochs
+    if args.prior=='log_normal':
+        prior = log_normal
+    elif args.prior=='log_laplace':
+        prior = log_laplace
     size = max(10,min(50000,args.size))
     
     filename = '/data/lisa/data/mnist.pkl.gz'
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
     model = MLPWeightNorm_BHN(lbda=lbda,
                               perdatapoint=perdatapoint,
+                              prior=prior,
                               coupling=coupling)
     
     
@@ -112,5 +119,8 @@ if __name__ == '__main__':
                        train_x[:size],train_y[:size],
                        valid_x,valid_y,
                        lr0,lrdecay,bs,epochs)
-
+    
+    evaluate_model(model.predict_proba,
+                   train_x[:size],train_y[:size],
+                   valid_x,valid_y)
 

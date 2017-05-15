@@ -68,12 +68,7 @@ def get_weights_shapes(ninp, nout, nlayers, nhids):
 
 # TODO: prior?
 
-if 1:
-#def main():
-    """
-    MNIST example
-    """
-    
+if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser()
