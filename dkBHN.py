@@ -261,6 +261,16 @@ if 1:
     # TODO: add evaluation!!!
 
 
+    output_probs = theano.function([input_var],y)
+    MCs = np.array((100,1000,10))
+    vMCs = np.array((100,1000,10))
+    for i in range(100):
+        MCs[i] = output_probs(train_x[:1000])
+        vMCs[i] = output_probs(valid_x[:1000])
+    print "train perf=", np.equal(np.argmax(MCs.mean(0), -1), np.argmax(train_y[:1000], -1)).mean()
+    print "valid perf=", np.equal(np.argmax(vMCs.mean(0), -1), np.argmax(valid_y[:1000], -1)).mean()
+
+
     
     #from utils import fplot
     for pp in params:
