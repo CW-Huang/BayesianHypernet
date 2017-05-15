@@ -110,16 +110,18 @@ def simple_test(X, y, X_valid, y_valid,
 
 
 if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+
     np.random.seed(5645)
 
     init_lr = 0.001
-    n_epochs = 500
+    n_epochs = 100
     n_batch = 32
     N = 1000
 
     primary_layers = 1
     input_dim = 1
-    hidden_dim = 10
+    hidden_dim = 50
     output_dim = 1
 
     weight_shapes = [(input_dim, hidden_dim), (hidden_dim,),
@@ -137,7 +139,19 @@ if __name__ == '__main__':
     num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
 
     x_grid = np.linspace(-1.0, 1.0, n_grid)
+    mu_grid = np.zeros((n_samples, n_grid))
     y_grid = np.zeros((n_samples, n_grid))
     for ss in xrange(n_samples):
         z_noise = np.random.randn(num_params)
-        y_grid[ss, :] = primary_out(x_grid[:, None], z_noise)[0][:, 0]
+        mu, prec = primary_out(x_grid[:, None], z_noise)
+        std_dev = np.sqrt(1.0 / prec)
+        # Just store an MC version than do the mixture of Gauss logic
+        mu_grid[ss, :] = mu[:, 0]
+        # Note: using same noise across whole grid
+        y_grid[ss, :] = mu[:, 0] + std_dev * np.random.randn()
+
+    plt.plot(x_grid, np.mean(mu_grid, axis=0), 'k')
+    plt.plot(x_grid, np.percentile(y_grid, 5.0, axis=0), 'k')
+    plt.plot(x_grid, np.percentile(y_grid, 95.0, axis=0), 'k')
+    plt.plot(x_grid, mu_grid[:5, :].T)
+    plt.plot(X, y, '.')
