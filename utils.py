@@ -36,8 +36,14 @@ def weighted_sum(weights):
 def log_stdnormal(x):
     return c - 0.5 * x**2 
 
+
 def log_normal(x,mean,log_var,eps=0.0):
-    return c - log_var/2 - (x - mean)**2 / (2 * T.exp(log_var) + eps)
+    return c - log_var/2. - (x - mean)**2 / (2. * T.exp(log_var) + eps)
+
+
+def log_laplace(x,mean,inv_scale,epsilon=1e-7):
+    return - T.log(2*(inv_scale+epsilon)) - T.abs_(x-mean)/(inv_scale+epsilon)
+
 
 
 def softmax(x,axis=1):

@@ -6,7 +6,7 @@ Created on Fri May 12 17:46:38 2017
 """
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer
-from modules import CoupledDenseLayer, CoupledConv1DLayer
+from modules import CoupledDenseLayer, CoupledConv1DLayer, stochasticDenseLayer
 from utils import log_stdnormal
 from ops import load_mnist
 import theano
@@ -16,7 +16,6 @@ srng = RandomStreams(seed=427)
 floatX = theano.config.floatX
 
 import lasagne
-from lasagne import init
 from lasagne import nonlinearities
 from lasagne.layers import get_output
 from lasagne.objectives import categorical_crossentropy as cc
@@ -24,40 +23,11 @@ import numpy as np
 
 
 
-class stochasticDenseLayer(lasagne.layers.base.MergeLayer):
-    
-    def __init__(self, incomings, num_units, 
-                 b=init.Constant(0.), nonlinearity=nonlinearities.tanh,
-                 num_leading_axes=1, **kwargs):
-        super(stochasticDenseLayer, self).__init__(incomings, **kwargs)
-        self.nonlinearity = (nonlinearities.identity if nonlinearity is None
-                             else nonlinearity)
-        self.num_units = num_units
-        
-        if b is None:
-            self.b = None
-        else:
-            self.b = self.add_param(b, (num_units,), name="b",
-                                    regularizable=False)
-    def get_output_shape_for(self,input_shapes):
-        input_shape = input_shapes[0]
-        weight_shape = input_shapes[1]
-        return (input_shape[0], weight_shape[2])
-        
-    def get_output_for(self, inputs, **kwargs):
-        """
-        inputs[0].shape = (None, num_inputs)
-        inputs[1].shape = (None/1, num_inputs, num_units)
-        """
-        input = inputs[0]
-        W = inputs[1]
-        activation = T.sum(input.dimshuffle(0,1,'x') * W, axis = 1)
-        if self.b is not None:
-            activation = activation + self.b
-        return self.nonlinearity(activation)
 
 
-def train_model(train_func,predict_func,X,Y,Xt,Yt,bs=20):
+
+def train_model(train_func,predict_func,X,Y,Xt,Yt,
+                lr0=0.1,lrdecay=1,bs=20):
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
@@ -66,8 +36,12 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,bs=20):
     
     t = 0
     for e in range(epochs):
-
-        lr = 0.01 * 10**(-e/float(epochs-1))                    
+        
+        if lrdecay:
+            lr = lr0 * 10**(-e/float(epochs-1))
+        else:
+            lr = lr0         
+            
         for i in range(N/bs):
             x = X[i*bs:(i+1)*bs]
             y = Y[i*bs:(i+1)*bs]
@@ -76,13 +50,16 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,bs=20):
             
             if t%100==0:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
-                acc = (predict_func(Xt)==Yt.argmax(1)).mean()
-                print '\tacc: {}'.format(acc)
+                tr_acc = (predict_func(X)==Y.argmax(1)).mean()
+                te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()
+                print '\ttrain acc: {}'.format(tr_acc)
+                print '\ttest acc: {}'.format(te_acc)
             t+=1
             
         records.append(loss)
         
     return records
+
 
 
 
@@ -94,30 +71,37 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--perdatapoint',default=0,type=bool)
-    parser.add_argument('--coupling',default=0,type=bool)
-    parser.add_argument('--size',default=10000,type=bool)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--perdatapoint',action='store_true')    
+    parser.add_argument('--coupling',action='store_true')  
+    parser.add_argument('--size',default=10000,type=int)  
+    parser.add_argument('--lrdecay',action='store_true')  
+    parser.add_argument('--lr0',default=0.1,type=float)  
+    parser.add_argument('--lbda',default=10,type=float)  
+    parser.add_argument('--bs',default=50,type=int)   
     args = parser.parse_args()
     print args
 
     perdatapoint = args.perdatapoint
     coupling = args.coupling
     size = max(10,min(50000,args.size))
-    clip_grad = 100
+    clip_grad = 10
     max_norm = 1000
-
+    
     # load dataset
-    filename = r'/data/lisa/data/mnist/mnist.pkl.gz'
+    filename = '/data/lisa/data/mnist.pkl.gz'
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
-
+    
+    
     input_var = T.matrix('input_var')
     target_var = T.matrix('target_var')
     dataset_size = T.scalar('dataset_size')
     lr = T.scalar('lr') 
     
     # 784 -> 20 -> 10
-    weight_shapes = [(784, 10),
-                     (10,  10)]
+    weight_shapes = [(784, 20),
+                     (20, 20),
+                     (20,  10)]
     
     num_params = sum(np.prod(ws) for ws in weight_shapes)
     if perdatapoint:
@@ -176,8 +160,8 @@ def main():
     mgrads = lasagne.updates.total_norm_constraint(grads,
                                                    max_norm=max_norm)
     cgrads = [T.clip(g, -clip_grad, clip_grad) for g in mgrads]
-    updates = lasagne.updates.adam(cgrads, params, 
-                                   learning_rate=lr)
+    updates = lasagne.updates.nesterov_momentum(cgrads, params, 
+                                                learning_rate=lr)
                                             
     
     train = theano.function([input_var,target_var,dataset_size,lr],
@@ -188,7 +172,21 @@ def main():
                           train_x[:size],train_y[:size],
                           valid_x,valid_y)
     
-    
+    output_probs = theano.function([input_var],y)
+    MCt = np.zeros((100,1000,10))
+    MCv = np.zeros((100,1000,10))
+    for i in range(100):
+        MCt[i] = output_probs(train_x[:1000])
+        MCv[i] = output_probs(valid_x[:1000])
+        
+    tr = np.equal(MCt.mean(0).argmax(-1),train_y[:1000].argmax(-1)).mean()
+    va = np.equal(MCv.mean(0).argmax(-1),valid_y[:1000].argmax(-1)).mean()
+    print "train perf=", tr
+    print "valid perf=", va
+
+
+    for ii in range(15): 
+        print np.round(MCt[ii][0] * 1000)
     
 if __name__ == '__main__':
     main()

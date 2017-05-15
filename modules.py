@@ -21,7 +21,7 @@ conv = lasagne.theano_extensions.conv
 delta = 0.001
 
 class CoupledDenseLayer(lasagne.layers.base.Layer):    
-    def __init__(self, incoming, num_units, W=init.Normal(0.01),
+    def __init__(self, incoming, num_units, W=init.Normal(0.0001),
                  b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
                  **kwargs):
         super(CoupledDenseLayer, self).__init__(incoming, **kwargs)
@@ -64,7 +64,7 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
         s_ = T.dot(h,self.W21)
         if self.b21 is not None:
             s_ = s_ + self.b21
-        s = T.nnet.softplus(s_) + 0.001
+        s = T.exp(s_) + 0.001
         ls = T.log(s)
         
         m = T.dot(h,self.W22)
@@ -199,9 +199,16 @@ class LinearFlowLayer(lasagne.layers.base.Layer):
 
 class IndexLayer(lasagne.layers.Layer):
     
-    def __init__(self, incoming, index, **kwargs):
+    def __init__(self, incoming, index, output_shape=None, **kwargs):
         super(IndexLayer, self).__init__(incoming, **kwargs)
         self.index = index
+        self.output_shape_ = output_shape
+    
+    def get_output_shape_for(self, input_shape):
+        if  self.output_shape_ is not None:
+            return self.output_shape_
+        else:
+            return super(IndexLayer, self).get_output_shape_for(input_shape)
 
     def get_output_for(self, input, **kwargs):
         return input[self.index] 
@@ -220,13 +227,41 @@ class PermuteLayer(lasagne.layers.Layer):
     def get_output_shape_for(self, input_shape):
         return input_shape
 
-    def get_output_for(self,input, **kwargs):
+    def get_output_for(self, input, **kwargs):
         
         slc = [slice(None)] * input.ndim
         slc[self.axis] = self.indices
         return input[slc]
 
+class SplitLayer(lasagne.layers.Layer):
+    
+    def __init__(self,incoming, index, axis=-1, **kwargs):
+        super(SplitLayer, self).__init__(incoming, **kwargs)
+        self.index = index
+        self.axis = axis
+    
+    def get_output_shape_for(self, input_shape):
+        index = self.index
+        axis = self.axis
+        output_shape1 = input_shape[:axis] + \
+                        (index,) + input_shape[axis+1:]
+        output_shape2 = input_shape[:axis] + \
+                        (input_shape[axis]-index,) + input_shape[axis+1:]
+        
+        return output_shape1, output_shape2
+        
+    def get_output_for(self, input, **kwargs):
+        index = self.index
+        axis = self.axis
+        slc1 = [slice(None)] * input.ndim
+        slc1[axis] = np.arange(index)
+        slc2 = [slice(None)] * input.ndim
+        slc2[axis] = np.arange(index,self.input_shape[axis])
+        output1 = input[slc1]
+        output2 = input[slc2]
+        return output1, output2
 
+    
 class stochasticDenseLayer(lasagne.layers.base.MergeLayer):
     
     def __init__(self, incomings, num_units, 
@@ -333,7 +368,28 @@ class stochasticDenseLayer2(lasagne.layers.base.MergeLayer):
 
 
 
+def stochasticConv2DLayer(incomings, num_filters, filter_size, stride=(1, 1),
+                          pad=0, untie_biases=False, W=init.GlorotUniform(), 
+                          b=init.Constant(0.),
+                          nonlinearity=nonlinearities.rectify, 
+                          flip_filters=True,
+                          convolution=T.nnet.conv2d, **kwargs):
+    
+    incoming = incomings[0]
+    W = incomings[1]
+    
+    layer = lasagne.layers.Conv2DLayer(
+        incoming, num_filters, filter_size, stride,
+        pad, untie_biases, W, b,
+        nonlinearity, flip_filters,
+        convolution
+    )
+    
+    layer.W = W
 
+    return layer
+    
+        
 
 if __name__ == '__main__':
     
@@ -423,7 +479,7 @@ if __name__ == '__main__':
     plt.axis('off')
     
     
-    plt.savefig('autoregressive_ex_toroid.jpg')
+    #plt.savefig('autoregressive_ex_toroid.jpg')
 
 
 
