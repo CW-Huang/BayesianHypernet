@@ -4,13 +4,15 @@ import theano
 import theano.tensor as T
 floatX = theano.config.floatX
 
+
 def log_abs_det_T(W):
+    # TODO use the version in t_util
     return T.log(T.abs_(T.nlinalg.det(W)))
 
 
 def hypernet_elbo(X, y, loglik_primary_f, logprior_f, hypernet_f, z_noise, N,
                   log_det_dtheta_dz_f=None):
-    assert(X.ndim == 2 and y.ndim == 1)
+    assert(X.ndim == 2 and y.ndim == 2)
     assert(z_noise.ndim == 1)
 
     B = X.shape[0]
@@ -21,11 +23,13 @@ def hypernet_elbo(X, y, loglik_primary_f, logprior_f, hypernet_f, z_noise, N,
     loglik = loglik_primary_f(X, y, theta)
     assert(loglik.ndim == 1)
     loglik_total = T.sum(loglik)
+    assert(loglik_total.ndim == 0)
 
     logprior_theta = logprior_f(theta)
     assert(logprior_theta.ndim == 0)
 
     if log_det_dtheta_dz_f is None: # This is slower, but good for testing
+        assert(theta.ndim == 1)  # Use vector theta for this mode
         J = T.jacobian(theta, z_noise)
         penalty = log_abs_det_T(J)
     else:
@@ -33,6 +37,7 @@ def hypernet_elbo(X, y, loglik_primary_f, logprior_f, hypernet_f, z_noise, N,
     assert(penalty.ndim == 0)
 
     logprior_z = 0.5 * T.dot(z_noise, z_noise)
+    assert(logprior_z.ndim == 0)
 
     elbo = rescale * loglik_total + logprior_theta + penalty + logprior_z
     return elbo
@@ -44,7 +49,7 @@ def build_trainer(phi_shared, N, loglik_primary_f, logprior_f, hypernet_f,
     standard Gaussian. phi_shared are weights to hypernet and N is the total
     number of points in the data set.'''
     X = T.matrix('x')
-    y = T.vector('y')
+    y = T.matrix('y')  # Assuming multivariate output
     z_noise = T.vector('z')
 
     lr = T.scalar('lr')
@@ -71,11 +76,10 @@ def build_trainer(phi_shared, N, loglik_primary_f, logprior_f, hypernet_f,
 
 
 def loglik_primary_f_0(X, y, theta):
-    yp = T.dot(X, theta)
+    yp = T.dot(X, theta[:, None])
     err = yp - y
 
-    # Assuming y.ndim=1, otherwise need to sum axis=1
-    loglik = -0.5 * err ** 2  # Ignoring normalizing constant
+    loglik = -0.5 * T.sum(err ** 2, axis=1)  # Ignoring normalizing constant
     return loglik
 
 
@@ -87,7 +91,7 @@ def logprior_f_0(theta):
 
 def simple_test(X, y, n_epochs, n_batch, init_lr, vis_freq=100):
     N, D = X.shape
-    assert(y.shape == (N,))
+    assert(y.shape == (N, 1))  # For now assume univariate
 
     W = theano.shared(np.random.randn(D, D), name='W')
     b = theano.shared(np.random.randn(D), name='b')
@@ -128,13 +132,13 @@ if __name__ == '__main__':
     D = 5
     N = 1000
 
-    theta_0 = np.random.randn(D).astype(floatX)
+    theta_0 = np.random.randn(D, 1).astype(floatX)
     X = np.random.randn(N, D).astype(floatX)
-    y = (np.dot(X, theta_0) + np.random.randn(N)).astype(floatX)
+    y = (np.dot(X, theta_0) + np.random.randn(N, 1)).astype(floatX)
 
     W, b = simple_test(X, y, n_epochs, n_batch, init_lr)
     posterior_cov = np.dot(W.T, W)
 
-    print theta_0
+    print theta_0[:, 0]
     print b
     print posterior_cov
