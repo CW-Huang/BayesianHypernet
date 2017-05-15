@@ -82,12 +82,7 @@ class stochasticDenseLayer(lasagne.layers.base.MergeLayer):
 # TODO: use init_W instead of std!
 # TODO: prior?
 
-if 1:
-#def main():
-    """
-    MNIST example
-    """
-    
+if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser()
