@@ -9,7 +9,8 @@ import lasagne
 import random
 random.seed(5001)
 
-
+from lasagne import layers
+from scipy.stats import mode
 
 
 def load_dataset():
@@ -106,6 +107,7 @@ def build_mlp(input_var=None):
     # Each layer is linked to its incoming layer(s), so we only need to pass
     # the output layer to give access to a network in Lasagne:
     return l_out
+
 
 
 def iterate_minibatches(inputs, targets, batchsize, shuffle=False):
@@ -364,35 +366,25 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
         y_pool_Dropout = y_pool[pool_subset_dropout]
 
         score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
-        All_Entropy_Dropout = np.zeros(shape=X_pool_Dropout.shape[0])
 
+        #predicted_class = np.argmax(predicted_y, axis=1)
         for d in range(dropout_iterations):
 
             dropout_score = get_preds(X_pool_Dropout)
             score_All = score_All + dropout_score
-
-            dropout_score_log = np.log2(dropout_score)
-            Entropy_Compute = - np.multiply(dropout_score, dropout_score_log)
-            Entropy_Per_Dropout = np.sum(Entropy_Compute, axis=1)
-
-            All_Entropy_Dropout = All_Entropy_Dropout + Entropy_Per_Dropout 
 
         Avg_Pi = np.divide(score_All, dropout_iterations)
         Log_Avg_Pi = np.log2(Avg_Pi)
         Entropy_Avg_Pi = - np.multiply(Avg_Pi, Log_Avg_Pi)
         Entropy_Average_Pi = np.sum(Entropy_Avg_Pi, axis=1)
 
-        G_X = Entropy_Average_Pi
-
-        Average_Entropy = np.divide(All_Entropy_Dropout, dropout_iterations)
-        F_X = Average_Entropy
-        U_X = G_X - F_X
+        U_X = Entropy_Average_Pi
 
         sort_values = U_X.flatten()
         x_pool_index = sort_values.argsort()[-Queries:][::-1]
 
 
-        Pooled_X = X_pool_Dropout[x_pool_index, :,:,:]
+        Pooled_X = X_pool_Dropout[x_pool_index, :, :,:]
         Pooled_Y = y_pool_Dropout[x_pool_index] 
 
 
@@ -413,6 +405,7 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
         X_train = np.concatenate((X_train, Pooled_X), axis=0)
         y_train = np.concatenate((y_train, Pooled_Y), axis=0)           
 
+        
         print ("Training Data Size", X_train.shape)
         """
         Train and Test with the new training data
@@ -451,8 +444,8 @@ def main():
 
     mean_accuracy = np.mean(average_accuracy)
 
-    np.save('dropout_bald_average_accuracy.npy', average_accuracy)
-    np.save('dropout_bald_mean_accuracy.npy',mean_accuracy)    
+    np.save('dropout_max_entropy_average_accuracy.npy', average_accuracy)
+    np.save('dropout_max_entropy_mean_accuracy.npy',mean_accuracy)    
 
 
 if __name__ == '__main__':

@@ -71,8 +71,12 @@ def build_mlp(input_var=None):
     l_in = lasagne.layers.InputLayer(shape=(None, 1, 28, 28),
                                      input_var=input_var)
 
-    # Apply 20% dropout to the input data:
-    l_in_drop = lasagne.layers.DropoutLayer(l_in, p=0.2)
+    # Apply 20% dropout to the input data: 
+    l_in_drop = lasagne.layers.DropoutLayer(l_in, p=0.25)
+
+    ## Dropout per kernel - dropout full channel of feature maps
+    ## same as SpatialDropout2D in keras
+    # l_in_drop = lasagne.layers.spatial_dropout(l_in)
 
     # Add a fully-connected layer of 800 units, using the linear rectifier, and
     # initializing weights with Glorot's scheme (which is the default anyway):
@@ -82,7 +86,9 @@ def build_mlp(input_var=None):
             W=lasagne.init.GlorotUniform())
 
     # We'll now add dropout of 50%:
-    l_hid1_drop = lasagne.layers.DropoutLayer(l_hid1, p=0.2)
+    l_hid1_drop = lasagne.layers.DropoutLayer(l_hid1, p=0.25)
+    # l_hid1_drop = lasagne.layers.spatial_dropout(l_hid1)
+
 
     # Another 800-unit layer:
     l_hid2 = lasagne.layers.DenseLayer(
@@ -90,7 +96,8 @@ def build_mlp(input_var=None):
             nonlinearity=lasagne.nonlinearities.rectify)
 
     # 50% dropout again:
-    l_hid2_drop = lasagne.layers.DropoutLayer(l_hid2, p=0.5)
+    l_hid2_drop = lasagne.layers.DropoutLayer(l_hid2, p=0.25)
+    #l_hid2_drop = lasagne.layers.spatial_dropout(l_hid2)
 
     # Finally, we'll add the fully-connected output layer, of 10 softmax units:
     l_out = lasagne.layers.DenseLayer(
@@ -100,6 +107,7 @@ def build_mlp(input_var=None):
     # Each layer is linked to its incoming layer(s), so we only need to pass
     # the output layer to give access to a network in Lasagne:
     return l_out
+
 
 
 def iterate_minibatches(inputs, targets, batchsize, shuffle=False):
@@ -443,8 +451,8 @@ def main():
 
     mean_accuracy = np.mean(average_accuracy)
 
-    np.save('dropout_bald_average_accuracy.npy', average_accuracy)
-    np.save('dropout_bald_mean_accuracy.npy',mean_accuracy)    
+    np.save('dropout_var_ratio_average_accuracy.npy', average_accuracy)
+    np.save('dropout_var_ratio_mean_accuracy.npy',mean_accuracy)    
 
 
 if __name__ == '__main__':
