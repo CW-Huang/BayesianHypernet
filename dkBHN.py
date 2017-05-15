@@ -23,6 +23,7 @@ I'll need to read Real NVP, as well...
 
 
 
+
 """
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer
@@ -44,6 +45,9 @@ import numpy as np
 
 np.random.seed(427)
 
+
+def flatten_list(plist):
+    return T.concatenate([p.flatten() for p in plist])
 
 class stochasticDenseLayer(lasagne.layers.base.MergeLayer):
     
@@ -79,7 +83,6 @@ class stochasticDenseLayer(lasagne.layers.base.MergeLayer):
 
 
 
-# TODO: use init_W instead of std!
 # TODO: prior?
 
 if 1:
@@ -101,7 +104,6 @@ if 1:
     parser.add_argument('--perdatapoint',default=0,type=bool)    
     parser.add_argument('--primary_layers',default=1,type=int)    
     parser.add_argument('--primary_hids',default=10,type=int)    
-    parser.add_argument('--std',default=1.,type=bool)    
     # num_ex
     parser.add_argument('--size',default=10000,type=int)  
     args = parser.parse_args()
@@ -113,7 +115,7 @@ if 1:
     size = max(10,min(50000,args.size))
     print "size",size
     # these seem large!
-    clip_grad = 100
+    clip_grad = 1
     max_norm = 1000
     
     # load dataset
@@ -132,7 +134,7 @@ if 1:
         weight_shapes.append((784, 10))
     else:
         weight_shapes.append((784, primary_hids))
-        for _ in primary_layers:
+        for _ in range(primary_layers-1):
             weight_shapes.append((primary_hids, primary_hids))
         weight_shapes.append((primary_hids, 10))
     
@@ -143,7 +145,7 @@ if 1:
         wd1 = 1
 
     # stochastic hypernet    
-    ep = srng.normal(size=(wd1,num_params), std=std, dtype=floatX)
+    ep = srng.normal(size=(wd1,num_params), dtype=floatX)
     logdets_layers = []
     h_layer = lasagne.layers.InputLayer([None,num_params])
     
@@ -195,20 +197,28 @@ if 1:
     #y = T.clip(y, 0.00001, 0.99999) # stability 
 
     
-    # loss terms
-    # TODO: monitor separately
+    # entropy_term
     logdets = sum([get_output(logdet,ep) for logdet in logdets_layers])
-    # FIXME: are we using *different* epsilons when we should be using the same ones???
     logqw = - (0.5*(ep**2).sum(1) + 0.5*T.log(2*np.pi)*num_params + logdets)
+    # prior term
     logpw = log_stdnormal(weights).sum(1)
-    kl = (logqw - logpw).mean()
+    # likelihood term
     logpyx = - cc(y,target_var).mean()
-    # FIXME: shouldn't this be the batch_size??
-    loss = - (logpyx - kl/T.cast(dataset_size,floatX))
-    outputs = [loss, logpyx, logdets]
-    
+    # LOSS: 
+    kl = (logqw - logpw).mean()
+    ds = T.cast(dataset_size,floatX)
+    loss = - (logpyx - kl/ds)
     params = lasagne.layers.get_all_params([h_layer,layer])
     grads = T.grad(loss, params)
+
+    # extra monitoring
+    nll_grads = flatten_list(T.grad(-logpyx, params, disconnected_inputs='warn')).norm(2)
+    prior_grads = flatten_list(T.grad(-logpw.mean() / ds, params, disconnected_inputs='warn')).norm(2)
+    entropy_grads = flatten_list(T.grad(logqw.mean() / ds, params, disconnected_inputs='warn')).norm(2)
+    outputs = [loss, -logpyx, -logpw / ds, logqw / ds, 
+                     nll_grads, prior_grads, entropy_grads,
+                     logdets] # logdets is "legacy"
+
     # double clipping??
     mgrads = lasagne.updates.total_norm_constraint(grads,
                                                    max_norm=max_norm)
@@ -223,6 +233,7 @@ if 1:
                             outputs,
                             updates=updates)
     output_probs = theano.function([input_var],y)
+    sample_posterior = theano.function([],weights)
     predict = theano.function([input_var],y.argmax(1))
     
     ###########################
@@ -246,21 +257,26 @@ if 1:
             y = Y[i*bs:(i+1)*bs]
             
             outputs = train(x,y,N,current_lr)
+            loss, nll, pw, qw, ng, pg, eg,_ = outputs
             
-            if t%100==0:
-                print 'epoch: {} {}, loss:{}'.format(e,t,outputs)
+            if t%1==0: # TODO: timing
+                print 'epoch: {} {}, loss:{}, nll:{}, pw:{}, qw:{}'.format(e,t,loss, nll, pw[0], qw[0])
+                print '                                                                                       GRADIENTS: nll:{}, pw:{}, qw:{}'.format(ng, pg, eg)
+
                 acc = (predict(Xt)==Yt.argmax(1)).mean()
                 print '\tacc: {}'.format(acc)
             t+=1
             
-        records.append(loss)
+        records.append(loss) # TODO log loss terms
     # END TRAIN MODEL
     ###########################
 
 
-    # TODO: add evaluation!!!
+    # TODO: more evaluation!!!
 
 
+    # How well do we do with 100 MC samples?
+    #   TODO: different #s of samples
     output_probs = theano.function([input_var],y)
     MCs = np.array((100,1000,10))
     vMCs = np.array((100,1000,10))
@@ -270,14 +286,16 @@ if 1:
     print "train perf=", np.equal(np.argmax(MCs.mean(0), -1), np.argmax(train_y[:1000], -1)).mean()
     print "valid perf=", np.equal(np.argmax(vMCs.mean(0), -1), np.argmax(valid_y[:1000], -1)).mean()
 
+    # TODO: how diverse are the samples? (how to evaluate that?? what to compare to / expect??)
 
-    
-    #from utils import fplot
-    for pp in params:
-        pass#fplot(pp.eval())
-    
-    #TODO: 
-    g=theano.function([input_var,target_var],T.grad(-logpyx,params[0]))
-    sg = g(train_x[:2],train_y[:2])[:7840]#  ----> all zeros if use > 2 layers!
+    # 2D scatter-plots of sampled params
+    for i in range(9):                                                                                                                     
+        subplot(3,3,i+1)
+        seaborn.regplot(thet[:, np.random.choice(7940)], thet[:, np.random.choice(7940)]) 
+    # look at actual correlation coefficients
+    hist([scipy.stats.pearsonr(thet[:, np.random.choice(7940)], thet[:, np.random.choice(7940)])[1] for _ in range(10000)], 100) 
 
+
+    # TODO: what does the posterior over parameters look like? (we expect to see certain dependencies... e.g. in the simplest case...)
+    #   So we can actually see that easily in a toy example, where output = a*b*input, so we just need a*b to equal the right thing, and we can compute the exact posterior based on #examples, etc... and then we can see the difference between independent and not
 
