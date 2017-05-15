@@ -3,7 +3,7 @@ import numpy as np
 import theano.tensor as T
 import hypernet_trainer as ht
 import ign.ign as ign
-from ign.t_util import make_shared_dict
+from ign.t_util import make_shared_dict, make_unshared_dict
 
 
 def dm_example(N):
@@ -63,22 +63,26 @@ def simple_test(X, y, n_epochs, n_batch, init_lr, weight_shapes,
                          log_det_dtheta_dz_f=log_det_dtheta_dz_f)
     trainer, get_err = R
 
-    t = 0
-    for e in range(n_epochs):
+    batch_order = np.arange(int(N / n_batch))
+
+    cost_hist = np.zeros(n_epochs)
+    for epoch in xrange(n_epochs):
+        np.random.shuffle(batch_order)
+
+        cost = 0.0
         current_lr = init_lr
-        for ii in xrange(N / n_batch):
+        for ii in batch_order:
             x_batch = X[ii * n_batch:(ii + 1) * n_batch]
             y_batch = y[ii * n_batch:(ii + 1) * n_batch]
-
             z_noise = np.random.randn(num_params)
-            loss = trainer(x_batch, y_batch, z_noise, current_lr)
+            batch_cost = trainer(x_batch, y_batch, z_noise, current_lr)
+            cost += batch_cost
+        cost /= len(batch_order)
+        print cost
+        cost_hist[epoch] = cost
 
-            if t % vis_freq == 0:
-                print 'loss %f' % loss
-                err = get_err(x_batch, y_batch, z_noise)
-                print 'log10 jac err %f' % np.log10(err)
-            t += 1
-    return phi_shared
+    phi = make_unshared_dict(phi_shared)
+    return phi, cost_hist
 
 
 if __name__ == '__main__':
@@ -98,5 +102,6 @@ if __name__ == '__main__':
                      (hidden_dim, output_dim), (output_dim,)]
 
     X, y = dm_example(N)
-    phi = simple_test(X, y, n_epochs, n_batch, init_lr, weight_shapes,
-                      n_layers=5)
+    phi, cost_hist = \
+        simple_test(X, y, n_epochs, n_batch, init_lr, weight_shapes,
+                    n_layers=2)
