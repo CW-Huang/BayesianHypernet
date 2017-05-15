@@ -8,7 +8,7 @@ Created on Sun May 14 17:58:58 2017
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer
 from modules import CoupledDenseLayer, stochasticDenseLayer2, \
-                    stochasticConv2DLayer
+                    stochasticConv2DLayer, SplitLayer, IndexLayer
 from utils import log_normal
 import theano
 import theano.tensor as T
@@ -166,8 +166,8 @@ class MLPWeightNorm_BHN(Base_BHN):
     
     def _get_hyper_net(self):
         # inition random noise
-        ep = self.srng.normal(std=0.01,size=(self.wd1,
-                                             self.num_params),dtype=floatX)
+        ep = self.srng.normal(size=(self.wd1,
+                                    self.num_params),dtype=floatX)
         logdets_layers = []
         h_net = lasagne.layers.InputLayer([None,self.num_params])
         
@@ -241,7 +241,8 @@ class Conv2D_BHN(Base_BHN):
             [16,5,2,'same',rectify],
             [16,5,2,'same',rectify]]
 
-    num_params = sum(np.prod(ws) for ws in weight_shapes) + 10 
+    num_classes = 10
+    num_params = sum(np.prod(ws) for ws in weight_shapes) + num_classes
                                                             # 10 classes
                                                             # need to be
                                                             # specified in 
@@ -269,8 +270,8 @@ class Conv2D_BHN(Base_BHN):
     
     def _get_hyper_net(self):
         # inition random noise
-        ep = self.srng.normal(std=0.01,size=(self.wd1,
-                                             self.num_params),dtype=floatX)
+        ep = self.srng.normal(size=(self.wd1,
+                                    self.num_params),dtype=floatX)
         logdets_layers = []
         h_net = lasagne.layers.InputLayer([None,self.num_params])
         
@@ -296,6 +297,7 @@ class Conv2D_BHN(Base_BHN):
         self.logdets = sum([get_output(ld,ep) for ld in logdets_layers])
     
     def _get_primary_net(self):
+        nc = self.num_classes
         t = np.cast['int32'](0)
         p_net = lasagne.layers.InputLayer([None,1,28,28])
         inputs = {p_net:self.input_var}
@@ -313,10 +315,144 @@ class Conv2D_BHN(Base_BHN):
             print p_net.output_shape
             t += num_param
         
-        w_layer = lasagne.layers.InputLayer((None,10))
-        weight = self.weights[:,t:t+10].reshape((self.wd1,10))
+        w_layer = lasagne.layers.InputLayer((None,nc))
+        weight = self.weights[:,t:t+nc].reshape((self.wd1,nc))
         inputs[w_layer] = weight
-        p_net = stochasticDenseLayer2([p_net,w_layer],10,
+        p_net = stochasticDenseLayer2([p_net,w_layer],nc,
+                                      nonlinearity=nonlinearities.softmax)
+
+        y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
+        
+        self.p_net = p_net
+        self.y = y
+        
+    def _get_useful_funcs(self):
+        self.predict_proba = theano.function([self.input_var],self.y)
+        self.predict = theano.function([self.input_var],self.y.argmax(1))
+        
+
+
+class Conv2D_shared_BHN(Base_BHN):
+    """
+    Hypernet with dense coupling layer outputing posterior of weight
+    parameters of filters for Conv2D layer. 
+    
+    The last layer is fully connected with weightnorm reparameterization 
+    as in `MLPWeightNorm_BHN`. 
+    """
+
+    weight_shapes = [(16,1,5,5),        # -> (None, 16, 14, 14)
+                     (16,16,5,5),       # -> (None, 16,  7,  7)
+                     (16,16,5,5)]       # -> (None, 16,  4,  4)
+    
+    n_kernels = np.array(weight_shapes)[:,1].sum()
+    kernel_shape = weight_shapes[0][:1]+weight_shapes[0][2:]
+                                        # make sure it's the same 
+                                        # across kernels
+    
+    # [num_filters, filter_size, stride, pad, nonlinearity]
+    # needs to be consistent with weight_shapes
+    args = [[16,5,2,'same',rectify],
+            [16,5,2,'same',rectify],
+            [16,5,2,'same',rectify]]
+    
+    num_classes = 10
+    num_params = sum(np.prod(ws) for ws in weight_shapes) + num_classes
+                                                            # 10 classes
+                                                            # need to be
+                                                            # specified in 
+                                                            # _get_primary_net
+
+    
+    def __init__(self,
+                 lbda=1,
+                 perdatapoint=False,
+                 srng = RandomStreams(seed=427),
+                 coupling=True):
+        
+        self.coupling = coupling
+        super(Conv2D_shared_BHN, self).__init__(lbda=lbda,
+                                                perdatapoint=perdatapoint,
+                                                srng=srng)
+    
+    def _get_theano_variables(self):
+        # redefine a 4-d tensor for convnet
+        self.input_var = T.tensor4('input_var')
+        self.target_var = T.matrix('target_var')
+        self.dataset_size = T.scalar('dataset_size')
+        self.learning_rate = T.scalar('learning_rate') 
+     
+    
+    def _get_hyper_net(self):
+        # inition random noise
+        ep = self.srng.normal(size=(1,
+                                    self.num_params),dtype=floatX)
+        logdets_layers = []
+        h_net = lasagne.layers.InputLayer([1,self.num_params])
+        
+        # mean and variation of the initial noise
+        layer_temp = LinearFlowLayer(h_net)
+        h_net = IndexLayer(layer_temp,0)
+        logdets_layers.append(IndexLayer(layer_temp,1))
+        
+        h_net = SplitLayer(h_net,self.num_params-self.num_classes,1)
+        h_net1 = IndexLayer(h_net,0,(1,self.num_params-self.num_classes))
+        h_net2 = IndexLayer(h_net,1)
+
+
+        h_net1 = lasagne.layers.ReshapeLayer(h_net1,
+                                             (self.n_kernels,) + \
+                                             (np.prod(self.kernel_shape),))
+        if self.coupling:
+            # add more to introduce more correlation if needed
+            layer_temp = CoupledDenseLayer(h_net1,100)
+            h_net1 = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+            
+            h_net1 = PermuteLayer(h_net1,self.num_params)
+            
+            layer_temp = CoupledDenseLayer(h_net1,100)
+            h_net1 = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        
+        self.kernel_weights = lasagne.layers.get_output(h_net1,ep)
+        h_net1 = lasagne.layers.ReshapeLayer(h_net1,
+                                             (1, self.n_kernels * \
+                                                 np.prod(self.kernel_shape) ) )
+        h_net = lasagne.layers.ConcatLayer([h_net1,h_net2],1)
+        self.h_net = h_net
+        self.weights = lasagne.layers.get_output(h_net,ep)
+        self.logdets = sum([get_output(ld,ep) for ld in logdets_layers])
+    
+    def _get_primary_net(self):
+        nc = self.num_classes
+        t = np.cast['int32'](0)
+        k = np.cast['int32'](0)
+        p_net = lasagne.layers.InputLayer([None,1,28,28])
+        inputs = {p_net:self.input_var}
+        for ws, args in zip(self.weight_shapes,self.args):
+            num_param = np.prod(ws)
+            num_kernel = ws[1]
+            weight = self.kernel_weights[k:k+num_kernel,:]
+            weight = weight.dimshuffle(1,0).reshape(self.kernel_shape + \
+                                                    (num_kernel,))
+            weight = weight.dimshuffle(0,3,1,2)
+            num_filters = args[0]
+            filter_size = args[1]
+            stride = args[2]
+            pad = args[3]
+            nonl = args[4]
+            p_net = stochasticConv2DLayer([p_net,weight],
+                                          num_filters,filter_size,stride,pad,
+                                          nonlinearity=nonl)
+            print p_net.output_shape
+            t += num_param
+            k += num_kernel
+        
+        w_layer = lasagne.layers.InputLayer((None,nc))
+        weight = self.weights[:,t:t+nc].reshape((self.wd1,nc))
+        inputs[w_layer] = weight
+        p_net = stochasticDenseLayer2([p_net,w_layer],nc,
                                       nonlinearity=nonlinearities.softmax)
 
         y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
