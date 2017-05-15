@@ -44,7 +44,7 @@ def hypernet_elbo(X, y, loglik_primary_f, logprior_f, hypernet_f, z_noise, N,
 
 
 def build_trainer(phi_shared, N, loglik_primary_f, logprior_f, hypernet_f,
-                  log_det_dtheta_dz_f=None):
+                  log_det_dtheta_dz_f=None, primary_f=None):
     '''It is assumed every time this is called z_noise will be drawn from a 
     standard Gaussian. phi_shared are weights to hypernet and N is the total
     number of points in the data set.'''
@@ -68,10 +68,16 @@ def build_trainer(phi_shared, N, loglik_primary_f, logprior_f, hypernet_f,
     err = T.abs_(elbo - elbo_no_J)
     get_err = theano.function([X, y, z_noise], err)
 
-    test_loglik = loglik_primary_f(X, y, hypernet_f(z_noise))
+    theta = hypernet_f(z_noise)
+    test_loglik = loglik_primary_f(X, y, theta)
     test_f = theano.function([X, y, z_noise], test_loglik)
 
-    return trainer, get_err, test_f
+    primary_out = None
+    if primary_f is not None:
+        yp = primary_f(X, theta)
+        primary_out = theano.function([X, z_noise], yp)
+
+    return trainer, get_err, test_f, primary_out
 
 # ============================================================================
 # Example with learning Gaussian for linear predictor
@@ -105,7 +111,7 @@ def simple_test(X, y, n_epochs, n_batch, init_lr, vis_freq=100):
     R = build_trainer(phi_shared, N,
                       loglik_primary_f_0, logprior_f_0, hypernet_f,
                       log_det_dtheta_dz_f=log_det_dtheta_dz_f)
-    trainer, get_err, _ = R
+    trainer, get_err, _, _ = R
 
     t = 0
     for e in range(n_epochs):
