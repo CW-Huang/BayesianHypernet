@@ -2,6 +2,7 @@
 """
 Created on Mon May 15 14:36:33 2017
 
+
 @author: Chin-Wei
 
 Toy regression example
@@ -10,12 +11,13 @@ Toy regression example
 
 
 
+# TODO (DK): take the plotting and the data, put it in my exp script...
 
 
 import numpy as np
 import matplotlib.pyplot as plt
 from BHNs import Base_BHN
-from modules import LinearFlowLayer, IndexLayer, PermuteLayer
+from modules import LinearFlowLayer, IndexLayer, PermuteLayer, ReverseLayer
 from modules import CoupledDenseLayer, stochasticDenseLayer2
 from utils import log_normal, log_laplace
 import theano
@@ -46,9 +48,11 @@ class ToyRegression(Base_BHN):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
-                 coupling = True):
+                 coupling = True,
+                 mixing = 'permute'):
         
         self.coupling = coupling
+        self.__dict__.update(locals())
         super(ToyRegression, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
                                                 srng=srng,
@@ -75,12 +79,21 @@ class ToyRegression(Base_BHN):
             logdets_layers.append(IndexLayer(layer_temp,1))
             
             for c in range(self.coupling-1):
-                h_net = PermuteLayer(h_net,self.num_params)
+                if self.mixing == 'permute':
+                    h_net = PermuteLayer(h_net,self.num_params)
+                elif self.mixing == 'reverse':
+                    h_net = ReverseLayer(h_net,self.num_params)
                 
                 layer_temp = CoupledDenseLayer(h_net,10)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
                         
+        # FINAL scale and shift (TODO: optional)
+        layer_temp = LinearFlowLayer(h_net,
+                                     W=lasagne.init.Normal(1.,0))
+        h_net = IndexLayer(layer_temp,0)
+        logdets_layers.append(IndexLayer(layer_temp,1))
+        
         
         self.h_net = h_net
         self.weights = lasagne.layers.get_output(h_net,ep)
@@ -148,6 +161,10 @@ class ToyRegression(Base_BHN):
         cgrads = [T.clip(g, -self.clip_grad, self.clip_grad) for g in mgrads]
         self.updates = lasagne.updates.adam(cgrads, self.params, 
                                            learning_rate=self.learning_rate)
+
+
+
+
                                             
 # toy dataset
 n = 5000
@@ -159,29 +176,62 @@ x = np.concatenate([x1,x2],0)
 ep1 = np.random.randn(n,1).astype(floatX)
 f = lambda x:0.01 * np.sin(2.5*x) * x**1.5 + 0.1 * x + ep1/(0.5*x)**2 - 1
 t = f(x)
+# 
+n_ = 1000
+f_ = lambda x:0.01 * np.sin(2.5*x) * x**1.5 + 0.1*x - 1
+xx = np.linspace(1,20,n_).astype(floatX).reshape(n_,1)
+yy = f_(xx)
 
 
-model = ToyRegression(2.,coupling=False,prior=log_normal)
+model = ToyRegression(2.,coupling=4,prior=log_normal, mixing='reverse')
 
+
+###############
+# TRAIN
 lr0 = 0.005
 epochs=10000
+
+plt.ion()
+
 for i in range(epochs):
     lr = lr0 * 10**(-i/float(epochs-1))
     l = model.train_func(x,t,n,lr)
-    if i%1000==0:
+    if i%250==0:
         print i,l
+        if 1: # interactive plotting
+            # SAMPLES
+            n_mc = 1000
+            mc = np.zeros((n_,n_mc))
+            for i in range(n_mc):
+                sp = np.random.randn(n_,1).astype(floatX) 
+                mc[:,i:i+1] = model.predict_sp(xx,sp)
+            # PLOTTING
+            plt.clf()
+            plot2 = plt.fill_between(xx[:,0], 
+                                     mc.mean(1)-mc.std(1,ddof=1), 
+                                     mc.mean(1)+mc.std(1,ddof=1),
+                                     facecolor='gray')
+                               
+                               
+            plot2 = plt.plot(xx, mc.mean(1), 'r-')                 
+            plot = plt.scatter(x,t)
+            plot1 = plt.plot(xx,yy,'y--')
+
+
+            plt.vlines(left1,yy.min(),yy.max())
+            plt.vlines(right1,yy.min(),yy.max())
+
+            plt.vlines(left2,yy.min(),yy.max())
+            plt.vlines(right2,yy.min(),yy.max())
+            plt.pause(.01)
 
 y_ = model.predict(x)
 
 
 
-n_ = 1000
-f_ = lambda x:0.01 * np.sin(2.5*x) * x**1.5 + 0.1*x - 1
-xx = np.linspace(1,15,n_).astype(floatX).reshape(n_,1)
-yy = f_(xx)
 
-
-
+###############
+# SAMPLES
 n_mc = 1000
 mc = np.zeros((n_,n_mc))
 for i in range(n_mc):
@@ -189,6 +239,10 @@ for i in range(n_mc):
     mc[:,i:i+1] = model.predict_sp(xx,sp)
 
 
+
+
+###############
+# PLOTTING
 plt.figure()
 
 plot2 = plt.fill_between(xx[:,0], 
