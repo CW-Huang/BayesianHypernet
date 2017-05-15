@@ -11,25 +11,22 @@ TODO:
     test-time MC (THEANO)
 
 
-So far, it appears to be working, but not very well...
-    so why not????
-    do we need a better hypernet??
-        at a glance, the architecture seems wrong...
-            more layers, less scaling, ...?
-            no random permutations (what's up with that??)
-
-
-I'll need to read Real NVP, as well...
-
-
+MORE TODO:
+    move init (etc.) into args 
+    all experiments in one script...
+    get_mnist function
 
 
 """
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer
 from modules import CoupledDenseLayer, CoupledConv1DLayer
+from modules import StochasticDenseLayer, StochasticDenseLayer2
 from utils import log_stdnormal
 from ops import load_mnist
+
+from helpers import get_dataset
+
 import theano
 import theano.tensor as T
 from theano.tensor.shared_randomstreams import RandomStreams
@@ -49,38 +46,24 @@ np.random.seed(427)
 def flatten_list(plist):
     return T.concatenate([p.flatten() for p in plist])
 
-class stochasticDenseLayer(lasagne.layers.base.MergeLayer):
-    
-    def __init__(self, incomings, num_units, 
-                 b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
-                 num_leading_axes=1, **kwargs):
-        super(stochasticDenseLayer, self).__init__(incomings, **kwargs)
-        self.nonlinearity = (nonlinearities.identity if nonlinearity is None
-                             else nonlinearity)
-        self.num_units = num_units
-        
-        if b is None:
-            self.b = None
-        else:
-            self.b = self.add_param(b, (num_units,), name="b",
-                                    regularizable=False)
-    def get_output_shape_for(self,input_shapes):
-        input_shape = input_shapes[0]
-        weight_shape = input_shapes[1]
-        return (input_shape[0], weight_shape[2])
-        
-    def get_output_for(self, inputs, **kwargs):
-        """
-        inputs[0].shape = (None, num_inputs)
-        inputs[1].shape = (None/1, num_inputs, num_units)
-        """
-        input = inputs[0]
-        W = inputs[1]
-        activation = T.sum(input.dimshuffle(0,1,'x') * W, axis = 1)
-        if self.b is not None:
-            activation = activation + self.b
-        return self.nonlinearity(activation)
 
+def restrict_08(X, Y):
+    """ get only the examples whose targets are one of classes"""
+    assert False # TODO
+    inds08 = [ii for ii in range(len(Y)) if Y[ii][10] == 0]
+    inds9 = [ii for ii in range(len(Y)) if Y[ii][10] == 1]
+    return X[inds08], Y[inds08], X[inds9], Y[inds9] 
+
+
+def get_weights_shapes(ninp, nout, nlayers, nhids):
+    if nlayers == 0:
+        weight_shapes.append((ninp, nout))
+    else:
+        weight_shapes.append((ninp, nhids))
+        for _ in range(nlayers-1):
+            weight_shapes.append((nhids, nhids))
+        weight_shapes.append((nhids, nout))
+    return weight_shapes
 
 
 # TODO: prior?
@@ -97,8 +80,10 @@ if 1:
     # different noise for each datapoint (vs. each minibatch)
     parser.add_argument('--bs',default=32,type=int)  
     parser.add_argument('--coupling',default='none',type=str, choices=['conv', 'dense', 'none'])  
+    parser.add_argument('--dataset',default='mnist',type=str, choices=['mnist', 'mnist0-8', 'mnist0-4', 'mushroom'])  
     parser.add_argument('--epochs',default=100,type=int)  
     parser.add_argument('--fix_sigma',default=0,type=int)  
+    parser.add_argument('--hnet',default='full',type=str, choices=['full', 'weight_norm', 'cnn'])  
     parser.add_argument('--init_lr',default=.1,type=float)  
     parser.add_argument('--opt',default='momentum',type=str)  
     parser.add_argument('--perdatapoint',default=0,type=bool)    
@@ -110,41 +95,54 @@ if 1:
     locals().update(args.__dict__)
     print args
 
-    perdatapoint = args.perdatapoint
-    coupling = args.coupling
     size = max(10,min(50000,args.size))
     print "size",size
-    # these seem large!
-    clip_grad = 1
+    # TODO: these seem large!
+    clip_grad = 100
     max_norm = 1000
     
+
+    ###########################
     # load dataset
+    # TODO
+    #get_dataset(dataset)
     filename = '/data/lisa/data/mnist.pkl.gz'
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
+
+    if 1:
+
     
     
+    ###########################
+    # theano variables
     input_var = T.matrix('input_var')
     target_var = T.matrix('target_var')
     dataset_size = T.scalar('dataset_size')
     lr = T.scalar('lr') 
     
-    # 784 -> 10 -> 10
-    weight_shapes = []
-    if primary_layers == 0:
-        weight_shapes.append((784, 10))
-    else:
-        weight_shapes.append((784, primary_hids))
-        for _ in range(primary_layers-1):
-            weight_shapes.append((primary_hids, primary_hids))
-        weight_shapes.append((primary_hids, 10))
+    ###########################
+    # primary net architecture
+    ninp, nout = X.shape[1], Y.shape[1]
+    weight_shapes = get_weights_shapes(ninp, nout, primary_layers, primary_hids)
+
     
-    num_params = sum(np.prod(ws) for ws in weight_shapes)
+    ###########################
+    # hypernet architecture
+    if hnet == 'full':
+        num_params = sum(np.prod(ws) for ws in weight_shapes)
+    elif hnet == 'weight_norm':
+        num_params = sum(np.prod(ws[1]) for ws in weight_shapes)
+    elif hnet == 'cnn':
+        assert False # TODO
+        num_params = sum(np.prod(ws[1]) for ws in weight_shapes)
+
     if perdatapoint:
         wd1 = input_var.shape[0]
     else:
         wd1 = 1
 
-    # stochastic hypernet    
+    ###########################
+    # hypernet graph
     ep = srng.normal(size=(wd1,num_params), dtype=floatX)
     logdets_layers = []
     h_layer = lasagne.layers.InputLayer([None,num_params])
@@ -176,10 +174,12 @@ if 1:
         h_layer = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
     
+    ###########################
     # pseudo-params
     weights = lasagne.layers.get_output(h_layer,ep)
     
-    # primary net
+    ###########################
+    # primary net graph
     t = np.cast['int32'](0)
     layer = lasagne.layers.InputLayer([None,784])
     inputs = {layer:input_var}
@@ -197,20 +197,19 @@ if 1:
     #y = T.clip(y, 0.00001, 0.99999) # stability 
 
     
-    # entropy_term
+    ###########################
+    # loss and grad
     logdets = sum([get_output(logdet,ep) for logdet in logdets_layers])
     logqw = - (0.5*(ep**2).sum(1) + 0.5*T.log(2*np.pi)*num_params + logdets)
-    # prior term
     logpw = log_stdnormal(weights).sum(1)
-    # likelihood term
     logpyx = - cc(y,target_var).mean()
-    # LOSS: 
     kl = (logqw - logpw).mean()
     ds = T.cast(dataset_size,floatX)
     loss = - (logpyx - kl/ds)
     params = lasagne.layers.get_all_params([h_layer,layer])
     grads = T.grad(loss, params)
 
+    ###########################
     # extra monitoring
     nll_grads = flatten_list(T.grad(-logpyx, params, disconnected_inputs='warn')).norm(2)
     prior_grads = flatten_list(T.grad(-logpw.mean() / ds, params, disconnected_inputs='warn')).norm(2)
@@ -219,7 +218,9 @@ if 1:
                      nll_grads, prior_grads, entropy_grads,
                      logdets] # logdets is "legacy"
 
-    # double clipping??
+
+    ###########################
+    # optimization
     mgrads = lasagne.updates.total_norm_constraint(grads,
                                                    max_norm=max_norm)
     cgrads = [T.clip(g, -clip_grad, clip_grad) for g in mgrads]
@@ -229,6 +230,8 @@ if 1:
         updates = lasagne.updates.nesterov_momentum(cgrads, params, learning_rate=lr)
                                             
     
+    ###########################
+    # theano functions
     train = theano.function([input_var,target_var,dataset_size,lr],
                             outputs,
                             updates=updates)
