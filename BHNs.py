@@ -546,16 +546,16 @@ class Conv2D_BHN_AL(Base_BHN):
         logdets_layers.append(IndexLayer(layer_temp,1))
         
         if self.coupling:
-            # add more to introduce more correlation if needed
             layer_temp = CoupledDenseLayer(h_net,200)
             h_net = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
             
-            h_net = PermuteLayer(h_net,self.num_params)
-            
-            layer_temp = CoupledDenseLayer(h_net,200)
-            h_net = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
+            for c in range(self.coupling-1):
+                h_net = PermuteLayer(h_net,self.num_params)
+                
+                layer_temp = CoupledDenseLayer(h_net,200)
+                h_net = IndexLayer(layer_temp,0)
+                logdets_layers.append(IndexLayer(layer_temp,1))
         
         self.h_net = h_net
         self.weights = lasagne.layers.get_output(h_net,ep)
