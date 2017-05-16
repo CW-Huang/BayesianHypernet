@@ -83,8 +83,6 @@ def get_initial_training_data(X_train_All, y_train_All):
 
     return X_train, y_train
 
-
-
 def train_model(train_func,predict_func,X,Y,Xt,Yt,
                 lr0=0.1,lrdecay=1,bs=20,epochs=50):
     
@@ -111,7 +109,7 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
                 tr_acc = (predict_func(X)==Y.argmax(1)).mean()
                 te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()
                 print '\ttrain acc: {}'.format(tr_acc)
-                print '\ttest acc: {}'.format(te_acc)
+                # print '\ttest acc: {}'.format(te_acc)
             t+=1
             
         records.append(loss)
@@ -119,48 +117,39 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
     return records
 
 
-def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=1000):
-    n = X.shape[0]
-    MCt = np.zeros((n_mc,n,10))
-    MCv = np.zeros((n_mc,n,10))
-    for i in range(n_mc):
-        MCt[i] = predict_proba(X)
-        MCv[i] = predict_proba(Xt)
-    
-    Y_pred = MCt.mean(0).argmax(-1)
-    Y_true = Y.argmax(-1)
-    Yt_pred = MCv.mean(0).argmax(-1)
-    Yt_true = Yt.argmax(-1)
-    
-    tr = np.equal(Y_pred,Y_true).mean()
-    va = np.equal(Yt_pred,Yt_true).mean()
-    print "train perf=", tr
-    print "valid perf=", va
+def test_model(predict_proba, X_test, y_test):
+    mc_samples = 100
+    y_pred_all = np.zeros((mc_samples, X_test.shape[0], 10))
 
-    ind_positive = np.arange(Xt.shape[0])[Yt_pred == Yt_true]
-    ind_negative = np.arange(not Xt.shape[0])[Yt_pred != Yt_true]
-    
-    ind = ind_negative[0] #TO-DO: complete evaluation
-    for ii in range(15): 
-        print np.round(MCt[ii][ind] * 1000)
+    for m in range(mc_samples):
+        y_pred_all[m] = predict_proba(X_test)
+
+    y_pred = y_pred_all.mean(0).argmax(-1)
+    y_test = y_test.argmax(-1)
+
+    test_accuracy = np.equal(y_pred, y_test).mean()
+    return test_accuracy
 
 
 
 
+def active_learning():
 
+    bh_iterations = 50
+    nb_classes = 10
+    Queries = 10
+    all_accuracy = 0
 
-
-def main():
+    acquisition_iterations = 98
 
     filename = '../../mnist.pkl.gz'
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
 
+
     train_x, train_y, valid_x, valid_y, pool_x, pool_y = split_train_pool_data(train_x, train_y, valid_x, valid_y)
     train_x, train_y = get_initial_training_data(train_x, train_y)
 
-
     print ("Training Set Size", train_x.shape)
-
 
     model = MLPWeightNorm_BHN(lbda=lbda,
                               perdatapoint=perdatapoint,
@@ -173,46 +162,43 @@ def main():
                        valid_x,valid_y,
                        lr0,lrdecay,bs,epochs)
    
-    # evaluate_model(model.predict_proba,
-    #                train_x[:size],train_y[:size],
-    #                valid_x,valid_y)
+
+    test_accuracy = test_model(model.predict_proba, test_x, test_y)
+
+    print ("Test Accuracy", test_accuracy)
+
+    all_accuracy = test_accuracy
 
 
-
-    bh_iterations = 5
-    nb_classes = 10
-    Queries = 10
-
-    acquisition_iterations = 98
 
     for i in range(acquisition_iterations):
 
-    	print('POOLING ITERATION', i)
-    	pool_subset = 2000
+        print('POOLING ITERATION', i)
+        pool_subset = 1000
 
-    	pool_subset_dropout = np.asarray(random.sample(range(0,pool_x.shape[0]), pool_subset))
+        pool_subset_dropout = np.asarray(random.sample(range(0,pool_x.shape[0]), pool_subset))
 
-    	X_pool_Dropout = pool_x[pool_subset_dropout, :]
-    	y_pool_Dropout = pool_y[pool_subset_dropout]
+        X_pool_Dropout = pool_x[pool_subset_dropout, :, :, :]
+        y_pool_Dropout = pool_y[pool_subset_dropout]
 
-    	score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
-    	All_Entropy_BH = np.zeros(shape=X_pool_Dropout.shape[0])
+        score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
+        All_Entropy_BH = np.zeros(shape=X_pool_Dropout.shape[0])
 
-    	all_bh_classes = np.zeros(shape=(X_pool_Dropout.shape[0], bh_iterations))
+        all_bh_classes = np.zeros(shape=(X_pool_Dropout.shape[0], bh_iterations))
 
-    	for d in range(bh_iterations):
-    		bh_score = model.predict_proba(X_pool_Dropout)
-    		score_All = score_All + bh_score
+        for d in range(bh_iterations):
+            bh_score = model.predict_proba(X_pool_Dropout)
+            score_All = score_All + bh_score
 
-    		bh_score_log = np.log2(bh_score)
-    		Entropy_Compute = - np.multiply(bh_score, bh_score_log)
+            bh_score_log = np.log2(bh_score)
+            Entropy_Compute = - np.multiply(bh_score, bh_score_log)
 
-    		Entropy_Per_BH = np.sum(Entropy_Compute, axis=1)
+            Entropy_Per_BH = np.sum(Entropy_Compute, axis=1)
 
-    		All_Entropy_BH = All_Entropy_BH + Entropy_Per_BH
+            All_Entropy_BH = All_Entropy_BH + Entropy_Per_BH
 
-    		bh_classes = np.max(bh_score, axis=1)
-    		all_bh_classes[:, d] = bh_classes
+            bh_classes = np.max(bh_score, axis=1)
+            all_bh_classes[:, d] = bh_classes
 
 
 
@@ -235,7 +221,7 @@ def main():
         x_pool_index = sort_values.argsort()[-Queries:][::-1]
 
 
-        Pooled_X = X_pool_Dropout[x_pool_index, :]
+        Pooled_X = X_pool_Dropout[x_pool_index, :, :, :]
         Pooled_Y = y_pool_Dropout[x_pool_index] 
 
 
@@ -252,11 +238,36 @@ def main():
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
         train_y = np.concatenate((train_y, Pooled_Y), axis=0)
 
+        print ("Training Set Size", train_x.shape)
+
         recs = train_model(model.train_func,model.predict,
-	                       train_x[:size],train_y[:size],
-	                       valid_x,valid_y,
-	                       lr0,lrdecay,bs,epochs)
+                           train_x[:size],train_y[:size],
+                           valid_x,valid_y,
+                           lr0,lrdecay,bs,epochs)
    
+
+        test_accuracy = test_model(model.predict_proba, test_x, test_y)   
+
+        print ("Test Accuracy", test_accuracy)
+
+        all_accuracy = np.append(all_accuracy, test_accuracy)
+
+
+    return all_accuracy
+
+
+def main():
+
+    num_experiments = 3
+    for i in range(num_experiments):
+        accuracy = active_learning()
+        all_accuracy = np.append(average_accuracy, accuracy)
+
+    mean_accuracy = np.mean(average_accuracy)
+
+    np.save('BH_MLP_bald_all_accuracy.npy', all_accuracy)
+    np.save('BH_MLP_bald_mean_accuracy.npy',mean_accuracy)    
+
 
 
 if __name__ == '__main__':
