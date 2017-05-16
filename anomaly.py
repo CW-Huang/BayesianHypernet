@@ -30,6 +30,8 @@ args = parser.parse_args()
 locals().update(args.__dict__)
 print args
 
+noise_level=1.
+
 
 #####################
 from sklearn.metrics import roc_auc_score as roc
@@ -43,14 +45,14 @@ def get_AOC(ins, oos): #in/out of sample
     y_true = np.hstack((np.ones(len(ins)), np.zeros(len(oos))))
     y_score = np.vstack((ins, oos))
     y_score = y_score.max(axis=1)
-    print y_score
+    #print y_score
     #import ipdb; ipdb.set_trace()
     rval += [round(roc(y_true, y_score)*100, 2),
-           round(pr(y_true, y_score)*100, 2)]
+            round(pr(y_true, y_score)*100, 2)]
     y_true = np.hstack((np.zeros(len(ins)), np.ones(len(oos))))
     y_score = -y_score
     rval += [#round(roc(y_true, y_score)*100, 2),
-           round(pr(y_true, y_score)*100, 2)]
+            round(pr(y_true, y_score)*100, 2)]
     return rval
 
 # TODO: add noise vs. replace w/noise
@@ -72,10 +74,15 @@ with open(pickle_file, 'rb') as f:
     notmnist_dataset = save['test_dataset'].reshape((-1, 28 * 28))
     del save
 
-from load_cifar10 import load_data10
+from helpers import load_data10
 _, _, X_test, _ = load_data10()
-# TODO:
-#cifar_batch = sess.run(tf.image.resize_images(tf.image.rgb_to_grayscale(X_test), 28, 28))
+import tensorflow as tf
+try:
+    sess = tf.Session()
+    with sess.as_default():
+        cifar_batch = sess.run(tf.image.resize_images(tf.image.rgb_to_grayscale(X_test), (28, 28))).reshape((-1, 784))
+except:
+    pass
 
 import scipy.io as sio
 import scipy.misc as scimisc
@@ -99,7 +106,8 @@ print "done loading notMNIST, CIFAR-10, and Omniglot"
 
 
 # eval function
-y = T.clip(get_output(layer,inputs), 0.001, 0.999)
+y = get_output(layer,inputs)
+#y = T.clip(y, 0.001, 0.999)
 probs = theano.function([input_var],y)
 
 
@@ -110,14 +118,28 @@ Xt, Yt = valid_x, valid_y
 yht = np.zeros((num_samples, num_examples, 10))
 for ind in range(num_samples):
     yht[ind] = probs(Xt[:num_examples])
-yht = np.mean(yht, axis=0)
+yhtm = np.mean(yht, axis=0)
+print "done sampling clean data!"
 
 
+##########################
+# error-detection
+preds = np.argmax(yhtm, axis=-1)
+gtruth = np.argmax(Yt, axis=-1)
+is_correct = np.equal(preds, gtruth[:num_examples])
+correct = yhtm[is_correct]
+incorrect = yhtm[np.logical_not(is_correct)]
+print "\ncorrect/incorrect"
+print get_AOC(correct, incorrect)
+
+
+##########################
+# OOD-detection
 import collections
 risky = collections.OrderedDict() # easy-to-hard
 risky['uniform'] = noised(Xt, noise_level, 'uniform')
 risky['omniglot'] = omni_images
-risky['CIFARbw'] = notmnist_dataset # TODO
+risky['CIFARbw'] = cifar_batch
 risky['normal'] = noised(Xt, noise_level)
 risky['notMNIST'] = notmnist_dataset
 
@@ -128,13 +150,28 @@ for kk, vv in risky.items():
         nyht[ind] = probs(vv[:num_examples])
     print "done sampling!"
     nyht = np.mean(nyht, axis=0)
-    print get_AOC(yht, nyht)
-    #print get_AOC(yht[:3], nyht[:3])
+    print get_AOC(yhtm, nyht)
 
 
 
 
+############
+# IDEAS FOR y_score:
+"""
+baseline
+entropy of estimated Dirichlet?
+avg entropy of predictive distribution
+avg entropy of predictions (along each axis)
+entropy of flattened array
+standard deviation (something something...)
+"""
 
+
+# samples: nsample, nexample, 10
+def baseline(samples):
+    return np.mean(samples, 0)
+
+def entropy(
 
 
 

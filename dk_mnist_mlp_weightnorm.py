@@ -24,6 +24,9 @@ import numpy as np
 
 
 
+def flatten_list(plist):
+    return T.concatenate([p.flatten() for p in plist])
+
 
 if 1:#def main():
     """
@@ -34,15 +37,15 @@ if 1:#def main():
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--perdatapoint',action='store_true')    
     parser.add_argument('--arch',type=str, default='CW', choices=['CW', 'Dan'])
+    parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--coupling', type=int, default=4)  
     parser.add_argument('--epochs', type=int, default=30)  
-    parser.add_argument('--hnet',type=int, default=1)
     parser.add_argument('--lrdecay',action='store_true')  
-    parser.add_argument('--lr0',default=0.001,type=float)  
+    parser.add_argument('--lr0',default=0.003,type=float)  
     parser.add_argument('--lbda',default=0.5,type=float)  
-    parser.add_argument('--bs',default=128,type=int)  
+    parser.add_argument('--model', default='hnet', type=str, choices=['mlp', 'hnet', 'hnet2', 'dropout', 'dropout2', 'weight_uncertainty'])
+    parser.add_argument('--perdatapoint',action='store_true')    
     parser.add_argument('--size',default=10000,type=int)  
     args = parser.parse_args()
     print args
@@ -71,15 +74,22 @@ if 1:#def main():
     if arch == 'CW':
         weight_shapes = [(784, 200), (200,  10)]
     elif arch == 'Dan':
-        weight_shapes = [(784, 256), (256, 256), (256,256), (256,  10)]
+        if model in ['hnet2', 'dropout2']:
+            weight_shapes = [(784, 512), (512, 512), (512,512), (512,  10)]
+        else:
+            weight_shapes = [(784, 256), (256, 256), (256,256), (256,  10)]
     
-    num_params = sum(ws[1] for ws in weight_shapes)
+    if model == 'weight_uncertainty': 
+        num_params = sum(np.prod(ws) for ws in weight_shapes)
+    else:
+        num_params = sum(ws[1] for ws in weight_shapes)
+
     if perdatapoint:
         wd1 = input_var.shape[0]
     else:
         wd1 = 1
 
-    if hnet:
+    if model in ['hnet', 'hnet2', 'weight_uncertainty']:
         # stochastic hypernet    
         ep = srng.normal(std=0.01,size=(wd1,num_params),dtype=floatX)
         logdets_layers = []
@@ -102,18 +112,22 @@ if 1:#def main():
         layer = lasagne.layers.InputLayer([None,784])
         inputs = {layer:input_var}
         for ws in weight_shapes:
-            num_param = ws[1]
-            w_layer = lasagne.layers.InputLayer((None,ws[1]))
-            weight = weights[:,t:t+num_param].reshape((wd1,ws[1]))
+            if model == 'weight_uncertainty':
+                num_param = np.prod(ws)
+            else:
+                num_param = ws[1]
+            w_layer = lasagne.layers.InputLayer((None,num_param))
+            # TODO: why is reshape needed??
+            weight = weights[:,t:t+num_param].reshape((wd1,num_param))
             inputs[w_layer] = weight
-            layer = stochasticDenseLayer2([layer,w_layer],ws[1])
+            layer = stochasticDenseLayer2([layer,w_layer],num_param)
             print layer.output_shape
             t += num_param
 
             
         layer.nonlinearity = nonlinearities.softmax
         y = get_output(layer,inputs)
-        #y = T.clip(y, 0.001, 0.999) # stability 
+        y = T.clip(y, 0.001, 0.999) # stability 
         
         # loss terms
         logdets = sum([get_output(logdet,ep) for logdet in logdets_layers])
@@ -123,6 +137,7 @@ if 1:#def main():
         kl = (logqw - logpw).mean()
         logpyx = - cc(y,target_var).mean()
         loss = - (logpyx - kl/T.cast(dataset_size,floatX))
+        params = lasagne.layers.get_all_params([h_layer,layer])
 
     else:
         # filler
@@ -130,17 +145,20 @@ if 1:#def main():
         # JUST primary net
         layer = lasagne.layers.InputLayer([None,784])
         inputs = {layer:input_var}
-        for ws in weight_shapes:
+        for nn, ws in enumerate(weight_shapes):
             layer = lasagne.layers.DenseLayer(layer, ws[1])
+            if nn < len(weight_shapes)-1 and model in ['dropout', 'dropout2']:
+                layer = lasagne.layers.dropout(layer, .5)
             print layer.output_shape
         layer.nonlinearity = nonlinearities.softmax
         y = get_output(layer,inputs)
         #y = T.clip(y, 0.001, 0.999) # stability 
         loss = cc(y,target_var).mean()
+        params = lasagne.layers.get_all_params([h_layer,layer])
+        loss = loss + lasagne.regularization.l2(flatten_list(params)) * np.float32(1.e-5)
 
     
     # TRAIN FUNCTION
-    params = lasagne.layers.get_all_params([h_layer,layer])
     grads = T.grad(loss, params)
     mgrads = lasagne.updates.total_norm_constraint(grads,
                                                    max_norm=max_norm)
