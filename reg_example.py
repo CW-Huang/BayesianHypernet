@@ -30,11 +30,20 @@ def unpack(v, weight_shapes):
 
 
 def primary_net_f(X, theta, weight_shapes):
-    W0, b0, W1, b1, log_prec = unpack(theta, weight_shapes)
+    L = unpack(theta, weight_shapes)
+    n_layers, rem = divmod(len(L) - 1, 2)
+    assert(rem == 0)
 
-    a1 = T.maximum(0.0, T.dot(X, W0) + b0[None, :])
-    yp = T.dot(a1, W1) + b1[None, :]
+    yp = X
+    for nn in xrange(n_layers):
+        W, b = L[2 * nn], L[2 * nn + 1]
+        assert(W.ndim == 2 and b.ndim == 1)
+        act = T.dot(yp, W) + b[None, :]
+        # Linear at final layer
+        yp = act if nn == n_layers - 1 else T.maximum(0.0, act)
 
+    log_prec = L[-1]
+    assert(log_prec.ndim == 0)
     y_prec = T.exp(log_prec)
     return yp, y_prec
 
@@ -60,6 +69,8 @@ def simple_test(X, y, X_valid, y_valid,
                 n_epochs, n_batch, init_lr, weight_shapes,
                 n_layers=5, vis_freq=100, n_samples=100,
                 z_std=1.0):
+    '''z_std = 1.0 gives the correct answer but other values might be good for
+    debugging and analysis purposes.'''
     N, D = X.shape
     N_valid = X_valid.shape[0]
     assert(y.shape == (N, 1))  # Univariate for now
