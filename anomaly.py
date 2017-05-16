@@ -31,6 +31,37 @@ locals().update(args.__dict__)
 print args
 
 
+#####################
+from sklearn.metrics import roc_auc_score as roc
+from sklearn.metrics import average_precision_score as pr
+def get_AOC(ins, oos): #in/out of sample
+    # TODO: order of the last 2???
+    """
+    returns AOROC, AOPR (success), AOPR (failure) 
+    """
+    rval = []
+    y_true = np.hstack((np.ones(len(ins)), np.zeros(len(oos))))
+    y_score = np.vstack((ins, oos))
+    y_score = y_score.max(axis=1)
+    print y_score
+    #import ipdb; ipdb.set_trace()
+    rval += [round(roc(y_true, y_score)*100, 2),
+           round(pr(y_true, y_score)*100, 2)]
+    y_true = np.hstack((np.zeros(len(ins)), np.ones(len(oos))))
+    y_score = -y_score
+    rval += [#round(roc(y_true, y_score)*100, 2),
+           round(pr(y_true, y_score)*100, 2)]
+    return rval
+
+# TODO: add noise vs. replace w/noise
+def noised(dset, lvl, type='Gaussian'):
+    #return dset + (lvl * np.random.randn(*dset.shape)).astype('float32')
+    if type == 'uniform':
+        return (lvl * np.random.rand(*dset.shape)).astype('float32')
+    else:
+        return (lvl * np.random.randn(*dset.shape)).astype('float32')
+
+##################################################
 # from https://github.com/hendrycks/error-detection/blob/master/Vision/MNIST_Abnormality_Module.ipynb
 # load notMNIST, CIFAR-10, and Omniglot
 import pickle
@@ -62,80 +93,55 @@ for safe_number in safe_list:
 
 omni_images = np.concatenate(squished_set, axis=0)
 print "done loading notMNIST, CIFAR-10, and Omniglot"
-################33
+################################################################
+################################################################
+#######################
 
-
-# TODO: add noise vs. replace w/noise
-def noised(dset, lvl):
-    #return dset + (lvl * np.random.randn(*dset.shape)).astype('float32')
-    return (lvl * np.random.randn(*dset.shape)).astype('float32')
 
 # eval function
 y = T.clip(get_output(layer,inputs), 0.001, 0.999)
 probs = theano.function([input_var],y)
 
-# predictions on clean data
-X, Y = train_x, train_y
-Xt, Yt = valid_x, valid_y
 
-yh = np.zeros((num_samples, num_examples, 10))
+
+#######################
+# predictions on clean data
+Xt, Yt = valid_x, valid_y
 yht = np.zeros((num_samples, num_examples, 10))
 for ind in range(num_samples):
-    yh[ind] = probs(X[:num_examples])
     yht[ind] = probs(Xt[:num_examples])
-# TODO: don't overwrite!
-yh = np.mean(yh, axis=0)
 yht = np.mean(yht, axis=0)
 
 
-# TODO
-#for risky in ['notMNIST', 'CIFARbw', 'omniglot', 'normal', 'uniform']:
-    
+import collections
+risky = collections.OrderedDict() # easy-to-hard
+risky['uniform'] = noised(Xt, noise_level, 'uniform')
+risky['omniglot'] = omni_images
+risky['CIFARbw'] = notmnist_dataset # TODO
+risky['normal'] = noised(Xt, noise_level)
+risky['notMNIST'] = notmnist_dataset
 
-# TODO: train models like Hendrycks' architecture
-for noise_level in [1.]:#[.01, .1, .2, .5, 1., 2., 5., 10., 20., 50.]:
-    print "\nnoise_level=", str(noise_level)
-    nX = noised(X, noise_level)
-    nXt = noised(Xt, noise_level)
-    
-
-    # predictions on noised data
-    nyh = np.zeros((num_samples, num_examples, 10))
+for kk, vv in risky.items():
+    print "\n",kk
     nyht = np.zeros((num_samples, num_examples, 10))
     for ind in range(num_samples):
-        nyh[ind] = probs(nX[:num_examples])
-        nyht[ind] = probs(nXt[:num_examples])
-
+        nyht[ind] = probs(vv[:num_examples])
     print "done sampling!"
-    # TODO: don't overwrite!
-    nyh = np.mean(nyh, axis=0)
     nyht = np.mean(nyht, axis=0)
-
-    from sklearn.metrics import roc_auc_score as roc
-    from sklearn.metrics import average_precision_score as pr
-    def get_AOC(ins, oos): #in/out of sample
-        rval = []
-        y_true = np.hstack((np.ones(len(ins)), np.zeros(len(oos))))
-        y_score = np.vstack((ins, oos))
-        y_score = y_score.max(axis=1)
-        rval += [round(roc(y_true, y_score)*100, 2),
-               round(pr(y_true, y_score)*100, 2)]
-        y_true = np.hstack((np.zeros(len(ins)), np.ones(len(oos))))
-        y_score = -y_score
-        rval += [#round(roc(y_true, y_score)*100, 2),
-               round(pr(y_true, y_score)*100, 2)]
-        return rval
-
-    print "train source/target, valid source/target:"
-    print get_AOC(yh, yh)
-    print get_AOC(yh, nyh)
-    print get_AOC(yht, yht)
     print get_AOC(yht, nyht)
+    #print get_AOC(yht[:3], nyht[:3])
 
 
 
 
-##############33333
+
+
+
+
+
+
+
+
 
 if 0:
     print "train perf=", np.equal(np.argmax(MCs.mean(0), -1), np.argmax(train_y[:1000], -1)).mean()
