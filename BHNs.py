@@ -66,7 +66,13 @@ class Base_BHN(object):
         self._get_train_func()
         print('\tgetting useful funcs')
         self._get_useful_funcs()
-
+        
+        
+        params0 = lasagne.layers.get_all_param_values([self.h_net,self.p_net])
+        params = lasagne.layers.get_all_params([self.h_net,self.p_net])
+        updates = {p:p0 for p, p0 in zip(params,params0)}
+        self.resume = theano.function([],None,
+                                      updates=updates)
     
     def _get_theano_variables(self):
         self.input_var = T.matrix('input_var')
@@ -142,6 +148,8 @@ class Base_BHN(object):
     def _get_useful_funcs(self):
         pass
 
+    
+    
 
 class MLPWeightNorm_BHN(Base_BHN):
     """
