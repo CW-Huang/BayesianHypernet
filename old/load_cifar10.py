@@ -1,30 +1,3 @@
-    
-import theano.tensor as T
-import numpy
-np = numpy
-# from Hendrycks
-def gelu_fast(x):
-    return 0.5 * x * (1 + T.tanh(T.sqrt(2 / np.pi) * (x + 0.044715 * T.pow(x, 3))))
-gelu = gelu_fast
-
-def get_mushrooms():
-    from mushroom_data import X,Y
-    from lasagne.objectives import squared_error
-    return X, Y, None, squared_error
-
-def get_mnist():
-    pass
-
-def get_task(task_name):
-    """
-    returns:
-        X, Y, output_function, loss_function, {other}
-    """
-    pass
-
-
-######################
-# load_cifar10
 # code repurposed from the tf-learn library
 import sys
 import os
@@ -44,39 +17,6 @@ def to_categorical(y, nb_classes):
 
 # load training and testing data
 def load_data10(randomize=True, return_val=False, one_hot=False, dirname="cifar-10-batches-py", mnistify=False):
-
-    def load_batch(fpath):
-        with open(fpath, 'rb') as f:
-            #d = pickle.load(f, encoding='latin1')
-            d = pickle.load(f)
-        data = d["data"]
-        labels = d["labels"]
-        return data, labels
-
-
-    def maybe_download(filename, source_url, work_directory):
-        if not os.path.exists(work_directory):
-            os.mkdir(work_directory)
-        filepath = os.path.join(work_directory, filename)
-        if not os.path.exists(filepath):
-            print("Downloading CIFAR 10...")
-            filepath, _ = urllib.request.urlretrieve(source_url + filename,
-                                                     filepath)
-            statinfo = os.stat(filepath)
-            print(('CIFAR 10 downloaded', filename, statinfo.st_size, 'bytes.'))
-            untar(filepath)
-        return filepath
-
-
-    def untar(fname):
-        if (fname.endswith("tar.gz")):
-            tar = tarfile.open(fname)
-            tar.extractall()
-            tar.close()
-            print("File Extracted in Current Directory")
-        else:
-            print("Not a tar.gz file: '%s '" % sys.argv[0])
-
     tarpath = maybe_download("cifar-10-python.tar.gz",
                              "http://www.cs.toronto.edu/~kriz/", dirname)
     X_train = []
@@ -127,3 +67,38 @@ def load_data10(randomize=True, return_val=False, one_hot=False, dirname="cifar-
         else:
             return X_train, Y_train, X_test, Y_test
 
+
+def load_batch(fpath):
+    with open(fpath, 'rb') as f:
+        #d = pickle.load(f, encoding='latin1')
+        d = pickle.load(f)
+    data = d["data"]
+    labels = d["labels"]
+    return data, labels
+
+
+def maybe_download(filename, source_url, work_directory):
+    if not os.path.exists(work_directory):
+        os.mkdir(work_directory)
+    filepath = os.path.join(work_directory, filename)
+    if not os.path.exists(filepath):
+        print("Downloading CIFAR 10...")
+        filepath, _ = urllib.request.urlretrieve(source_url + filename,
+                                                 filepath)
+        statinfo = os.stat(filepath)
+        print(('CIFAR 10 downloaded', filename, statinfo.st_size, 'bytes.'))
+        untar(filepath)
+    return filepath
+
+
+def untar(fname):
+    if (fname.endswith("tar.gz")):
+        tar = tarfile.open(fname)
+        tar.extractall()
+        tar.close()
+        print("File Extracted in Current Directory")
+    else:
+        print("Not a tar.gz file: '%s '" % sys.argv[0])
+
+if __name__ == '__main__':
+    load_data10()
