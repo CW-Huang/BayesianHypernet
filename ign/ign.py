@@ -193,6 +193,47 @@ def network_T(x_tt, layers):
     return x_tt, log_d_total
 
 
+def diagonalize_network(layers):
+    n_layers = get_n_layers(layers)
+
+    layers_diag = layers.copy()
+    for nn in xrange(n_layers):
+        WL = layers[(nn, WL_PARAM)]
+        layers_diag[(nn, WL_PARAM)] = T.nlinalg.extract_diag(WL)
+    return layers_diag
+
+
+def network_T_and_J_diag(X_tt, layers):
+    '''diagonalize makes all the W's face zero off diagonal. Sometimes handy
+    for initialization purposes.'''
+    assert(X_tt.ndim == 2)
+
+    layers = diagonalize_network(layers)
+    n_layers = get_n_layers(layers)
+
+    # Get Jacobian contribution from WL, known before X
+    log_jacobian_WL = T.zeros(())
+    for nn in xrange(n_layers):
+        WL = layers[(nn, WL_PARAM)]
+        log_jacobian_WL = log_jacobian_WL + T.sum(T.log(T.abs_(WL)))
+
+    # Now do network_T but with a diagonal W
+    log_d_total = T.zeros((X_tt.shape[0],))
+    for nn in xrange(n_layers - 1):
+        WL, bL = layers[(nn, WL_PARAM)], layers[(nn, bL_PARAM)]
+        aL = layers[(nn, aL_PARAM)]
+        X_tt, log_d = prelu_T(X_tt * WL[None, :] + bL[None, :], aL[None, :])
+        log_d_total = log_d_total + log_d.sum(axis=1)
+    # No activation at final step
+    nn = n_layers - 1
+    assert((nn, aL_PARAM) not in layers)
+    WL, bL = layers[(nn, WL_PARAM)], layers[(nn, bL_PARAM)]
+    xp = X_tt * WL[None, :] + bL[None, :]
+
+    jacobian_penalty = log_jacobian_WL + log_d_total
+    return xp, jacobian_penalty
+
+
 def network_T_and_J(X_tt, layers):
     assert(X_tt.ndim == 2)
     n_layers = get_n_layers(layers)

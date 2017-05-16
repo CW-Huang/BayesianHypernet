@@ -36,7 +36,6 @@ def primary_net_f(X, theta, weight_shapes):
     yp = T.dot(a1, W1) + b1[None, :]
 
     y_prec = T.exp(log_prec)
-    #y_prec = T.constant(1.0)
     return yp, y_prec
 
 
@@ -54,7 +53,6 @@ def loglik_primary_f(X, y, theta, weight_shapes):
 def logprior_f(theta):
     # Standard Gauss
     logprior = -0.5 * T.sum(theta ** 2)  # Ignoring normalizing constant
-    #logprior = T.constant(0.0)  # TODO undo
     return logprior
 
 
@@ -72,27 +70,27 @@ def simple_test(X, y, X_valid, y_valid,
     #layers = ign.init_ign(n_layers, num_params, rnd_W=False)
 
     layers = {}
-    #layers[(0, 'WL')] = 1e-2 * np.ones(num_params)
-    layers[(0, 'WL')] = 1e-2 * np.ones(num_params)
+    layers[(0, 'WL')] = 1e-2 * np.eye(num_params)
     layers[(0, 'bL')] = np.random.randn(num_params)
-    # layers[(0, 'bL')][-1] = 6.0  # Start with big precision
-    phi_shared_real = make_shared_dict(layers, '%d%s')
-    phi_shared = phi_shared_real.copy()
-    phi_shared[(0, 'WL')] = T.nlinalg.alloc_diag(phi_shared_real[(0, 'WL')])
+    phi_shared = make_shared_dict(layers, '%d%s')
+
+    ll_primary_f = lambda X, y, w: loglik_primary_f(X, y, w, weight_shapes)
+    hypernet_f = lambda z: ign.network_T_and_J_diag(z[None, :], phi_shared)[0][0, :]
+    # TODO verify this length of size 1
+    log_det_dtheta_dz_f = lambda z: T.sum(ign.network_T_and_J_diag(z[None, :], phi_shared)[1])
+    primary_f = lambda X, w: primary_net_f(X, w, weight_shapes)
+    params_to_opt = phi_shared.values()
+    R = ht.build_trainer(params_to_opt, N, ll_primary_f, logprior_f,
+                         hypernet_f, primary_f=primary_f,
+                         log_det_dtheta_dz_f=log_det_dtheta_dz_f)
+    trainer_prelim = R[0]
 
     ll_primary_f = lambda X, y, w: loglik_primary_f(X, y, w, weight_shapes)
     hypernet_f = lambda z: ign.network_T_and_J(z[None, :], phi_shared)[0][0, :]
     # TODO verify this length of size 1
     log_det_dtheta_dz_f = lambda z: T.sum(ign.network_T_and_J(z[None, :], phi_shared)[1])
     primary_f = lambda X, w: primary_net_f(X, w, weight_shapes)
-
-    params_to_opt = [phi_shared_real[(0, 'bL')]]  # TODO remove
-    R = ht.build_trainer(params_to_opt, N, ll_primary_f, logprior_f,
-                         hypernet_f, primary_f=primary_f,
-                         log_det_dtheta_dz_f=log_det_dtheta_dz_f)
-    trainer_prelim = R[0]
-
-    params_to_opt = phi_shared_real.values()
+    params_to_opt = phi_shared.values()
     R = ht.build_trainer(params_to_opt, N, ll_primary_f, logprior_f,
                          hypernet_f, primary_f=primary_f,
                          log_det_dtheta_dz_f=log_det_dtheta_dz_f)
@@ -110,12 +108,8 @@ def simple_test(X, y, X_valid, y_valid,
             x_batch = X[ii * n_batch:(ii + 1) * n_batch]
             y_batch = y[ii * n_batch:(ii + 1) * n_batch]
             z_noise = z_std * np.random.randn(num_params)
-            if epoch <= -1:
-                current_lr = init_lr
-                batch_cost = trainer_prelim(x_batch, y_batch, z_noise, current_lr)
-            else:
-                current_lr = init_lr
-                batch_cost = trainer(x_batch, y_batch, z_noise, current_lr)
+            current_lr = init_lr
+            batch_cost = trainer_prelim(x_batch, y_batch, z_noise, current_lr)
             cost += batch_cost
         cost /= len(batch_order)
         print cost
@@ -129,7 +123,7 @@ def simple_test(X, y, X_valid, y_valid,
         loglik_valid[epoch] = np.mean(logsumexp(loglik_valid_s_adj, axis=1))
         print 'valid %f' % loglik_valid[epoch]
 
-    phi = make_unshared_dict(phi_shared_real)
+    phi = make_unshared_dict(phi_shared)
     return phi, cost_hist, loglik_valid, primary_out
 
 
