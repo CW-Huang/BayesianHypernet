@@ -67,7 +67,8 @@ def simple_test(X, y, X_valid, y_valid,
 
     num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
 
-    layers = ign.init_ign_diag(n_layers, num_params, WL_val=1e-2)
+    WL_init = 1e-2  # 10.0 ** (-2.0 / n_layers)
+    layers = ign.init_ign_diag(n_layers, num_params, WL_val=WL_init)
     phi_shared = make_shared_dict(layers, '%d%s')
 
     # TODO make diagnalization an argument and pass in as param
@@ -153,7 +154,7 @@ if __name__ == '__main__':
     phi, cost_hist, loglik_valid, primary_out = \
         simple_test(X, y, X_valid, y_valid,
                     n_epochs, n_batch, init_lr, weight_shapes,
-                    n_layers=2, z_std=z_std)
+                    n_layers=3, z_std=z_std)
 
     n_samples = 500
     n_grid = 1000
