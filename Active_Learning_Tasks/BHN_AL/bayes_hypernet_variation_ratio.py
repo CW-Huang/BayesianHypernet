@@ -110,7 +110,7 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
                 tr_acc = (predict_func(X)==Y.argmax(1)).mean()
                 te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()
                 print '\ttrain acc: {}'.format(tr_acc)
-                print '\ttest acc: {}'.format(te_acc)
+                # print '\ttest acc: {}'.format(te_acc)
             t+=1
             
         records.append(loss)
@@ -181,7 +181,7 @@ def active_learning():
     train_x, train_y, valid_x, valid_y, pool_x, pool_y = split_train_pool_data(train_x, train_y, valid_x, valid_y)
     train_x, train_y = get_initial_training_data(train_x, train_y)
 
-    print ("Training Set Size", train_x.shape)
+
 
     model = Conv2D_BHN_AL(lbda=lbda,
                               perdatapoint=perdatapoint,
@@ -201,6 +201,9 @@ def active_learning():
     test_accuracy = test_model(model.predict_proba, test_x, test_y)
 
     all_accuracy = test_accuracy
+
+    print ("Training Set Size", train_x.shape)
+    print ("Test Accuracy", test_accuracy)
 
 
 
@@ -257,9 +260,11 @@ def active_learning():
 	                       train_x[:size],train_y[:size],
 	                       valid_x,valid_y,
 	                       lr0,lrdecay,bs,epochs)
-   
+          
+        test_accuracy = test_model(model.predict_proba, test_x, test_y)
 
-        test_accuracy = test_model(model.predict_proba, test_x, test_y)   
+        print ("Training Set Size", train_x.shape)          
+        print ("Test Accuracy", test_accuracy)
 
         all_accuracy = np.append(all_accuracy, test_accuracy)
 
@@ -276,8 +281,8 @@ def main():
 
     mean_accuracy = np.mean(average_accuracy)
 
-    np.save('BH_bald_all_accuracy.npy', all_accuracy)
-    np.save('BH_bald_mean_accuracy.npy',mean_accuracy)    
+    np.save('BH_variation_all_accuracy.npy', all_accuracy)
+    np.save('BH_variation_mean_accuracy.npy',mean_accuracy)    
 
 
 

@@ -247,6 +247,9 @@ def active_learning():
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
         train_y = np.concatenate((train_y, Pooled_Y), axis=0)
 
+
+        print ("Training Set Size", train_x.shape)
+        
         recs = train_model(model.train_func,model.predict,
 	                       train_x[:size],train_y[:size],
 	                       valid_x,valid_y,

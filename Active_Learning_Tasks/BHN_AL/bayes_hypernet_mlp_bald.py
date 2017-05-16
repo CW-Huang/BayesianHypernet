@@ -135,7 +135,7 @@ def test_model(predict_proba, X_test, y_test):
 
 def active_learning(acquisition_iterations):
 
-    bh_iterations = 50
+    bh_iterations = 100
     nb_classes = 10
     Queries = 10
     all_accuracy = 0
@@ -173,7 +173,7 @@ def active_learning(acquisition_iterations):
     for i in range(acquisition_iterations):
 
         print('POOLING ITERATION', i)
-        pool_subset = 1000
+        pool_subset = 2000
 
         pool_subset_dropout = np.asarray(random.sample(range(0,pool_x.shape[0]), pool_subset))
 
@@ -183,11 +183,13 @@ def active_learning(acquisition_iterations):
         score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
         All_Entropy_BH = np.zeros(shape=X_pool_Dropout.shape[0])
 
+
         all_bh_classes = np.zeros(shape=(X_pool_Dropout.shape[0], bh_iterations))
 
+
+        print ("Bayes Hypernet Posterior Samples")
         for d in range(bh_iterations):
 
-            print ("Bayes Hypernet Posterior Samples", d)
 
             bh_score = model.predict_proba(X_pool_Dropout)
             score_All = score_All + bh_score
