@@ -345,7 +345,7 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
     all_accuracy = test_accuracy
     all_error = test_error
 
-    dropout_iterations = 50
+    dropout_iterations = 100
     Queries = 10
 
 
@@ -353,7 +353,7 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
         
         print('POOLING ITERATION', i)
 
-        pool_subset = 1000
+        pool_subset = 2000
         pool_subset_dropout = np.asarray(random.sample(range(0,X_pool.shape[0]), pool_subset))
         X_pool_Dropout = X_pool[pool_subset_dropout, :, :, :]
         y_pool_Dropout = y_pool[pool_subset_dropout]
@@ -363,8 +363,10 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
 
         all_dropout_classes = np.zeros(shape=(X_pool_Dropout.shape[0], dropout_iterations))
 
+
+        print ("MC Dropout Iterations")
         for d in range(dropout_iterations):
-            print ("Dropout Iterations", d)
+
 
             dropout_score = get_preds(X_pool_Dropout)
             score_All = score_All + dropout_score
@@ -387,8 +389,8 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
         predicted_class = np.max(all_dropout_classes, axis=1)
         predicted_class_std = np.std(all_dropout_classes, axis=1)
 
-        np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/Active_Learning_Tasks/MC_Dropout/dropout_uncertainty/predicted_class.npy', predicted_class)
-        np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/Active_Learning_Tasks/MC_Dropout/dropout_uncertainty/predicted_class_std.npy', predicted_class_std)
+        # np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/Active_Learning_Tasks/MC_Dropout/dropout_uncertainty/predicted_class.npy', predicted_class)
+        # np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/Active_Learning_Tasks/MC_Dropout/dropout_uncertainty/predicted_class_std.npy', predicted_class_std)
         
 
         Avg_Pi = np.divide(score_All, dropout_iterations)
@@ -461,7 +463,7 @@ def main():
 
         all_accuracy[:, i] = accuracy 
 
-    mean_accuracy = np.mean(all_accuracy)
+    mean_accuracy = np.mean(all_accuracy)  
 
     np.save('dropout_bald_all_accuracy.npy', all_accuracy)
     np.save('dropout_bald_mean_accuracy.npy',mean_accuracy)    
