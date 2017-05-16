@@ -5,6 +5,7 @@ Created on Sun May 14 17:58:58 2017
 @author: Chin-Wei
 """
 
+# TODO: we should have a function for the core hypernet architecture (agnostic of whether we do WN/CNN/full Hnet)
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer, SplitLayer
 from modules import CoupledDenseLayer, stochasticDenseLayer2, \
@@ -403,10 +404,11 @@ class Conv2D_shared_BHN(Base_BHN):
         h_net = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
+        # split the noise: hnet1 for filters, hnet2 for WN params (DK)
         h_net = SplitLayer(h_net,self.num_params-self.num_classes,1)
         h_net1 = IndexLayer(h_net,0,(1,self.num_params-self.num_classes))
+        # TODO: full h_net2
         h_net2 = IndexLayer(h_net,1)
-
 
         h_net1 = lasagne.layers.ReshapeLayer(h_net1,
                                              (self.n_kernels,) + \
