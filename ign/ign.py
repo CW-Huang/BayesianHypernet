@@ -477,6 +477,16 @@ def init_ign(n_layers, D, aL_val=0.25, rnd_W=True):
     return layers
 
 
+def init_ign_diag(n_layers, D, aL_val=0.25, WL_val=1e-2):
+    layers = {}
+    for nn in xrange(n_layers):
+        layers[(nn, WL_PARAM)] = WL_val * np.eye(D)
+        layers[(nn, bL_PARAM)] = np.random.randn(D)
+        layers[(nn, aL_PARAM)] = np.log(aL_val * np.ones(D))
+    del layers[(n_layers - 1, aL_PARAM)]
+    return layers
+
+
 def init_ign_mix(x_train, n_layers, n_mixtures, gmm=None, M=10):
     D = x_train.shape[1]
 

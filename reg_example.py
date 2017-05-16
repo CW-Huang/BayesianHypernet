@@ -67,11 +67,7 @@ def simple_test(X, y, X_valid, y_valid,
 
     num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
 
-    #layers = ign.init_ign(n_layers, num_params, rnd_W=False)
-
-    layers = {}
-    layers[(0, 'WL')] = 1e-2 * np.eye(num_params)
-    layers[(0, 'bL')] = np.random.randn(num_params)
+    layers = ign.init_ign_diag(n_layers, num_params, WL_val=1e-2)
     phi_shared = make_shared_dict(layers, '%d%s')
 
     ll_primary_f = lambda X, y, w: loglik_primary_f(X, y, w, weight_shapes)
