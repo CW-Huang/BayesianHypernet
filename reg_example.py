@@ -151,7 +151,7 @@ if __name__ == '__main__':
     phi, cost_hist, loglik_valid, primary_out = \
         simple_test(X, y, X_valid, y_valid,
                     n_epochs, n_batch, init_lr, weight_shapes,
-                    n_layers=1, z_std=z_std)
+                    n_layers=2, z_std=z_std)
 
     n_samples = 500
     n_grid = 1000
