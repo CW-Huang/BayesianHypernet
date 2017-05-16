@@ -66,7 +66,7 @@ def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=1000):
     print "valid perf=", va
 
     ind_positive = np.arange(Xt.shape[0])[Yt_pred == Yt_true]
-    ind_negative = np.arange(not Xt.shape[0])[Yt_pred != Yt_true]
+    ind_negative = np.arange(Xt.shape[0])[Yt_pred != Yt_true]
     
     ind = ind_negative[0] #TO-DO: complete evaluation
     for ii in range(15): 
@@ -80,12 +80,12 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
     
-    # boolean: 1 -> True ; 0 -> False
-    parser.add_argument('--coupling',default=0,type=int)  
+    # boolean: 1 -> True ; 0 -> False 
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)  
     
     parser.add_argument('--lr0',default=0.1,type=float)  
+    parser.add_argument('--coupling',default=0,type=int) 
     parser.add_argument('--lbda',default=1,type=float)  
     parser.add_argument('--size',default=10000,type=int)      
     parser.add_argument('--bs',default=20,type=int)  

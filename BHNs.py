@@ -181,16 +181,16 @@ class MLPWeightNorm_BHN(Base_BHN):
         logdets_layers.append(IndexLayer(layer_temp,1))
         
         if self.coupling:
-            # add more to introduce more correlation if needed
             layer_temp = CoupledDenseLayer(h_net,200)
             h_net = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
             
-            h_net = PermuteLayer(h_net,self.num_params)
-            
-            layer_temp = CoupledDenseLayer(h_net,200)
-            h_net = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
+            for c in range(self.coupling-1):
+                h_net = PermuteLayer(h_net,self.num_params)
+                
+                layer_temp = CoupledDenseLayer(h_net,200)
+                h_net = IndexLayer(layer_temp,0)
+                logdets_layers.append(IndexLayer(layer_temp,1))
         
         self.h_net = h_net
         self.weights = lasagne.layers.get_output(h_net,ep)
@@ -258,7 +258,7 @@ class Conv2D_BHN(Base_BHN):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
-                 coupling=True):
+                 coupling = 1):
         
         self.coupling = coupling
         super(Conv2D_BHN, self).__init__(lbda=lbda,
@@ -292,11 +292,13 @@ class Conv2D_BHN(Base_BHN):
             h_net = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
             
-            h_net = PermuteLayer(h_net,self.num_params)
-            
-            layer_temp = CoupledDenseLayer(h_net,200)
-            h_net = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
+            for c in range(self.coupling-1):
+                h_net = PermuteLayer(h_net,self.num_params)
+                
+                layer_temp = CoupledDenseLayer(h_net,200)
+                h_net = IndexLayer(layer_temp,0)
+                logdets_layers.append(IndexLayer(layer_temp,1))
+        
         
         self.h_net = h_net
         self.weights = lasagne.layers.get_output(h_net,ep)
@@ -375,7 +377,7 @@ class Conv2D_shared_BHN(Base_BHN):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
-                 coupling=True):
+                 coupling = 1):
         
         self.coupling = coupling
         super(Conv2D_shared_BHN, self).__init__(lbda=lbda,
@@ -412,16 +414,16 @@ class Conv2D_shared_BHN(Base_BHN):
                                              (self.n_kernels,) + \
                                              (np.prod(self.kernel_shape),))
         if self.coupling:
-            # add more to introduce more correlation if needed
             layer_temp = CoupledDenseLayer(h_net1,100)
             h_net1 = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
             
-            h_net1 = PermuteLayer(h_net1,self.num_params)
-            
-            layer_temp = CoupledDenseLayer(h_net1,100)
-            h_net1 = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
+            for c in range(self.coupling-1):
+                h_net1 = PermuteLayer(h_net1,self.num_params)
+                
+                layer_temp = CoupledDenseLayer(h_net1,100)
+                h_net1 = IndexLayer(layer_temp,0)
+                logdets_layers.append(IndexLayer(layer_temp,1))
         
         self.kernel_weights = lasagne.layers.get_output(h_net1,ep)
         h_net1 = lasagne.layers.ReshapeLayer(h_net1,
