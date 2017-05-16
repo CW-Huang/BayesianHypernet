@@ -12,13 +12,14 @@ Toy regression example
 
 
 # TODO (DK): take the plotting and the data, put it in my exp script...
+# TODO (DK): make
 
 
 import numpy as np
 import matplotlib.pyplot as plt
 from BHNs import Base_BHN
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer, ReverseLayer
-from modules import CoupledDenseLayer, stochasticDenseLayer2
+from modules import CoupledDenseLayer, stochasticDenseLayer2, stochasticDenseLayer
 from utils import log_normal, log_laplace
 import theano
 import theano.tensor as T
@@ -33,13 +34,27 @@ softmax = nonlinearities.softmax
 from lasagne.layers import get_output
 
 
+#DATASET = 'sinusoids'
+DATASET = 'identity'
+
+if DATASET == 'identity':
+    nhids = 1
+    coupling_hids = 40
+    init = 0
+    lbda = 1e-5
+else:
+    nhids = 10
+    coupling_hids = 10
+    init = -7
+    lbda = 2
+
 
 class ToyRegression(Base_BHN):
 
 
-    weight_shapes = [(1, 10),
-                     (10,10),
-                     (10, 2)]
+    weight_shapes = [(1, nhids),
+                     #(nhids,nhids),
+                     (nhids, 2)]
     
     num_params = sum(ws[1] for ws in weight_shapes)
     
@@ -67,14 +82,13 @@ class ToyRegression(Base_BHN):
         h_net = lasagne.layers.InputLayer([None,self.num_params])
         
         # mean and variation of the initial noise
-        layer_temp = LinearFlowLayer(h_net,
-                                     W=lasagne.init.Normal(0.01,-7))
+        layer_temp = LinearFlowLayer(h_net, W=lasagne.init.Normal(0.01,init))
         h_net = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
         if self.coupling:
             # add more to introduce more correlation if needed
-            layer_temp = CoupledDenseLayer(h_net,10)
+            layer_temp = CoupledDenseLayer(h_net,coupling_hids)
             h_net = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
             
@@ -83,14 +97,12 @@ class ToyRegression(Base_BHN):
                     h_net = PermuteLayer(h_net,self.num_params)
                 elif self.mixing == 'reverse':
                     h_net = ReverseLayer(h_net,self.num_params)
-                
-                layer_temp = CoupledDenseLayer(h_net,10)
+                layer_temp = CoupledDenseLayer(h_net,coupling_hids)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
                         
         # FINAL scale and shift (TODO: optional)
-        layer_temp = LinearFlowLayer(h_net,
-                                     W=lasagne.init.Normal(1.,0))
+        #layer_temp = LinearFlowLayer(h_net, W=lasagne.init.Normal(1.,0))
         h_net = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
@@ -110,8 +122,12 @@ class ToyRegression(Base_BHN):
             w_layer = lasagne.layers.InputLayer((None,ws[1]))
             weight = self.weights[:,t:t+num_param].reshape((self.wd1,ws[1]))
             inputs[w_layer] = weight
-            p_net = stochasticDenseLayer2([p_net,w_layer],ws[1],
-                                          nonlinearity=nonlinearities.tanh)
+            if DATASET == 'identity':
+                p_net = stochasticDenseLayer2([p_net,w_layer],ws[1],b=None,
+                                              nonlinearity=nonlinearities.linear)
+            else:
+                p_net = stochasticDenseLayer2([p_net,w_layer],ws[1],
+                                              nonlinearity=nonlinearities.tanh)
             print p_net.output_shape
             t += num_param
             
@@ -153,6 +169,7 @@ class ToyRegression(Base_BHN):
         sp = T.matrix('sp')
         predict_sp = self.y[:,:1] + sp * T.exp(0.5*self.y[:,1:])
         self.predict_sp = theano.function([self.input_var,sp],predict_sp)
+        self.sample_theta = theano.function([], self.weights)
 
     def _get_grads(self):
         grads = T.grad(self.loss, self.params)
@@ -167,23 +184,34 @@ class ToyRegression(Base_BHN):
 
                                             
 # toy dataset
-n = 5000
+n = 50000
 left1, right1 = 6,8
 left2, right2 = 9,12
 x1 = np.random.uniform(left1,right1,(n/2,1)).astype(floatX)
 x2 = np.random.uniform(left2,right2,(n/2,1)).astype(floatX)
 x = np.concatenate([x1,x2],0)
 ep1 = np.random.randn(n,1).astype(floatX)
-f = lambda x:0.01 * np.sin(2.5*x) * x**1.5 + 0.1 * x + ep1/(0.5*x)**2 - 1
-t = f(x)
-# 
-n_ = 1000
-f_ = lambda x:0.01 * np.sin(2.5*x) * x**1.5 + 0.1*x - 1
-xx = np.linspace(1,20,n_).astype(floatX).reshape(n_,1)
-yy = f_(xx)
+
+if DATASET == 'sinusoids':
+    f = lambda x:0.01 * np.sin(2.5*x) * x**1.5 + 0.1 * x + ep1/(0.5*x)**2 - 1
+    t = f(x)
+    # 
+    n_ = 1000
+    f_ = lambda x:0.01 * np.sin(2.5*x) * x**1.5 + 0.1*x - 1
+    xx = np.linspace(1,20,n_).astype(floatX).reshape(n_,1)
+    yy = f_(xx)
+elif DATASET == 'identity':
+    f = lambda x: x + ep1/(0.5*x)**2
+    t = f(x)
+    # 
+    n_ = 1000
+    f_ = lambda x: x
+    xx = np.linspace(1,20,n_).astype(floatX).reshape(n_,1)
+    yy = f_(xx)
 
 
-model = ToyRegression(2.,coupling=4,prior=log_normal, mixing='reverse')
+#model = ToyRegression(2.,coupling=4,prior=log_normal, mixing='reverse')
+model = ToyRegression(lbda,coupling=8,prior=log_normal, mixing='reverse')
 
 
 ###############
@@ -199,14 +227,26 @@ for i in range(epochs):
     if i%250==0:
         print i,l
         if 1: # interactive plotting
+            plt.clf()
+            if DATASET == 'identity':
+                # SAMPLES
+                n_mc = 100
+                thetas = np.zeros((n_mc,2))
+                for i in range(n_mc):
+                    #sp = np.random.randn(n_,1).astype(floatX) 
+                    thetas[i] = model.sample_theta()[0,:2]
+                # PLOTTING
+                plt.subplot(121)
+                plt.scatter(thetas[:,0], thetas[:,1])
+                plt.subplot(122)
+        
             # SAMPLES
-            n_mc = 1000
+            n_mc = 100
             mc = np.zeros((n_,n_mc))
             for i in range(n_mc):
                 sp = np.random.randn(n_,1).astype(floatX) 
                 mc[:,i:i+1] = model.predict_sp(xx,sp)
             # PLOTTING
-            plt.clf()
             plot2 = plt.fill_between(xx[:,0], 
                                      mc.mean(1)-mc.std(1,ddof=1), 
                                      mc.mean(1)+mc.std(1,ddof=1),
@@ -224,6 +264,7 @@ for i in range(epochs):
             plt.vlines(left2,yy.min(),yy.max())
             plt.vlines(right2,yy.min(),yy.max())
             plt.pause(.01)
+
 
 y_ = model.predict(x)
 
