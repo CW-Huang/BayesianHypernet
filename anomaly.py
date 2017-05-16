@@ -171,7 +171,8 @@ standard deviation (something something...)
 def baseline(samples):
     return np.mean(samples, 0)
 
-def entropy(
+def entropy():
+    pass
 
 
 
