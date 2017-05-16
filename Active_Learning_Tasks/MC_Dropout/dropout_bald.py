@@ -452,20 +452,18 @@ def main():
     num_epochs=50
     acquisition_iterations=98
     nb_classes=10
-    average_accuracy = np.array([])
+    
+    all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
 
     for i in range(num_experiments):
 
-        all_accuracy = active_learning(model, num_epochs, acquisition_iterations, nb_classes)
+        accuracy = active_learning(model, num_epochs, acquisition_iterations, nb_classes)
 
-        average_accuracy = np.append(average_accuracy, all_accuracy)
+        all_accuracy[:, i] = accuracy 
 
-    print ("average_accuracy", average_accuracy.shape)
-    print ("average_accuracy", average_accuracy)
+    mean_accuracy = np.mean(all_accuracy)
 
-    mean_accuracy = np.mean(average_accuracy)
-
-    np.save('dropout_bald_average_accuracy.npy', average_accuracy)
+    np.save('dropout_bald_all_accuracy.npy', all_accuracy)
     np.save('dropout_bald_mean_accuracy.npy',mean_accuracy)    
 
 
