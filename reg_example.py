@@ -72,9 +72,10 @@ def simple_test(X, y, X_valid, y_valid,
     #layers = ign.init_ign(n_layers, num_params, rnd_W=False)
 
     layers = {}
+    #layers[(0, 'WL')] = 1e-2 * np.ones(num_params)
     layers[(0, 'WL')] = 1e-2 * np.ones(num_params)
     layers[(0, 'bL')] = np.random.randn(num_params)
-    layers[(0, 'bL')][-1] = 6.0  # Start with big precision
+    # layers[(0, 'bL')][-1] = 6.0  # Start with big precision
     phi_shared_real = make_shared_dict(layers, '%d%s')
     phi_shared = phi_shared_real.copy()
     phi_shared[(0, 'WL')] = T.nlinalg.alloc_diag(phi_shared_real[(0, 'WL')])
@@ -109,11 +110,11 @@ def simple_test(X, y, X_valid, y_valid,
             x_batch = X[ii * n_batch:(ii + 1) * n_batch]
             y_batch = y[ii * n_batch:(ii + 1) * n_batch]
             z_noise = z_std * np.random.randn(num_params)
-            if epoch <= 10:
+            if epoch <= -1:
                 current_lr = init_lr
                 batch_cost = trainer_prelim(x_batch, y_batch, z_noise, current_lr)
             else:
-                current_lr = init_lr * 0.1
+                current_lr = init_lr
                 batch_cost = trainer(x_batch, y_batch, z_noise, current_lr)
             cost += batch_cost
         cost /= len(batch_order)
