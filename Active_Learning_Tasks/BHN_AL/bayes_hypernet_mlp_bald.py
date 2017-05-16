@@ -133,14 +133,13 @@ def test_model(predict_proba, X_test, y_test):
 
 
 
-def active_learning():
+def active_learning(acquisition_iterations):
 
     bh_iterations = 50
     nb_classes = 10
     Queries = 10
     all_accuracy = 0
 
-    acquisition_iterations = 98
 
     filename = '../../mnist.pkl.gz'
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
@@ -187,7 +186,9 @@ def active_learning():
         all_bh_classes = np.zeros(shape=(X_pool_Dropout.shape[0], bh_iterations))
 
         for d in range(bh_iterations):
+
             print ("Bayes Hypernet Posterior Samples", d)
+
             bh_score = model.predict_proba(X_pool_Dropout)
             score_All = score_All + bh_score
 
@@ -260,9 +261,13 @@ def active_learning():
 def main():
 
     num_experiments = 3
+    acquisition_iterations = 98
+    all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
+    
     for i in range(num_experiments):
-        accuracy = active_learning()
-        all_accuracy = np.append(average_accuracy, accuracy)
+        
+        accuracy = active_learning(acquisition_iterations)
+        all_accuracy[:, i] = accuracy
 
     mean_accuracy = np.mean(average_accuracy)
 
