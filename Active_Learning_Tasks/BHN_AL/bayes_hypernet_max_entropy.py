@@ -263,15 +263,15 @@ def active_learning():
 
 def main():
 
-    num_experiments = 3
+    num_experiments = 5
     for i in range(num_experiments):
         accuracy = active_learning()
         all_accuracy = np.append(average_accuracy, accuracy)
 
     mean_accuracy = np.mean(average_accuracy)
 
-    np.save('dropout_bald_average_accuracy.npy', all_accuracy)
-    np.save('dropout_bald_mean_accuracy.npy',mean_accuracy)    
+    np.save('BH_Max_Entropy_all_accuracy.npy', all_accuracy)
+    np.save('BH_Max_Entropy_mean_accuracy.npy',mean_accuracy)    
 
 
 
