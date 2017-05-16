@@ -70,6 +70,8 @@ def simple_test(X, y, X_valid, y_valid,
     layers = ign.init_ign_diag(n_layers, num_params, WL_val=1e-2)
     phi_shared = make_shared_dict(layers, '%d%s')
 
+    # TODO make diagnalization an argument and pass in as param
+
     ll_primary_f = lambda X, y, w: loglik_primary_f(X, y, w, weight_shapes)
     hypernet_f = lambda z: ign.network_T_and_J_diag(z[None, :], phi_shared)[0][0, :]
     # TODO verify this length of size 1

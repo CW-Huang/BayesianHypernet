@@ -194,6 +194,7 @@ def network_T(x_tt, layers):
 
 
 def diagonalize_network(layers):
+    # TODO test
     n_layers = get_n_layers(layers)
 
     layers_diag = layers.copy()
@@ -204,6 +205,7 @@ def diagonalize_network(layers):
 
 
 def network_T_and_J_diag(X_tt, layers):
+    # TODO test
     '''diagonalize makes all the W's face zero off diagonal. Sometimes handy
     for initialization purposes.'''
     assert(X_tt.ndim == 2)
@@ -235,6 +237,7 @@ def network_T_and_J_diag(X_tt, layers):
 
 
 def network_T_and_J(X_tt, layers):
+    # TODO test
     assert(X_tt.ndim == 2)
     n_layers = get_n_layers(layers)
 
@@ -481,8 +484,10 @@ def init_ign_diag(n_layers, D, aL_val=0.25, WL_val=1e-2):
     layers = {}
     for nn in xrange(n_layers):
         layers[(nn, WL_PARAM)] = WL_val * np.eye(D)
-        layers[(nn, bL_PARAM)] = np.random.randn(D)
+        layers[(nn, bL_PARAM)] = np.zeros(D)
         layers[(nn, aL_PARAM)] = np.log(aL_val * np.ones(D))
+    # Can't initialize all at zero to break the symmetry
+    layers[(n_layers - 1, bL_PARAM)] = np.random.randn(D)
     del layers[(n_layers - 1, aL_PARAM)]
     return layers
 
