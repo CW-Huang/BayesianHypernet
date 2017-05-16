@@ -187,6 +187,7 @@ def active_learning():
         all_bh_classes = np.zeros(shape=(X_pool_Dropout.shape[0], bh_iterations))
 
         for d in range(bh_iterations):
+            print ("Bayes Hypernet Posterior Samples", d)
             bh_score = model.predict_proba(X_pool_Dropout)
             score_All = score_All + bh_score
 
