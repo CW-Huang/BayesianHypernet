@@ -1,4 +1,4 @@
-from BHNs import Conv2D_BHN_AL
+from BHNs import HyperCNN
 from ops import load_mnist
 from utils import log_normal, log_laplace
 import numpy as np
@@ -28,52 +28,52 @@ def split_train_pool_data(X_train, y_train, X_val, y_val):
 def get_initial_training_data(X_train_All, y_train_All):
     #training data to have equal distribution of classes
     idx_0 = np.array( np.where(y_train_All==0)  ).T
-    idx_0 = idx_0[0:10,0]
+    idx_0 = idx_0[0:2,0]
     X_0 = X_train_All[idx_0, :, :, :]
     y_0 = y_train_All[idx_0]
 
     idx_1 = np.array( np.where(y_train_All==1)  ).T
-    idx_1 = idx_1[0:10,0]
+    idx_1 = idx_1[0:2,0]
     X_1 = X_train_All[idx_1, :, :, :]
     y_1 = y_train_All[idx_1]
 
     idx_2 = np.array( np.where(y_train_All==2)  ).T
-    idx_2 = idx_2[0:10,0]
+    idx_2 = idx_2[0:2,0]
     X_2 = X_train_All[idx_2, :, :, :]
     y_2 = y_train_All[idx_2]
 
     idx_3 = np.array( np.where(y_train_All==3)  ).T
-    idx_3 = idx_3[0:10,0]
+    idx_3 = idx_3[0:2,0]
     X_3 = X_train_All[idx_3, :, :, :]
     y_3 = y_train_All[idx_3]
 
     idx_4 = np.array( np.where(y_train_All==4)  ).T
-    idx_4 = idx_4[0:10,0]
+    idx_4 = idx_4[0:2,0]
     X_4 = X_train_All[idx_4, :, :, :]
     y_4 = y_train_All[idx_4]
 
     idx_5 = np.array( np.where(y_train_All==5)  ).T
-    idx_5 = idx_5[0:10,0]
+    idx_5 = idx_5[0:2,0]
     X_5 = X_train_All[idx_5, :, :, :]
     y_5 = y_train_All[idx_5]
 
     idx_6 = np.array( np.where(y_train_All==6)  ).T
-    idx_6 = idx_6[0:10,0]
+    idx_6 = idx_6[0:2,0]
     X_6 = X_train_All[idx_6, :, :, :]
     y_6 = y_train_All[idx_6]
 
     idx_7 = np.array( np.where(y_train_All==7)  ).T
-    idx_7 = idx_7[0:10,0]
+    idx_7 = idx_7[0:2,0]
     X_7 = X_train_All[idx_7, :, :, :]
     y_7 = y_train_All[idx_7]
 
     idx_8 = np.array( np.where(y_train_All==8)  ).T
-    idx_8 = idx_8[0:10,0]
+    idx_8 = idx_8[0:2,0]
     X_8 = X_train_All[idx_8, :, :, :]
     y_8 = y_train_All[idx_8]
 
     idx_9 = np.array( np.where(y_train_All==9)  ).T
-    idx_9 = idx_9[0:10,0]
+    idx_9 = idx_9[0:2,0]
     X_9 = X_train_All[idx_9, :, :, :]
     y_9 = y_train_All[idx_9]
 
@@ -118,7 +118,7 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
 
 
 def test_model(predict_proba, X_test, y_test):
-    mc_samples = 100
+    mc_samples = 1000
     y_pred_all = np.zeros((mc_samples, X_test.shape[0], 10))
 
     for m in range(mc_samples):
@@ -133,7 +133,7 @@ def test_model(predict_proba, X_test, y_test):
 
 
 
-def active_learning():
+def active_learning(acquisition_iterations):
 
     bh_iterations = 100
     nb_classes = 10
@@ -154,7 +154,7 @@ def active_learning():
 
     print ("Training Set Size", train_x.shape)
 
-    model = Conv2D_BHN_AL(lbda=lbda,
+    model = HyperCNN(lbda=lbda,
                               perdatapoint=perdatapoint,
                               prior=prior,
                               coupling=coupling)
@@ -165,10 +165,6 @@ def active_learning():
                        valid_x,valid_y,
                        lr0,lrdecay,bs,epochs)
    
-    # evaluate_model(model.predict_proba,
-    #                train_x[:size],train_y[:size],
-    #                valid_x,valid_y)
-
     test_accuracy = test_model(model.predict_proba, test_x, test_y)
 
     all_accuracy = test_accuracy
@@ -178,7 +174,7 @@ def active_learning():
     for i in range(acquisition_iterations):
 
     	print('POOLING ITERATION', i)
-    	pool_subset = 1000
+    	pool_subset = 2000
 
     	pool_subset_dropout = np.asarray(random.sample(range(0,pool_x.shape[0]), pool_subset))
 
@@ -190,6 +186,7 @@ def active_learning():
 
     	all_bh_classes = np.zeros(shape=(X_pool_Dropout.shape[0], bh_iterations))
 
+        print ("BH Iterations")
     	for d in range(bh_iterations):
     		bh_score = model.predict_proba(X_pool_Dropout)
     		score_All = score_All + bh_score
@@ -262,15 +259,21 @@ def active_learning():
 
 def main():
 
-    num_experiments = 5
+    num_experiments = 3
+    acquisition_iterations = 98
+    all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
+    
     for i in range(num_experiments):
-        accuracy = active_learning()
-        all_accuracy = np.append(average_accuracy, accuracy)
+        
+        accuracy = active_learning(acquisition_iterations)
+        all_accuracy[:, i] = accuracy
+        np.save('BH_HyperCNN_bald_all_accuracy.npy', all_accuracy)
 
-    mean_accuracy = np.mean(average_accuracy)
+    
+    mean_accuracy = np.mean(all_accuracy)
 
-    np.save('BH_bald_all_accuracy.npy', all_accuracy)
-    np.save('BH_bald_mean_accuracy.npy',mean_accuracy)    
+    np.save('BH_HyperCNN_bald_all_accuracy.npy', all_accuracy)
+    np.save('BH_HyperCNN_bald_mean_accuracy.npy',mean_accuracy)    
 
 
 
