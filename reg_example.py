@@ -108,8 +108,12 @@ def simple_test(X, y, X_valid, y_valid,
             x_batch = X[ii * n_batch:(ii + 1) * n_batch]
             y_batch = y[ii * n_batch:(ii + 1) * n_batch]
             z_noise = z_std * np.random.randn(num_params)
-            current_lr = init_lr
-            batch_cost = trainer_prelim(x_batch, y_batch, z_noise, current_lr)
+            if epoch <= 500:
+                current_lr = init_lr
+                batch_cost = trainer_prelim(x_batch, y_batch, z_noise, current_lr)
+            else:
+                current_lr = init_lr * 0.01
+                batch_cost = trainer(x_batch, y_batch, z_noise, current_lr)
             cost += batch_cost
         cost /= len(batch_order)
         print cost
@@ -133,7 +137,7 @@ if __name__ == '__main__':
     np.random.seed(5645)
 
     init_lr = 0.001
-    n_epochs = 500
+    n_epochs = 1000
     n_batch = 32
     N = 1000
     z_std = 1.0  # 1.0 is correct for the model, 0.0 is MAP
