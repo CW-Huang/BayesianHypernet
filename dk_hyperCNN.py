@@ -13,38 +13,47 @@ import numpy as np
 import lasagne
 import theano
 import theano.tensor as T
+floatX = theano.config.floatX
 
-
-class MLPWeightNorm_BHN_full(MLPWeightNorm_BHN):
+# DK
+from BHNs import HyperCNN
     
-    weight_shapes = [(784, 800),
-                     (800, 800),
-                     (800,  10)]
-    num_params = sum(ws[1] for ws in weight_shapes)
-    
-
-    
-    
-class MCdropout_MLP(object):
-    
-    weight_shapes = [(784, 800),
-                     (800, 800),
-                     (800,  10)]
+class MCdropoutCNN(object):
                      
-    def __init__(self):
+    def __init__(self, dropout=None):
+        weight_shapes = [(32,1,3,3),        # -> (None, 16, 14, 14)
+                         (32,32,3,3),       # -> (None, 16,  7,  7)
+                         (32,32,3,3)]       # -> (None, 16,  4,  4)
+        n_kernels = np.array(weight_shapes)[:,1].sum()
+        kernel_shape = weight_shapes[0][:1]+weight_shapes[0][2:]
         
-        layer = lasagne.layers.InputLayer([None,784])
+        # needs to be consistent with weight_shapes
+        args = [32,3,2,'same',lasagne.nonlinearities.rectify]#
+        num_filters, filter_size, stride, pad, nonlinearity = args
+        self.__dict__.update(locals())
+        ##################
+        
+        layer = lasagne.layers.InputLayer([None,1,28,28])
         
         for j,ws in enumerate(self.weight_shapes):
-            layer = lasagne.layers.DenseLayer(
-                layer,ws[1],
-                nonlinearity=lasagne.nonlinearities.rectify
+            num_filters = ws[1]
+            layer = lasagne.layers.Conv2DLayer(layer,
+                num_filters, filter_size, stride, pad, nonlinearity
             )
-            if j!=len(self.weight_shapes)-1:
-                layer = lasagne.layers.dropout(layer)
-        
+            if dropout is not None and j!=len(self.weight_shapes)-1:
+                if dropout == 'spatial':
+                    layer = lasagne.layers.spatial_dropout(layer, dropout)
+                else:
+                    layer = lasagne.layers.dropout(layer, dropout)
+
+        # MLP layers
+        layer = lasagne.layers.DenseLayer(layer, 128)
+        if dropout is not None and j!=len(self.weight_shapes)-1:
+            layer = lasagne.layers.dropout(layer, dropout)
+        layer = lasagne.layers.DenseLayer(layer, 10)
+
         layer.nonlinearity = lasagne.nonlinearities.softmax
-        self.input_var = T.matrix('input_var')
+        self.input_var = T.tensor4('input_var')
         self.target_var = T.matrix('target_var')
         self.learning_rate = T.scalar('leanring_rate')
         self.dataset_size = T.scalar('dataset_size') # useless
@@ -151,14 +160,14 @@ if __name__ == '__main__':
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)  
     
-    parser.add_argument('--lr0',default=0.1,type=float)  
-    parser.add_argument('--coupling',default=0,type=int) 
+    parser.add_argument('--lr0',default=0.001,type=float)  
+    parser.add_argument('--coupling',default=4,type=int) 
     parser.add_argument('--lbda',default=1,type=float)  
     parser.add_argument('--size',default=10000,type=int)      
     parser.add_argument('--bs',default=20,type=int)  
     parser.add_argument('--epochs',default=50,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='BHN_MLPWN',type=str)
+    parser.add_argument('--model',default='CNN',type=str)
     
     args = parser.parse_args()
     print args
@@ -180,14 +189,21 @@ if __name__ == '__main__':
     
     filename = '/data/lisa/data/mnist.pkl.gz'
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
+    train_x = train_x.reshape((-1, 1, 28, 28))
+    valid_x = valid_x.reshape((-1, 1, 28, 28))
+    test_x = test_x.reshape((-1, 1, 28, 28))
     
-    if args.model == 'BHN_MLPWN':
-        model = MLPWeightNorm_BHN_full(lbda=lbda,
-                                       perdatapoint=perdatapoint,
-                                       prior=prior,
-                                       coupling=coupling)
-    elif args.model == 'MCdropout_MLP':
-        model = MCdropout_MLP()
+    if args.model == 'hyperCNN':
+        model = HyperCNN(lbda=lbda,
+                         perdatapoint=perdatapoint,
+                         prior=prior,
+                         coupling=coupling)
+    elif args.model == 'CNN':
+        model = MCdropoutCNN()
+    elif args.model == 'CNN_spatial_dropout':
+        model = MCdropoutCNN(dropout='spatial')
+    elif args.model == 'CNN_dropout':
+        model = MCdropoutCNN(dropout=1)
     else:
         raise Exception('no model named `{}`'.format(args.model))
         

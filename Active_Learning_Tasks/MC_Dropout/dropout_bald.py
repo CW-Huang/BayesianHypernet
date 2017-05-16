@@ -10,8 +10,6 @@ import random
 random.seed(5001)
 
 
-
-
 def load_dataset():
     # We first define a download function, supporting both Python 2 and 3.
     if sys.version_info[0] == 2:
@@ -64,7 +62,11 @@ def load_dataset():
     # (It doesn't matter how we do this as long as we can read them again.)
     return X_train, y_train, X_val, y_val, X_test, y_test
 
-
+"""
+# This creates an MLP of two hidden layers of 800 units each, followed by
+# a softmax output layer of 10 units. It applies 20% dropout to the input
+# data and 50% dropout to the hidden layers.
+"""
 def build_mlp(input_var=None):
 
     l_in = lasagne.layers.InputLayer(shape=(None, 1, 28, 28),
@@ -238,15 +240,6 @@ def train_model(num_epochs, X_train, y_train, X_val, y_val, train_fn, val_fn):
             val_batches += 1
 
         validation_error = val_err / val_batches
-
-        # # Then we print the results for this epoch:
-        # print("Epoch {} of {} took {:.3f}s".format(
-        #     epoch + 1, num_epochs, time.time() - start_time))
-        # print("  training loss:\t\t{:.6f}".format(train_err / train_batches))
-        # print("  validation loss:\t\t{:.6f}".format(val_err / val_batches))
-        # print("  validation accuracy:\t\t{:.2f} %".format(
-        #     val_acc / val_batches * 100))
-
     
     return training_error, validation_error
 
@@ -347,10 +340,12 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
     """
     test_error, test_accuracy = test_model(X_test, y_test, val_fn)
 
+    print ("Test Accuracy", test_accuracy)
+
     all_accuracy = test_accuracy
     all_error = test_error
 
-    dropout_iterations = 5
+    dropout_iterations = 50
     Queries = 10
 
 
@@ -358,7 +353,7 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
         
         print('POOLING ITERATION', i)
 
-        pool_subset = 2000
+        pool_subset = 1000
         pool_subset_dropout = np.asarray(random.sample(range(0,X_pool.shape[0]), pool_subset))
         X_pool_Dropout = X_pool[pool_subset_dropout, :, :, :]
         y_pool_Dropout = y_pool[pool_subset_dropout]
@@ -366,7 +361,10 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
         score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
         All_Entropy_Dropout = np.zeros(shape=X_pool_Dropout.shape[0])
 
+        all_dropout_classes = np.zeros(shape=(X_pool_Dropout.shape[0], dropout_iterations))
+
         for d in range(dropout_iterations):
+            print ("Dropout Iterations", d)
 
             dropout_score = get_preds(X_pool_Dropout)
             score_All = score_All + dropout_score
@@ -375,7 +373,23 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
             Entropy_Compute = - np.multiply(dropout_score, dropout_score_log)
             Entropy_Per_Dropout = np.sum(Entropy_Compute, axis=1)
 
-            All_Entropy_Dropout = All_Entropy_Dropout + Entropy_Per_Dropout 
+            All_Entropy_Dropout = All_Entropy_Dropout + Entropy_Per_Dropout
+
+            """
+            For observing dropout uncertainty over images
+            """
+            #save in 
+            dropout_classes = np.max(dropout_score, axis=1)
+            all_dropout_classes[:, d] = dropout_classes
+
+
+        ### for plotting uncertainty
+        predicted_class = np.max(all_dropout_classes, axis=1)
+        predicted_class_std = np.std(all_dropout_classes, axis=1)
+
+        np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/Active_Learning_Tasks/MC_Dropout/dropout_uncertainty/predicted_class.npy', predicted_class)
+        np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/Active_Learning_Tasks/MC_Dropout/dropout_uncertainty/predicted_class_std.npy', predicted_class_std)
+        
 
         Avg_Pi = np.divide(score_All, dropout_iterations)
         Log_Avg_Pi = np.log2(Avg_Pi)
@@ -413,6 +427,7 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
         X_train = np.concatenate((X_train, Pooled_X), axis=0)
         y_train = np.concatenate((y_train, Pooled_Y), axis=0)           
 
+
         print ("Training Data Size", X_train.shape)
         """
         Train and Test with the new training data
@@ -420,23 +435,22 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
         training_error, validation_error = train_model(num_epochs, X_train, y_train, X_val, y_val, train_fn, val_fn)
         test_error, test_accuracy = test_model(X_test, y_test, val_fn)
 
+        print ("Test Accuracy", test_accuracy)
+
         all_accuracy = np.append(all_accuracy, test_accuracy)
         all_error = np.append(all_error, test_error)
 
 
 
     return all_accuracy
-    # print ("All Accuracy", all_accuracy)
-    # print ("All Accuracy", all_accuracy.shape)
-
 
 
 def main():
 
     num_experiments = 3
     model='mlp'
-    num_epochs=3
-    acquisition_iterations=5
+    num_epochs=50
+    acquisition_iterations=98
     nb_classes=10
     average_accuracy = np.array([])
 

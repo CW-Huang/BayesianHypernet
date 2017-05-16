@@ -170,6 +170,9 @@ class CoupledConv1DLayer(lasagne.layers.base.Layer):
 
 
 class LinearFlowLayer(lasagne.layers.base.Layer):    
+    """
+    Scale and shift inputs, elementwise
+    """
     def __init__(self, incoming, W=init.Normal(0.01,-7),
                  b=init.Normal(0.01,0),
                  **kwargs):
@@ -198,7 +201,9 @@ class LinearFlowLayer(lasagne.layers.base.Layer):
 
 
 class IndexLayer(lasagne.layers.Layer):
-    
+    """
+    Return the given index of input tuple
+    """
     def __init__(self, incoming, index, output_shape=None, **kwargs):
         super(IndexLayer, self).__init__(incoming, **kwargs)
         self.index = index
@@ -212,6 +217,26 @@ class IndexLayer(lasagne.layers.Layer):
 
     def get_output_for(self, input, **kwargs):
         return input[self.index] 
+
+
+class ReverseLayer(lasagne.layers.Layer):
+    """
+    Reverse the order of features 
+    """
+    def __init__(self, incoming, num_units, axis=-1, **kwargs):
+        super(ReverseLayer, self).__init__(incoming, **kwargs)
+        indices = (np.arange(num_units))[::-1]
+        self.indices = indices
+        self.axis = axis
+        
+    def get_output_shape_for(self, input_shape):
+        return input_shape
+
+    def get_output_for(self, input, **kwargs):
+        slc = [slice(None)] * input.ndim
+        slc[self.axis] = self.indices
+        return input[slc]
+
 
 
 class PermuteLayer(lasagne.layers.Layer):
