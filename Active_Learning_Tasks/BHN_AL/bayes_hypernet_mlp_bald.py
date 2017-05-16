@@ -178,7 +178,7 @@ def active_learning():
 
         pool_subset_dropout = np.asarray(random.sample(range(0,pool_x.shape[0]), pool_subset))
 
-        X_pool_Dropout = pool_x[pool_subset_dropout, :, :, :]
+        X_pool_Dropout = pool_x[pool_subset_dropout, :]
         y_pool_Dropout = pool_y[pool_subset_dropout]
 
         score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
@@ -221,7 +221,7 @@ def active_learning():
         x_pool_index = sort_values.argsort()[-Queries:][::-1]
 
 
-        Pooled_X = X_pool_Dropout[x_pool_index, :, :, :]
+        Pooled_X = X_pool_Dropout[x_pool_index, :]
         Pooled_Y = y_pool_Dropout[x_pool_index] 
 
 
