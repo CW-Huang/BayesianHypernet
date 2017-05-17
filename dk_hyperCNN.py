@@ -221,7 +221,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr0',default=0.001,type=float)  
     parser.add_argument('--lrdecay',default=0,type=int)  
     parser.add_argument('--lbda',default=1,type=float)  
-    parser.add_argument('--model',default='CNN',type=str)
+    parser.add_argument('--model',default='hyperCNN',type=str)
     parser.add_argument('--opt',default='adam',type=str)
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)

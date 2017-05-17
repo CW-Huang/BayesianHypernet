@@ -13,7 +13,10 @@ from sklearn.preprocessing import OneHotEncoder
 floatX = 'float32'
 
 def load_mnist(filename):
-    tr,va,te = pickle.load(gzip.open(filename,'r'))
+    try:
+        tr,va,te = pickle.load(gzip.open(filename,'r'))
+    except:
+        tr,va,te = pickle.load(gzip.open('mnist.pkl.gz','r'))
     tr_x,tr_y = tr
     va_x,va_y = va
     te_x,te_y = te
