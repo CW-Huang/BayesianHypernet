@@ -628,34 +628,49 @@ class HyperCNN(Base_BHN):
 
     """
 
-    weight_shapes = [(32,1,3,3),        # -> (None, 16, 14, 14)
-                     (32,32,3,3),       # -> (None, 16,  7,  7)
-                     (32,32,3,3)]       # -> (None, 16,  4,  4)
-    n_kernels = np.array(weight_shapes)[:,1].sum()
-    kernel_shape = weight_shapes[0][:1]+weight_shapes[0][2:]
-    print "kernel_shape", kernel_shape
-    kernel_size = np.prod(weight_shapes[0])
-
-    # [num_filters, filter_size, stride, pad, nonlinearity]
-    # needs to be consistent with weight_shapes
-    args = [[32,3,2,'same',rectify],
-            [32,3,2,'same',rectify],
-            [32,3,2,'same',rectify]]
-
-    num_classes = 10
-    num_hids = 128
-    num_mlp_layers = 1
-    num_mlp_params = num_classes + num_hids * num_mlp_layers
-    num_cnn_params = sum(np.prod(ws) for ws in weight_shapes)
-    num_params = num_mlp_params + num_cnn_params
-
     
     def __init__(self,
                  lbda=1,
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
-                 coupling=4):
+                 coupling=4,
+                 dataset='mnist'):
+        
+        self.dataset = dataset
+        
+        if dataset == 'mnist':
+            self.weight_shapes = [(32,1,3,3),        # -> (None, 16, 14, 14)
+                                  (32,32,3,3),       # -> (None, 16,  7,  7)
+                                  (32,32,3,3)]       # -> (None, 16,  4,  4)
+        elif dataset == 'cifar10':
+            self.weight_shapes = [(32,3,5,5),        # -> (None, 16, 16, 16)
+                                  (32,32,5,5),       # -> (None, 16,  8,  8)
+                                  (32,32,5,5)]       # -> (None, 16,  4,  4)
+                                  
+        self.n_kernels = np.array(self.weight_shapes)[:,1].sum()
+        self.kernel_shape = self.weight_shapes[0][:1]+self.weight_shapes[0][2:]
+        print "kernel_shape", self.kernel_shape
+        self.kernel_size = np.prod(self.weight_shapes[0])
+    
+        # [num_filters, filter_size, stride, pad, nonlinearity]
+        # needs to be consistent with weight_shapes
+        if dataset == 'mnist':            
+            self.args = [[32,3,2,'same',rectify],
+                         [32,3,2,'same',rectify],
+                         [32,3,2,'same',rectify]]
+        elif dataset == 'cifar10':
+            self.args = [[32,5,2,'same',rectify],
+                         [32,5,2,'same',rectify],
+                         [32,5,2,'same',rectify]]
+    
+        self.num_classes = 10
+        self.num_hids = 128
+        self.num_mlp_layers = 1
+        self.num_mlp_params = self.num_classes + \
+                              self.num_hids * self.num_mlp_layers
+        self.num_cnn_params = sum(np.prod(ws) for ws in self.weight_shapes)
+        self.num_params = self.num_mlp_params + self.num_cnn_params
         
         self.coupling = coupling
         super(HyperCNN, self).__init__(lbda=lbda,
@@ -687,25 +702,28 @@ class HyperCNN(Base_BHN):
         h_net = SplitLayer(h_net,self.num_cnn_params,1)
         h_net1 = IndexLayer(h_net,0, (1, self.num_cnn_params))
         h_net2 = IndexLayer(h_net,1, (1, self.num_mlp_params))
+        
 
         # CNN coupling
         h_net1 = lasagne.layers.ReshapeLayer(h_net1,
                                              (self.n_kernels,) + \
                                              (np.prod(self.kernel_shape),))
+
         if self.coupling:
             layer_temp = CoupledDenseLayer(h_net1,self.kernel_size )
             h_net1 = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
-            
+
             for c in range(self.coupling-1):
-                h_net1 = ReverseLayer(h_net1,self.kernel_size)
+                h_net1 = ReverseLayer(h_net1,np.prod(self.kernel_shape))
                 
                 layer_temp = CoupledDenseLayer(h_net1,self.kernel_size )
                 h_net1 = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+
         self.kernel_weights = lasagne.layers.get_output(h_net1,ep)
         h_net1 = lasagne.layers.ReshapeLayer(h_net1,
-                                             (1, self.n_kernels * \
+                                             (1, self.n_kernels *
                                                  np.prod(self.kernel_shape) ) )
 
         # MLP coupling
@@ -730,11 +748,22 @@ class HyperCNN(Base_BHN):
     def _get_primary_net(self):
         nwn = self.num_mlp_params
         t = np.cast['int32'](0)
-        p_net = lasagne.layers.InputLayer([None,1,28,28])
+        k = np.cast['int32'](0)
+        if self.dataset == 'mnist':
+            p_net = lasagne.layers.InputLayer([None,1,28,28])
+        elif self.dataset == 'cifar10':
+            p_net = lasagne.layers.InputLayer([None,3,32,32])
+        print p_net.output_shape
         inputs = {p_net:self.input_var}
         for ws, args in zip(self.weight_shapes,self.args):
             num_param = np.prod(ws)
-            weight = self.weights[:,t:t+num_param].reshape(ws)
+            num_kernel = ws[1]
+            weight = self.kernel_weights[k:k+num_kernel,:]
+            weight = weight.dimshuffle(1,0).reshape(self.kernel_shape + \
+                                                    (num_kernel,))
+
+            weight = weight.dimshuffle(0,3,1,2)
+
             num_filters = args[0]
             filter_size = args[1]
             stride = args[2]
@@ -745,7 +774,12 @@ class HyperCNN(Base_BHN):
                                           nonlinearity=nonl)
             print p_net.output_shape
             t += num_param
-        
+            k += num_kernel
+            
+            if not hasattr(self,'p_net_'):
+                self.p_net_ = p_net
+            
+
         assert self.num_mlp_layers == 1
         for layer in range(self.num_mlp_layers):
             w_layer = lasagne.layers.InputLayer((None,self.num_hids))
@@ -754,6 +788,7 @@ class HyperCNN(Base_BHN):
             p_net = stochasticDenseLayer2([p_net,w_layer],self.num_hids,
                                           nonlinearity=nonlinearities.rectify)
             t += self.num_hids
+            
         w_layer = lasagne.layers.InputLayer((None,self.num_classes))
         weight = self.weights[:,t:t+self.num_classes].reshape((self.wd1,self.num_classes))
         inputs[w_layer] = weight
