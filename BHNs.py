@@ -25,10 +25,21 @@ from lasagne.layers import get_output
 from lasagne.objectives import categorical_crossentropy as cc
 import numpy as np
 
+from helpers import flatten_list
 
 
 
 class Base_BHN(object):
+    """
+    def _get_theano_variables(self):
+    def _get_hyper_net(self):
+    def _get_primary_net(self):
+    def _get_params(self):
+    def _get_elbo(self):
+    def _get_grads(self):
+    def _get_train_func(self):
+    def _get_useful_funcs(self):
+    """
     
     max_norm = 10
     clip_grad = 5
@@ -37,12 +48,14 @@ class Base_BHN(object):
                  lbda=1.,
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
+                 opt='adam',
                  prior = log_normal):
         
         self.lbda = lbda
         self.perdatapoint = perdatapoint
         self.srng = srng
         self.prior = prior
+        self.__dict__.update(locals())
         
         
         self._get_theano_variables()
@@ -115,28 +128,44 @@ class Base_BHN(object):
         """
 
         logdets = self.logdets
-        logqw = - logdets
+        self.logqw = - logdets
         """
         originally...
         logqw = - (0.5*(ep**2).sum(1)+0.5*T.log(2*np.pi)*num_params+logdets)
             --> constants are neglected in this wrapperfrom utils import log_laplace
         """
-        logpw = self.prior(self.weights,0.,-T.log(self.lbda)).sum(1)
+        self.logpw = self.prior(self.weights,0.,-T.log(self.lbda)).sum(1)
         """
         using normal prior centered at zero, with lbda being the inverse 
         of the variance
         """
-        kl = (logqw - logpw).mean()
-        logpyx = - cc(self.y,self.target_var).mean()
-        self.loss = - (logpyx - kl/T.cast(self.dataset_size,floatX))
-    
+        self.kl = (self.logqw - self.logpw).mean()
+        self.logpyx = - cc(self.y,self.target_var).mean()
+        self.loss = - (self.logpyx - self.kl/T.cast(self.dataset_size,floatX))
+
+        # DK - extra monitoring
+        params = self.params
+        ds = self.dataset_size
+        self.logpyx_grad = flatten_list(T.grad(-self.logpyx, params, disconnected_inputs='warn')).norm(2)
+        self.logpw_grad = flatten_list(T.grad(-self.logpw.mean() / ds, params, disconnected_inputs='warn')).norm(2)
+        self.logqw_grad = flatten_list(T.grad(self.logqw.mean() / ds, params, disconnected_inputs='warn')).norm(2)
+        self.monitored = [self.logpyx, self.logpw, self.logqw,
+                          self.logpyx_grad, self.logpw_grad, self.logqw_grad]
+        
     def _get_grads(self):
         grads = T.grad(self.loss, self.params)
         mgrads = lasagne.updates.total_norm_constraint(grads,
                                                        max_norm=self.max_norm)
         cgrads = [T.clip(g, -self.clip_grad, self.clip_grad) for g in mgrads]
-        self.updates = lasagne.updates.adam(cgrads, self.params, 
-                                            learning_rate=self.learning_rate)
+        if self.opt == 'adam':
+            self.updates = lasagne.updates.adam(cgrads, self.params, 
+                                                learning_rate=self.learning_rate)
+        elif self.opt == 'momentum':
+            self.updates = lasagne.updates.nesterov_momentum(cgrads, self.params, 
+                                                learning_rate=self.learning_rate)
+        elif self.opt == 'sgd':
+            self.updates = lasagne.updates.sgd(cgrads, self.params, 
+                                                learning_rate=self.learning_rate)
                                     
     def _get_train_func(self):
         train = theano.function([self.input_var,
@@ -145,6 +174,13 @@ class Base_BHN(object):
                                  self.learning_rate],
                                 self.loss,updates=self.updates)
         self.train_func = train
+        # DK - putting this here, because is doesn't get overwritten by subclasses
+        self.monitor_func = theano.function([self.input_var,
+                                 self.target_var,
+                                 self.dataset_size,
+                                 self.learning_rate],
+                                self.monitored,
+                                on_unused_input='warn')
         
     def _get_useful_funcs(self):
         pass
@@ -615,6 +651,16 @@ class Conv2D_BHN_AL(Base_BHN):
 ################################################33
 ################################################33
 # DK heavily modified version of above
+"""
+def _get_theano_variables(self):
+def _get_hyper_net(self):
+def _get_primary_net(self):
+    def _get_params(self):
+    def _get_elbo(self):
+    def _get_grads(self):
+    def _get_train_func(self):
+def _get_useful_funcs(self):
+"""
 class HyperCNN(Base_BHN):
     """
     CHANGES:
@@ -634,6 +680,7 @@ class HyperCNN(Base_BHN):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
+                 opt='adam',
                  coupling=4,
                  dataset='mnist'):
         
@@ -676,6 +723,7 @@ class HyperCNN(Base_BHN):
         super(HyperCNN, self).__init__(lbda=lbda,
                                          perdatapoint=perdatapoint,
                                          srng=srng,
+                                         opt=opt,
                                          prior=prior)
     
     def _get_theano_variables(self):

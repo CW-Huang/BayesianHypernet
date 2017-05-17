@@ -75,8 +75,15 @@ class MCdropoutCNN(object):
                                                              self.target_var)
         self.loss = losses.mean() + self.dataset_size * 0.
         self.params = lasagne.layers.get_all_params(self.layer)
-        self.updates = lasagne.updates.adam(self.loss,self.params,
-                                            self.learning_rate)
+        if opt == 'adam':
+            self.updates = lasagne.updates.adam(self.loss,self.params,
+                                                self.learning_rate)
+        elif opt == 'momentum':
+            self.updates = lasagne.updates.nesterov_momentum(self.loss,self.params,
+                                                self.learning_rate)
+        elif opt == 'sgd':
+            self.updates = lasagne.updates.sgd(self.loss,self.params,
+                                                self.learning_rate)
 
         print '\tgetting train_func'
         self.train_func = theano.function([self.input_var,
@@ -94,12 +101,26 @@ class MCdropoutCNN(object):
 
 
 
-def train_model(train_func,predict_func,X,Y,Xt,Yt,
+# FIXME: I just realize I broke this for all the non-Hyper models... :/ 
+def train_model(model,
+                X,Y,Xt,Yt,
                 lr0=0.1,lrdecay=1,bs=20,epochs=50):
+
+    predict_func = model.predict
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
-    records=list()
+    records={}
+    records['loss'] = []
+    #records['val_loss'] = []
+    records['acc'] = []
+    records['val_acc'] = []
+    records['logpyx'] = []
+    records['logpw'] = []
+    records['logqw'] = []
+    records['logpyx_grad'] = []
+    records['logpw_grad'] = []
+    records['logqw_grad'] = []
     
     t = 0
     for e in range(epochs):
@@ -113,17 +134,31 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
             x = X[i*bs:(i+1)*bs]
             y = Y[i*bs:(i+1)*bs]
             
-            loss = train_func(x,y,N,lr)
+            loss = model.train_func(x,y,N,lr)
             
-            if t%100==0:
+            if i == 0 or t>8000:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
                 tr_acc = (predict_func(X)==Y.argmax(1)).mean()
                 te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()
                 print '\ttrain acc: {}'.format(tr_acc)
                 print '\ttest acc: {}'.format(te_acc)
+                records['loss'].append(loss)
+                records['acc'].append(tr_acc)
+                records['val_acc'].append(te_acc)
+                monitored = model.monitor_func(x,y,N,lr)
+                # why do I need the mean()???
+                monitored = [mm.mean().item() for mm in monitored]
+                print "logpyx, logpw, logqw", monitored[0:3]
+                print "logpyx_grad, logpw_grad, logqw_grad", monitored[3:]
+                records['logpyx'].append(monitored[0])
+                records['logpw'].append(monitored[1])
+                records['logqw'].append(monitored[2])
+                records['logpyx_grad'].append(monitored[3])
+                records['logpw_grad'].append(monitored[4])
+                records['logqw_grad'].append(monitored[5])
+                if all(np.isnan(mm) for mm in monitored):
+                    assert False
             t+=1
-            
-        records.append(loss)
         
     return records
 
@@ -160,25 +195,27 @@ def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=1000):
 #def main():
 if __name__ == '__main__':
     
+    np.random.seed(3)
     import argparse
     
+    
+    # ALPHABETIC ORDER
     parser = argparse.ArgumentParser()
-    
-    # boolean: 1 -> True ; 0 -> False 
-    parser.add_argument('--perdatapoint',default=0,type=int)
-    parser.add_argument('--lrdecay',default=0,type=int)  
-    
-    parser.add_argument('--lr0',default=0.001,type=float)  
+    parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--coupling',default=4,type=int) 
-    parser.add_argument('--lbda',default=1,type=float)  
-    parser.add_argument('--size',default=10000,type=int)      
-    parser.add_argument('--bs',default=20,type=int)  
-    parser.add_argument('--epochs',default=50,type=int)
-    parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='CNN',type=str)
     parser.add_argument('--dataset',default='cifar10',type=str)
+    parser.add_argument('--epochs',default=100,type=int)
+    parser.add_argument('--lr0',default=0.001,type=float)  
+    parser.add_argument('--lrdecay',default=0,type=int)  
+    parser.add_argument('--lbda',default=1,type=float)  
+    parser.add_argument('--model',default='CNN',type=str)
+    parser.add_argument('--opt',default='adam',type=str)
+    parser.add_argument('--perdatapoint',default=0,type=int)
+    parser.add_argument('--prior',default='log_normal',type=str)
+    parser.add_argument('--size',default=50000,type=int)      
     
     args = parser.parse_args()
+    locals().update(args.__dict__)
     print args
     
     coupling = args.coupling
@@ -218,24 +255,27 @@ if __name__ == '__main__':
                          perdatapoint=perdatapoint,
                          prior=prior,
                          coupling=coupling,
-                         dataset=dataset)
+                         dataset=dataset,
+                         opt=opt)
     elif args.model == 'CNN':
-        model = MCdropoutCNN(dataset=dataset)
+        model = MCdropoutCNN(dataset=dataset,opt=opt)
     elif args.model == 'CNN_spatial_dropout':
         model = MCdropoutCNN(dropout='spatial',
-                             dataset=dataset)
+                             dataset=dataset,opt=opt)
     elif args.model == 'CNN_dropout':
         model = MCdropoutCNN(dropout=1,
-                             dataset=dataset)
+                             dataset=dataset,opt=opt)
     else:
         raise Exception('no model named `{}`'.format(args.model))
         
-    recs = train_model(model.train_func,model.predict,
+    recs = train_model(model,
                        train_x[:size],train_y[:size],
                        valid_x,valid_y,
                        lr0,lrdecay,bs,epochs)
     
-    print '\tevaluating train/valid sets'
+    from helpers import plot_dict
+    plot_dict(recs)
+    
     evaluate_model(model.predict_proba,
                    train_x[:10000],train_y[:size],
                    valid_x,valid_y)

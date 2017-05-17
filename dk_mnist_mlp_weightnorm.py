@@ -23,9 +23,7 @@ from lasagne.objectives import categorical_crossentropy as cc
 import numpy as np
 
 
-
-def flatten_list(plist):
-    return T.concatenate([p.flatten() for p in plist])
+from helpers import flatten_list
 
 
 if 1:#def main():

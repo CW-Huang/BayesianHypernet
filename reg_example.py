@@ -1,4 +1,5 @@
 # Ryan Turner (turnerry@iro.umontreal.ca)
+
 import numpy as np
 from scipy.misc import logsumexp
 import theano.tensor as T
