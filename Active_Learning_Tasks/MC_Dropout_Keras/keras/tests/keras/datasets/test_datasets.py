@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from __future__ import print_function
 import pytest
 from keras.datasets import cifar10, cifar100, reuters, imdb, mnist

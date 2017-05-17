@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import theano
 from theano import tensor as T
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams

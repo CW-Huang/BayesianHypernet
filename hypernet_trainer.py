@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import lasagne
 import numpy as np
 import theano

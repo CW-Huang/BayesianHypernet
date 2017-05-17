@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from __future__ import absolute_import
 from .core import MaskedLayer
 from .. import backend as K

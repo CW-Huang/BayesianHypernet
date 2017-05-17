@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import pytest
 import numpy as np
 from keras.layers.core import Dense, Activation

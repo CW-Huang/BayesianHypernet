@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Deep Dreaming in Keras.
 
 Run the script with:

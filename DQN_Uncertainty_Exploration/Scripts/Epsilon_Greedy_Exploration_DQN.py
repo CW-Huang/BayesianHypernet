@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''
 Using epsilon greedy exploration
 '''

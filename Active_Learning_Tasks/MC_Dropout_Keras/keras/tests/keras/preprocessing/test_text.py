@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from keras.preprocessing.text import Tokenizer, one_hot
 import pytest
 import numpy as np

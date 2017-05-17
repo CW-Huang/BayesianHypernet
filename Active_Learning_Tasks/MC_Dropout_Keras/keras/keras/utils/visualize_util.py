@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import itertools
 from keras.layers.containers import Graph, Sequential
 from keras.layers.core import Merge

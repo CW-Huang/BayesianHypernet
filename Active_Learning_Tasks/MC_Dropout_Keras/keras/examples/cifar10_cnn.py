@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Train a simple deep CNN on the CIFAR10 small images dataset.
 
 GPU run command:

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Neural style transfer with Keras.
 
 Before running this script, download the weights for the VGG16 model at:

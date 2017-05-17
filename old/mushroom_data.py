@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # modified from https://github.com/hlin117/data-science/blob/master/classification/mushroom.py
 import pandas as pd
 import numpy as np

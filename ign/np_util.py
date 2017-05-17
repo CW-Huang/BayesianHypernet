@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Ryan Turner (turnerry@iro.umontreal.ca)
 import numpy as np
 import scipy.linalg as sl

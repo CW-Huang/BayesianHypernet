@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import tensorflow as tf
 import numpy as np
 from .common import _FLOATX, _EPSILON

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from .. import initializations
 from ..layers.core import MaskedLayer
 from .. import backend as K

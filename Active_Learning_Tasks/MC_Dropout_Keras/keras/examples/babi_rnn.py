@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Trains two recurrent neural networks based upon a story and a question.
 The resulting merged vector is then queried to answer a range of bAbI tasks.
 

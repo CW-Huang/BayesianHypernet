@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from BHNs import HyperCNN
 from ops import load_mnist
 from utils import log_normal, log_laplace

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # http://www.scipy-lectures.org/intro/matplotlib/matplotlib.html
 import numpy as np
 import matplotlib.pyplot as plt

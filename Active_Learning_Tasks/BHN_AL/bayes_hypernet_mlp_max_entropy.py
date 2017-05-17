@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from BHNs import MLPWeightNorm_BHN
 from ops import load_mnist
 from utils import log_normal, log_laplace

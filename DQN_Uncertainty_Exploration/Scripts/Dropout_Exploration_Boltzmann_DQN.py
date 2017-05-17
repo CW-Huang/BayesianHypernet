@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import copy
 import gym
 from gym import wrappers

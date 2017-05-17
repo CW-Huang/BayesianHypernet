@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # code repurposed from the tf-learn library
 import sys
 import os
