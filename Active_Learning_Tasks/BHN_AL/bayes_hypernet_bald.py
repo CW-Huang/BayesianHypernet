@@ -4,8 +4,19 @@ from utils import log_normal, log_laplace
 import numpy as np
 import random
 random.seed(5001)
-from sklearn.preprocessing import OneHotEncoder
-floatX = 'float32'
+
+
+
+def to_categorical(y):
+    num_classes=10
+    y = np.array(y, dtype='int').ravel()
+    if not num_classes:
+        num_classes = np.max(y) + 1
+    n = y.shape[0]
+    categorical = np.zeros((n, num_classes))
+    categorical[np.arange(n), y] = 1
+
+    return categorical
 
 
 def split_train_pool_data(X_train, y_train):
@@ -82,20 +93,12 @@ def get_initial_training_data(X_train_All, y_train_All):
 
     X_train = np.concatenate((X_0, X_1, X_2, X_3, X_4, X_5, X_6, X_7, X_8, X_9), axis=0 )
     y_train = np.concatenate((y_0, y_1, y_2, y_3, y_4, y_5, y_6, y_7, y_8, y_9), axis=0 )
-
-    enc = OneHotEncoder(10)
-    y_train = enc.fit_transform(y_train).toarray().reshape(y_train.shape[0],10).astype(int)
-
-
+    
+    y_train = to_categorical(y_train)
 
     return X_train, y_train
 
 
-def to_categorical(y):
-    enc = OneHotEncoder(10)
-    y_output = enc.fit_transform(y).toarray().reshape(y.shape[0],10).astype(int)
-
-    return y_output
 
 
 
@@ -166,7 +169,11 @@ def active_learning(acquisition_iterations):
         
     train_x, train_y, pool_x, pool_y = split_train_pool_data(train_x, train_y)
 
+    print ("train_x", train_x.shape)
+    print ("train_y", train_y.shape)
+
     train_y_multiclass = train_y.argmax(1)
+
 
     train_x, train_y = get_initial_training_data(train_x, train_y_multiclass)
 
@@ -190,6 +197,7 @@ def active_learning(acquisition_iterations):
 
     all_accuracy = test_accuracy
 
+    print (X)
 
 
     for i in range(acquisition_iterations):
