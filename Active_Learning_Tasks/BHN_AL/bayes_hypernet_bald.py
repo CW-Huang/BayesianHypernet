@@ -169,9 +169,6 @@ def active_learning(acquisition_iterations):
         
     train_x, train_y, pool_x, pool_y = split_train_pool_data(train_x, train_y)
 
-    print ("train_x", train_x.shape)
-    print ("train_y", train_y.shape)
-
     train_y_multiclass = train_y.argmax(1)
 
 
@@ -197,7 +194,7 @@ def active_learning(acquisition_iterations):
 
     all_accuracy = test_accuracy
 
-	
+
     for i in range(acquisition_iterations):
 
     	print('POOLING ITERATION', i)
