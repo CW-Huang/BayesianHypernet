@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Train a recurrent convolutional network on the IMDB sentiment
 classification task.
 

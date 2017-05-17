@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''This example demonstrates the use of Convolution1D for text classification.
 
 Run on GPU: THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 python imdb_cnn.py

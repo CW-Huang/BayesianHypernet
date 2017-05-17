@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """Test keras.layers.core.Layer.__call__"""
 
 import pytest

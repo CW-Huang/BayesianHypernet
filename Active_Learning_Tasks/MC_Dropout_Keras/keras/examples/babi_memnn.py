@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Train a memory network on the bAbI dataset.
 
 References:

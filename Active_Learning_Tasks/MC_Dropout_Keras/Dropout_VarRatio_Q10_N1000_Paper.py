@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from __future__ import print_function
 from keras.datasets import mnist
 from keras.preprocessing.image import ImageDataGenerator

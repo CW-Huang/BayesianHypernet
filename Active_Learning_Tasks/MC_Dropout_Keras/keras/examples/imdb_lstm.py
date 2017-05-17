@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Train a LSTM on the IMDB sentiment classification task.
 
 The dataset is actually too small for LSTM to be of any advantage

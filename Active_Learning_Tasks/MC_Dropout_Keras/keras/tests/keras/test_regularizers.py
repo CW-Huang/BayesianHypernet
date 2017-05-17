@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import pytest
 import numpy as np
 np.random.seed(1337) # for reproducibility

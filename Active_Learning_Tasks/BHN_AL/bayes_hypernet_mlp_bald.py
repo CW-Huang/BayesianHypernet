@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from BHNs import MLPWeightNorm_BHN
 from ops import load_mnist
 from utils import log_normal, log_laplace
@@ -86,6 +87,7 @@ def get_initial_training_data(X_train_All, y_train_All):
 def train_model(train_func,predict_func,X,Y,Xt,Yt,
                 lr0=0.1,lrdecay=1,bs=20,epochs=50):
     
+    Y = Y.astype('float32')
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
     records=list()

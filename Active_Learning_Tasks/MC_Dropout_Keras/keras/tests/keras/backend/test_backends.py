@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import sys
 import pytest
 from numpy.testing import assert_allclose

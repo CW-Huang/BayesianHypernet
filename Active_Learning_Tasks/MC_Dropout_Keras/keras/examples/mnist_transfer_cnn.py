@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Transfer learning toy example:
 
 1- Train a simple convnet on the MNIST dataset the first 5 digits [0..4].
