@@ -4,26 +4,28 @@ from utils import log_normal, log_laplace
 import numpy as np
 import random
 random.seed(5001)
-
-def split_train_pool_data(X_train, y_train, X_val, y_val):
-
-    random_split = np.asarray(random.sample(range(0,X_train.shape[0]), X_train.shape[0]))
-
-    X_train = X_train[random_split, :, :, :]
-    y_train = y_train[random_split]
-
-    X_valid = X_train[10000:15000, :, :, :]
-    y_valid = y_train[10000:15000]
-
-    X_pool = X_train[20000:60000, :, :, :]
-    y_pool = y_train[20000:60000]
+from sklearn.preprocessing import OneHotEncoder
 
 
-    X_train = X_train[0:10000, :, :, :]
-    y_train = y_train[0:10000]
+def split_train_pool_data(X_train, y_train):
+
+    X_train_All = X_train
+    y_train_All = y_train
+
+    random_split = np.asarray(random.sample(range(0,X_train_All.shape[0]), X_train_All.shape[0]))
+
+    X_train_All = X_train_All[random_split, :, :, :]
+    y_train_All = y_train_All[random_split]
+
+    X_pool = X_train_All[10000:50000, :, :, :]
+    y_pool = y_train_All[10000:50000]
 
 
-    return X_train, y_train, X_valid, y_valid, X_pool, y_pool
+    X_train = X_train_All[0:10000, :, :, :]
+    y_train = y_train_All[0:10000]
+
+
+    return X_train, y_train, X_pool, y_pool
 
 def get_initial_training_data(X_train_All, y_train_All):
     #training data to have equal distribution of classes
@@ -80,13 +82,26 @@ def get_initial_training_data(X_train_All, y_train_All):
     X_train = np.concatenate((X_0, X_1, X_2, X_3, X_4, X_5, X_6, X_7, X_8, X_9), axis=0 )
     y_train = np.concatenate((y_0, y_1, y_2, y_3, y_4, y_5, y_6, y_7, y_8, y_9), axis=0 )
 
+    enc = OneHotEncoder(10)
+    y_train = enc.fit_transform(y_train).toarray().reshape(y_train.shape[0],10).astype(int)
+
+
 
     return X_train, y_train
 
+
+def to_categorical(y):
+    enc = OneHotEncoder(10)
+    y_output = enc.fit_transform(y).toarray().reshape(y.shape[0],10).astype(int)
+
+    return y_output
+
+
+
+
 def train_model(train_func,predict_func,X,Y,Xt,Yt,
                 lr0=0.1,lrdecay=1,bs=20,epochs=50):
-    
-    print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
+
     N = X.shape[0]    
     records=list()
     
@@ -118,7 +133,7 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
 
 
 def test_model(predict_proba, X_test, y_test):
-    mc_samples = 1000
+    mc_samples = 5
     y_pred_all = np.zeros((mc_samples, X_test.shape[0], 10))
 
     for m in range(mc_samples):
@@ -135,7 +150,7 @@ def test_model(predict_proba, X_test, y_test):
 
 def active_learning(acquisition_iterations):
 
-    bh_iterations = 100
+    bh_iterations = 5
     nb_classes = 10
     Queries = 10
     all_accuracy = 0
@@ -144,15 +159,18 @@ def active_learning(acquisition_iterations):
 
     filename = '../../mnist.pkl.gz'
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
-
     train_x = train_x.reshape(50000,1,28,28)
     valid_x = valid_x.reshape(10000,1,28,28)
     test_x = test_x.reshape(10000,1,28,28)
+        
+    train_x, train_y, pool_x, pool_y = split_train_pool_data(train_x, train_y)
 
-    train_x, train_y, valid_x, valid_y, pool_x, pool_y = split_train_pool_data(train_x, train_y, valid_x, valid_y)
-    train_x, train_y = get_initial_training_data(train_x, train_y)
+    train_y_multiclass = train_y.argmax(1)
 
-    print ("Training Set Size", train_x.shape)
+    train_x, train_y = get_initial_training_data(train_x, train_y_multiclass)
+
+    print ("Initial Training Data", train_x.shape)
+
 
     model = HyperCNN(lbda=lbda,
                               perdatapoint=perdatapoint,
@@ -167,6 +185,8 @@ def active_learning(acquisition_iterations):
    
     test_accuracy = test_model(model.predict_proba, test_x, test_y)
 
+    print ("Test Accuracy", test_accuracy)
+
     all_accuracy = test_accuracy
 
 
@@ -174,12 +194,13 @@ def active_learning(acquisition_iterations):
     for i in range(acquisition_iterations):
 
     	print('POOLING ITERATION', i)
-    	pool_subset = 2000
+    	pool_subset = 50
 
     	pool_subset_dropout = np.asarray(random.sample(range(0,pool_x.shape[0]), pool_subset))
 
     	X_pool_Dropout = pool_x[pool_subset_dropout, :, :, :]
     	y_pool_Dropout = pool_y[pool_subset_dropout]
+
 
     	score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
     	All_Entropy_BH = np.zeros(shape=X_pool_Dropout.shape[0])
@@ -225,7 +246,6 @@ def active_learning(acquisition_iterations):
         Pooled_X = X_pool_Dropout[x_pool_index, :, :, :]
         Pooled_Y = y_pool_Dropout[x_pool_index] 
 
-
         delete_Pool_X = np.delete(pool_x, (pool_subset_dropout), axis=0)
         delete_Pool_Y = np.delete(pool_y, (pool_subset_dropout), axis=0)        
 
@@ -236,10 +256,10 @@ def active_learning(acquisition_iterations):
         pool_x = np.concatenate((pool_x, X_pool_Dropout), axis=0)
         pool_y = np.concatenate((pool_y, y_pool_Dropout), axis=0)
 
+
+
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
         train_y = np.concatenate((train_y, Pooled_Y), axis=0)
-
-        print ("Training Set Size", train_x.shape)
 
         recs = train_model(model.train_func,model.predict,
 	                       train_x[:size],train_y[:size],
