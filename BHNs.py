@@ -683,6 +683,9 @@ class HyperCNN(Base_BHN):
                  prior = log_normal,
                  opt='adam',
                  coupling=4,
+                 pad='same',
+                 stride=2,
+                 kernel_width=None,
                  dataset='mnist'):
         
         self.dataset = dataset
@@ -695,22 +698,33 @@ class HyperCNN(Base_BHN):
             self.weight_shapes = [(32,3,5,5),        # -> (None, 16, 16, 16)
                                   (32,32,5,5),       # -> (None, 16,  8,  8)
                                   (32,32,5,5)]       # -> (None, 16,  4,  4)
+        # [num_filters, filter_size, stride, pad, nonlinearity]
+        # needs to be consistent with weight_shapes
+        if dataset == 'mnist':            
+            self.args = [[32,3,stride,pad, rectify],
+                         [32,3,stride,pad, rectify],
+                         [32,3,stride,pad, rectify]]
+        elif dataset == 'cifar10':
+            self.args = [[32,5,stride,pad, rectify],
+                         [32,5,stride,pad, rectify],
+                         [32,5,stride,pad, rectify]]
+
+
+
+        if kernel_width is not None: # OVERRIDE dataset argument!!!
+            self.weight_shapes = [(32,1,kernel_width,kernel_width),        # -> (None, 16, 14, 14)
+                                  (32,32,kernel_width,kernel_width),       # -> (None, 16,  7,  7)
+                                  (32,32,kernel_width,kernel_width)]       # -> (None, 16,  4,  4)
+            self.args = [[32,kernel_width,stride,pad, rectify],
+                         [32,kernel_width,stride,pad, rectify],
+                         [32,kernel_width,stride,pad, rectify]]
                                   
+
         self.n_kernels = np.array(self.weight_shapes)[:,1].sum()
         self.kernel_shape = self.weight_shapes[0][:1]+self.weight_shapes[0][2:]
         print "kernel_shape", self.kernel_shape
         self.kernel_size = np.prod(self.weight_shapes[0])
     
-        # [num_filters, filter_size, stride, pad, nonlinearity]
-        # needs to be consistent with weight_shapes
-        if dataset == 'mnist':            
-            self.args = [[32,3,2,'same',rectify],
-                         [32,3,2,'same',rectify],
-                         [32,3,2,'same',rectify]]
-        elif dataset == 'cifar10':
-            self.args = [[32,5,2,'same',rectify],
-                         [32,5,2,'same',rectify],
-                         [32,5,2,'same',rectify]]
     
         self.num_classes = 10
         self.num_hids = 128

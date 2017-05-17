@@ -118,13 +118,14 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
         else:
             lr = lr0         
             
-        for i in range(N/bs):
+        #for i in range(N/bs):
+        for i in range( N/bs + int(N%bs > 0) ):
             x = X[i*bs:(i+1)*bs]
             y = Y[i*bs:(i+1)*bs]
             
             loss = train_func(x,y,N,lr)
             
-            if t%100==0:
+            if i==0:#t%100==0:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
                 tr_acc = (predict_func(X)==Y.argmax(1)).mean()
                 te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()
@@ -181,6 +182,9 @@ def active_learning(acquisition_iterations):
     model = HyperCNN(lbda=lbda,
                               perdatapoint=perdatapoint,
                               prior=prior,
+                              kernel_width=4,
+                              pad='valid',
+                              stride=1,
                               coupling=coupling)
     
     
@@ -267,6 +271,16 @@ def active_learning(acquisition_iterations):
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
         train_y = np.concatenate((train_y, Pooled_Y), axis=0).astype('float32')
 
+
+        if 0:# don't warm start
+            model = HyperCNN(lbda=lbda,
+                              perdatapoint=perdatapoint,
+                              prior=prior,
+                              kernel_width=4,
+                              pad='valid',
+                              stride=1,
+                              coupling=coupling)
+    
         recs = train_model(model.train_func,model.predict,
 	                       train_x[:size],train_y[:size],
 	                       valid_x,valid_y,
@@ -310,14 +324,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     
     # boolean: 1 -> True ; 0 -> False
-    parser.add_argument('--coupling',default=0,type=int)  
+    parser.add_argument('--coupling',default=4,type=int)  
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)  
     
-    parser.add_argument('--lr0',default=0.1,type=float)  
+    parser.add_argument('--lr0',default=0.0001,type=float)  
     parser.add_argument('--lbda',default=1,type=float)  
     parser.add_argument('--size',default=10000,type=int)      
-    parser.add_argument('--bs',default=20,type=int)  
+    parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--epochs',default=50,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
     args = parser.parse_args()

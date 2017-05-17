@@ -336,7 +336,7 @@ if __name__ == '__main__':
     
     print '\tevaluating train/test sets'
     evaluate_model(model.predict_proba,
-                   train_x[:10000],train_y[:size],
+                   train_x[:size],train_y[:size],
                    test_x,test_y)
 
 
