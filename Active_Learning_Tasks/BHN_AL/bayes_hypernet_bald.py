@@ -197,9 +197,7 @@ def active_learning(acquisition_iterations):
 
     all_accuracy = test_accuracy
 
-    print (X)
-
-
+	
     for i in range(acquisition_iterations):
 
     	print('POOLING ITERATION', i)
