@@ -8,8 +8,14 @@ Created on Sun May 14 19:49:51 2017
 
 from BHNs import MLPWeightNorm_BHN
 from ops import load_mnist, load_cifar10
-from utils import log_normal, log_laplace
+#from utils import log_normal, log_laplace
+import numpy
 import numpy as np
+
+# utils issues...
+def log_normal(x,mean,log_var,eps=0.0):
+    c = - 0.5 * T.log(2*np.pi)
+    return c - log_var/2. - (x - mean)**2 / (2. * T.exp(log_var) + eps)
 
 import lasagne
 import theano
@@ -21,7 +27,9 @@ from BHNs import HyperCNN
     
 class MCdropoutCNN(object):
                      
-    def __init__(self, dropout=None, dataset='mnist'):
+    def __init__(self, dropout=None, 
+            opt='adam',
+            dataset='mnist'):
         if dataset == 'mnist':
             weight_shapes = [(32,1,3,3),        # -> (None, 16, 14, 14)
                              (32,32,3,3),       # -> (None, 16,  7,  7)
@@ -105,7 +113,8 @@ class MCdropoutCNN(object):
 # FIXME: I just realize I broke this for all the non-Hyper models... :/ 
 def train_model(model,
                 X,Y,Xt,Yt,
-                lr0=0.1,lrdecay=1,bs=20,epochs=50):
+                lr0=0.1,lrdecay=1,bs=20,epochs=50,
+                save_path=None):
 
     predict_func = model.predict
     
@@ -137,7 +146,7 @@ def train_model(model,
             
             loss = model.train_func(x,y,N,lr)
             
-            if i == 0 or t>8000:
+            if i == 0:# or t>8000:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
                 tr_acc = (predict_func(X)==Y.argmax(1)).mean()
                 te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()
@@ -159,6 +168,8 @@ def train_model(model,
                 records['logqw_grad'].append(monitored[5])
                 if all(np.isnan(mm) for mm in monitored):
                     assert False
+                if save_path is not None:
+                    np.save(save_path, records)
             t+=1
         
     return records
@@ -196,15 +207,16 @@ def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=1000):
 #def main():
 if __name__ == '__main__':
     
-    np.random.seed(3)
+
+    import os
+    import sys
     import argparse
-    
-    
+
     # ALPHABETIC ORDER
     parser = argparse.ArgumentParser()
     parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--coupling',default=4,type=int) 
-    parser.add_argument('--dataset',default='cifar10',type=str)
+    parser.add_argument('--dataset',default='mnist',type=str)
     parser.add_argument('--epochs',default=100,type=int)
     parser.add_argument('--lr0',default=0.001,type=float)  
     parser.add_argument('--lrdecay',default=0,type=int)  
@@ -214,26 +226,66 @@ if __name__ == '__main__':
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
     parser.add_argument('--size',default=50000,type=int)      
-    
+    #
+    parser.add_argument('--save', type=int, default=0)
+    parser.add_argument('--save_dir', type=str, default="./")
+    parser.add_argument('--seed', type=int, default=1337)
+    parser.add_argument('--verbose', type=int, default=1)
+    #locals().update(parser.parse_args().__dict__)
+
+
+    # ---------------------------------------------------------------
+    # PARSE ARGS and SET-UP SAVING (save_path/exp_settings.txt)
+    # NTS: we name things after the filename + provided args.  We could also save versions (ala Janos), and/or time-stamp things.
+    # TODO: loading
+
     args = parser.parse_args()
-    locals().update(args.__dict__)
+    args_dict = args.__dict__
+
+    # save_path = filename + PROVIDED parser arguments
+    flags = [flag.lstrip('--') for flag in sys.argv[1:]]
+    flags = [ff for ff in flags if not ff.startswith('save_dir')]
+    save_dir = args_dict.pop('save_dir')
+    save_path = os.path.join(save_dir, os.path.basename(__file__) + '___' + '_'.join(flags))
+    args_dict['save_path'] = save_path
+
+    if args_dict['save']:
+        # make directory for results, save ALL parser arguments
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        with open (os.path.join(save_path,'exp_settings.txt'), 'w') as f:
+            for key in sorted(args_dict):
+                f.write(key+'\t'+str(args_dict[key])+'\n')
+        print( save_path)
+        #assert False
+
+    locals().update(args_dict)
+
+
     print args
-    
-    coupling = args.coupling
-    perdatapoint = args.perdatapoint
-    lrdecay = args.lrdecay
-    lr0 = args.lr0
-    lbda = np.cast['float32'](args.lbda)
-    bs = args.bs
-    epochs = args.epochs
-    dataset = args.dataset
-    if args.prior=='log_normal':
+    lbda = np.cast['float32'](lbda)
+
+
+    # ---------------------------------------------------------------
+    # SET RANDOM SEED (TODO: rng vs. random.seed)
+
+
+    if seed is not None:
+        np.random.seed(seed)  # for reproducibility
+        rng = numpy.random.RandomState(seed)
+    else:
+        rng = numpy.random.RandomState(np.random.randint(2**32 - 1))
+
+    # ---------------------------------------------------------------
+    # RUN STUFF 
+
+    if prior=='log_normal':
         prior = log_normal
-    elif args.prior=='log_laplace':
+    elif prior=='log_laplace':
         prior = log_laplace
     else:
-        raise Exception('no prior named `{}`'.format(args.prior))
-    size = max(10,min(50000,args.size))
+        raise Exception('no prior named `{}`'.format(prior))
+    size = max(10,min(50000,size))
     
     if dataset=='mnist':
         filename = '/data/lisa/data/mnist.pkl.gz'
@@ -251,23 +303,23 @@ if __name__ == '__main__':
         valid_y = test_y.copy()
     
 
-    if args.model == 'hyperCNN':
+    if model == 'hyperCNN':
         model = HyperCNN(lbda=lbda,
                          perdatapoint=perdatapoint,
                          prior=prior,
                          coupling=coupling,
                          dataset=dataset,
                          opt=opt)
-    elif args.model == 'CNN':
+    elif model == 'CNN':
         model = MCdropoutCNN(dataset=dataset,opt=opt)
-    elif args.model == 'CNN_spatial_dropout':
+    elif model == 'CNN_spatial_dropout':
         model = MCdropoutCNN(dropout='spatial',
                              dataset=dataset,opt=opt)
-    elif args.model == 'CNN_dropout':
+    elif model == 'CNN_dropout':
         model = MCdropoutCNN(dropout=1,
                              dataset=dataset,opt=opt)
     else:
-        raise Exception('no model named `{}`'.format(args.model))
+        raise Exception('no model named `{}`'.format(model))
         
     recs = train_model(model,
                        train_x[:size],train_y[:size],
