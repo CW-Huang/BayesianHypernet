@@ -183,6 +183,7 @@ def active_learning(acquisition_iterations):
                               coupling=coupling)
     
     
+    train_y = train_y.astype('float32')
     recs = train_model(model.train_func,model.predict,
                        train_x[:size],train_y[:size],
                        valid_x,valid_y,
@@ -263,7 +264,7 @@ def active_learning(acquisition_iterations):
 
 
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
-        train_y = np.concatenate((train_y, Pooled_Y), axis=0)
+        train_y = np.concatenate((train_y, Pooled_Y), axis=0).astype('float32')
 
         recs = train_model(model.train_func,model.predict,
 	                       train_x[:size],train_y[:size],
