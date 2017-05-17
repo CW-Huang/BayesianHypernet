@@ -20,10 +20,11 @@ def load_mnist(filename):
     tr_x,tr_y = tr
     va_x,va_y = va
     te_x,te_y = te
+    # doesn't work on hades :/ 
     enc = OneHotEncoder(10)
-    tr_y = enc.fit_transform(tr_y).toarray().reshape(50000,10).astype(int)
-    va_y = enc.fit_transform(va_y).toarray().reshape(10000,10).astype(int)    
-    te_y = enc.fit_transform(te_y).toarray().reshape(10000,10).astype(int)
+    tr_y = enc.fit_transform(tr_y.reshape((-1,1))).toarray().reshape(50000,10).astype(int)
+    va_y = enc.fit_transform(va_y.reshape((-1,1))).toarray().reshape(10000,10).astype(int)    
+    te_y = enc.fit_transform(te_y.reshape((-1,1))).toarray().reshape(10000,10).astype(int)
     f = lambda d:d.astype(floatX) 
     return (f(d) for d in [tr_x, tr_y, va_x, va_y, te_x, te_y])
     

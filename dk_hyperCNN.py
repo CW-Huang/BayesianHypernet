@@ -262,6 +262,7 @@ if __name__ == '__main__':
     locals().update(args_dict)
 
 
+    print "\n\n\n-----------------------------------------------------------------------\n\n\n"
     print args
     lbda = np.cast['float32'](lbda)
 
@@ -330,7 +331,7 @@ if __name__ == '__main__':
     plot_dict(recs)
     
     evaluate_model(model.predict_proba,
-                   train_x[:10000],train_y[:size],
+                   train_x[:size],train_y[:size],
                    valid_x,valid_y)
     
     print '\tevaluating train/test sets'
