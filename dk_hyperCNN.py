@@ -6,7 +6,7 @@ Created on Sun May 14 19:49:51 2017
 """
 
 from BHNs import MLPWeightNorm_BHN
-from ops import load_mnist
+from ops import load_mnist, load_cifar10
 from utils import log_normal, log_laplace
 import numpy as np
 
@@ -20,10 +20,15 @@ from BHNs import HyperCNN
     
 class MCdropoutCNN(object):
                      
-    def __init__(self, dropout=None):
-        weight_shapes = [(32,1,3,3),        # -> (None, 16, 14, 14)
-                         (32,32,3,3),       # -> (None, 16,  7,  7)
-                         (32,32,3,3)]       # -> (None, 16,  4,  4)
+    def __init__(self, dropout=None, dataset='mnist'):
+        if dataset == 'mnist':
+            weight_shapes = [(32,1,3,3),        # -> (None, 16, 14, 14)
+                             (32,32,3,3),       # -> (None, 16,  7,  7)
+                             (32,32,3,3)]       # -> (None, 16,  4,  4)
+        elif dataset == 'cifar10':
+            weight_shapes = [(32,3,5,5),        # -> (None, 16, 16, 16)
+                             (32,32,5,5),       # -> (None, 16,  8,  8)
+                             (32,32,5,5)]       # -> (None, 16,  4,  4)
         n_kernels = np.array(weight_shapes)[:,1].sum()
         kernel_shape = weight_shapes[0][:1]+weight_shapes[0][2:]
         
@@ -33,7 +38,10 @@ class MCdropoutCNN(object):
         self.__dict__.update(locals())
         ##################
         
-        layer = lasagne.layers.InputLayer([None,1,28,28])
+        if dataset == 'mnist':
+            layer = lasagne.layers.InputLayer([None,1,28,28])
+        elif dataset == 'cifar10':
+            layer = lasagne.layers.InputLayer([None,3,32,32])
         
         for j,ws in enumerate(self.weight_shapes):
             num_filters = ws[1]
@@ -122,8 +130,8 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
 
 def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=1000):
     n = X.shape[0]
-    MCt = np.zeros((n_mc,n,10))
-    MCv = np.zeros((n_mc,n,10))
+    MCt = np.zeros((n_mc,X.shape[0],10))
+    MCv = np.zeros((n_mc,Xt.shape[0],10))
     for i in range(n_mc):
         MCt[i] = predict_proba(X)
         MCv[i] = predict_proba(Xt)
@@ -143,11 +151,11 @@ def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=1000):
     
     ind = ind_negative[-1] #TO-DO: complete evaluation
     for ii in range(15): 
-        print np.round(MCt[ii][ind] * 1000)
+        print np.round(MCv[ii][ind] * 1000)
     
     ind = ind_negative[-2] #TO-DO: complete evaluation
     for ii in range(15): 
-        print np.round(MCt[ii][ind] * 1000)
+        print np.round(MCv[ii][ind] * 1000)
 
 #def main():
 if __name__ == '__main__':
@@ -168,6 +176,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs',default=50,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
     parser.add_argument('--model',default='CNN',type=str)
+    parser.add_argument('--dataset',default='cifar10',type=str)
     
     args = parser.parse_args()
     print args
@@ -179,6 +188,7 @@ if __name__ == '__main__':
     lbda = np.cast['float32'](args.lbda)
     bs = args.bs
     epochs = args.epochs
+    dataset = args.dataset
     if args.prior=='log_normal':
         prior = log_normal
     elif args.prior=='log_laplace':
@@ -187,23 +197,36 @@ if __name__ == '__main__':
         raise Exception('no prior named `{}`'.format(args.prior))
     size = max(10,min(50000,args.size))
     
-    filename = '/data/lisa/data/mnist.pkl.gz'
-    train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
-    train_x = train_x.reshape((-1, 1, 28, 28))
-    valid_x = valid_x.reshape((-1, 1, 28, 28))
-    test_x = test_x.reshape((-1, 1, 28, 28))
+    if dataset=='mnist':
+        filename = '/data/lisa/data/mnist.pkl.gz'
+        train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
+        train_x = train_x.reshape((-1, 1, 28, 28))
+        valid_x = valid_x.reshape((-1, 1, 28, 28))
+        test_x = test_x.reshape((-1, 1, 28, 28))
+    elif dataset=='cifar10':
+        filename = 'cifar10.pkl'
+        train_x, train_y, test_x, test_y = load_cifar10(filename)
+        train_x = train_x.reshape((-1, 3, 32, 32))
+        test_x = test_x.reshape((-1, 3, 32, 32))
+        
+        valid_x = test_x.copy()
+        valid_y = test_y.copy()
     
+
     if args.model == 'hyperCNN':
         model = HyperCNN(lbda=lbda,
                          perdatapoint=perdatapoint,
                          prior=prior,
-                         coupling=coupling)
+                         coupling=coupling,
+                         dataset=dataset)
     elif args.model == 'CNN':
-        model = MCdropoutCNN()
+        model = MCdropoutCNN(dataset=dataset)
     elif args.model == 'CNN_spatial_dropout':
-        model = MCdropoutCNN(dropout='spatial')
+        model = MCdropoutCNN(dropout='spatial',
+                             dataset=dataset)
     elif args.model == 'CNN_dropout':
-        model = MCdropoutCNN(dropout=1)
+        model = MCdropoutCNN(dropout=1,
+                             dataset=dataset)
     else:
         raise Exception('no model named `{}`'.format(args.model))
         
@@ -212,12 +235,14 @@ if __name__ == '__main__':
                        valid_x,valid_y,
                        lr0,lrdecay,bs,epochs)
     
+    print '\tevaluating train/valid sets'
     evaluate_model(model.predict_proba,
-                   train_x[:size],train_y[:size],
+                   train_x[:10000],train_y[:size],
                    valid_x,valid_y)
     
+    print '\tevaluating train/test sets'
     evaluate_model(model.predict_proba,
-                   train_x[:size],train_y[:size],
+                   train_x[:10000],train_y[:size],
                    test_x,test_y)
 
 
