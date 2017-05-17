@@ -5,6 +5,7 @@ import numpy as np
 import random
 random.seed(5001)
 from sklearn.preprocessing import OneHotEncoder
+floatX = 'float32'
 
 
 def split_train_pool_data(X_train, y_train):
@@ -133,7 +134,7 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
 
 
 def test_model(predict_proba, X_test, y_test):
-    mc_samples = 5
+    mc_samples = 100
     y_pred_all = np.zeros((mc_samples, X_test.shape[0], 10))
 
     for m in range(mc_samples):
@@ -150,7 +151,7 @@ def test_model(predict_proba, X_test, y_test):
 
 def active_learning(acquisition_iterations):
 
-    bh_iterations = 5
+    bh_iterations = 100
     nb_classes = 10
     Queries = 10
     all_accuracy = 0
@@ -194,7 +195,7 @@ def active_learning(acquisition_iterations):
     for i in range(acquisition_iterations):
 
     	print('POOLING ITERATION', i)
-    	pool_subset = 50
+    	pool_subset = 2000
 
     	pool_subset_dropout = np.asarray(random.sample(range(0,pool_x.shape[0]), pool_subset))
 
@@ -207,7 +208,7 @@ def active_learning(acquisition_iterations):
 
     	all_bh_classes = np.zeros(shape=(X_pool_Dropout.shape[0], bh_iterations))
 
-        print ("BH Iterations")
+
     	for d in range(bh_iterations):
     		bh_score = model.predict_proba(X_pool_Dropout)
     		score_All = score_All + bh_score
