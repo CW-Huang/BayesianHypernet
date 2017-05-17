@@ -221,7 +221,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr0',default=0.001,type=float)  
     parser.add_argument('--lrdecay',default=0,type=int)  
     parser.add_argument('--lbda',default=1,type=float)  
-    parser.add_argument('--model',default='CNN',type=str)
+    parser.add_argument('--model',default='hyperCNN',type=str)
     parser.add_argument('--opt',default='adam',type=str)
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
@@ -262,6 +262,7 @@ if __name__ == '__main__':
     locals().update(args_dict)
 
 
+    print "\n\n\n-----------------------------------------------------------------------\n\n\n"
     print args
     lbda = np.cast['float32'](lbda)
 
@@ -330,12 +331,12 @@ if __name__ == '__main__':
     plot_dict(recs)
     
     evaluate_model(model.predict_proba,
-                   train_x[:10000],train_y[:size],
+                   train_x[:size],train_y[:size],
                    valid_x,valid_y)
     
     print '\tevaluating train/test sets'
     evaluate_model(model.predict_proba,
-                   train_x[:10000],train_y[:size],
+                   train_x[:size],train_y[:size],
                    test_x,test_y)
 
 

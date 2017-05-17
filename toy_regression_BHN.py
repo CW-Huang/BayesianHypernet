@@ -40,13 +40,17 @@ DATASET = 'identity'
 
 if DATASET == 'identity':
     nhids = 1
-    coupling_hids = 40
-    init = 0
-    lbda = 1e-5
+    coupling = 6
+    coupling_hids = 100
+    init_W = -0
+    init_b = 0
+    lbda = 20
 else:
     nhids = 10
+    coupling = 6
     coupling_hids = 10
-    init = -7
+    init_W = -7
+    init_b = 0
     lbda = 2
 
 
@@ -56,6 +60,7 @@ class ToyRegression(Base_BHN):
     weight_shapes = [(1, nhids),
                      #(nhids,nhids),
                      (nhids, 2)]
+    
     
     num_params = sum(ws[1] for ws in weight_shapes)
     
@@ -70,9 +75,9 @@ class ToyRegression(Base_BHN):
         self.coupling = coupling
         self.__dict__.update(locals())
         super(ToyRegression, self).__init__(lbda=lbda,
-                                                perdatapoint=perdatapoint,
-                                                srng=srng,
-                                                prior=prior)
+                                            perdatapoint=perdatapoint,
+                                            srng=srng,
+                                            prior=prior)
         
     
     def _get_hyper_net(self):
@@ -83,7 +88,9 @@ class ToyRegression(Base_BHN):
         h_net = lasagne.layers.InputLayer([None,self.num_params])
         
         # mean and variation of the initial noise
-        layer_temp = LinearFlowLayer(h_net, W=lasagne.init.Normal(0.01,init))
+        layer_temp = LinearFlowLayer(h_net, 
+                                     W=lasagne.init.Normal(.01,init_W),
+                                     b=lasagne.init.Constant(init_b))
         h_net = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
@@ -92,7 +99,6 @@ class ToyRegression(Base_BHN):
             layer_temp = CoupledDenseLayer(h_net,coupling_hids)
             h_net = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
-            
             for c in range(self.coupling-1):
                 if self.mixing == 'permute':
                     h_net = PermuteLayer(h_net,self.num_params)
@@ -111,7 +117,7 @@ class ToyRegression(Base_BHN):
         self.h_net = h_net
         self.weights = lasagne.layers.get_output(h_net,ep)
         self.logdets = sum([get_output(ld,ep) for ld in logdets_layers])
-    
+        
     def _get_primary_net(self):
         t = np.cast['int32'](0)
         p_net = lasagne.layers.InputLayer([None,1])
@@ -124,7 +130,7 @@ class ToyRegression(Base_BHN):
             weight = self.weights[:,t:t+num_param].reshape((self.wd1,ws[1]))
             inputs[w_layer] = weight
             if DATASET == 'identity':
-                p_net = stochasticDenseLayer2([p_net,w_layer],ws[1],b=None,
+                p_net = stochasticDenseLayer([p_net,w_layer],ws[1],b=None,
                                               nonlinearity=nonlinearities.linear)
             else:
                 p_net = stochasticDenseLayer2([p_net,w_layer],ws[1],
@@ -132,10 +138,12 @@ class ToyRegression(Base_BHN):
             print p_net.output_shape
             t += num_param
             
+
+            
         p_net.nonlinearity = nonlinearities.linear  # replace the nonlinearity
                                                     # of the last layer
-                                                    # with softmax for
-                                                    # classification
+                                                    # with linear for
+                                                    # regression
         
         y = get_output(p_net,inputs)
         
@@ -170,7 +178,13 @@ class ToyRegression(Base_BHN):
         sp = T.matrix('sp')
         predict_sp = self.y[:,:1] + sp * T.exp(0.5*self.y[:,1:])
         self.predict_sp = theano.function([self.input_var,sp],predict_sp)
-        self.sample_theta = theano.function([], self.weights)
+        if self.perdatapoint:
+            self.sample_theta = theano.function([self.input_var], 
+                                                self.weights)
+        else:
+            self.sample_theta = theano.function([], 
+                                                self.weights)
+
 
     def _get_grads(self):
         grads = T.grad(self.loss, self.params)
@@ -183,9 +197,9 @@ class ToyRegression(Base_BHN):
 
 
 
-                                            
+
 # toy dataset
-n = 50000
+n = 500
 left1, right1 = 6,8
 left2, right2 = 9,12
 x1 = np.random.uniform(left1,right1,(n/2,1)).astype(floatX)
@@ -199,31 +213,39 @@ if DATASET == 'sinusoids':
     # 
     n_ = 1000
     f_ = lambda x:0.01 * np.sin(2.5*x) * x**1.5 + 0.1*x - 1
-    xx = np.linspace(1,20,n_).astype(floatX).reshape(n_,1)
+    xx = np.linspace(1,10,n_).astype(floatX).reshape(n_,1)
     yy = f_(xx)
+    lr0 = 0.005
+    lrdecay = True
 elif DATASET == 'identity':
-    f = lambda x: x + ep1/(0.5*x)**2
+    f = lambda x: (1*x + ep1/(0.5*x)**2) 
     t = f(x)
     # 
     n_ = 1000
-    f_ = lambda x: x
-    xx = np.linspace(1,20,n_).astype(floatX).reshape(n_,1)
+    f_ = lambda x: (1*x)
+    xx = np.linspace(4,15,n_).astype(floatX).reshape(n_,1)
     yy = f_(xx)
-
+    lr0 = 0.00025
+    lrdecay = False
 
 #model = ToyRegression(2.,coupling=4,prior=log_normal, mixing='reverse')
-model = ToyRegression(lbda,coupling=8,prior=log_normal, mixing='reverse')
+model = ToyRegression(lbda,coupling=coupling,
+                      prior=log_normal, mixing='reverse')
 
 
 ###############
 # TRAIN
-lr0 = 0.005
-epochs=10000
+epochs=20000
 
 plt.ion()
 
 for i in range(epochs):
-    lr = lr0 * 10**(-i/float(epochs-1))
+    if lrdecay:
+        lr = lr0 * 10**(-i/float(epochs-1))
+    else:
+        lr = lr0
+    x.shape
+    t.shape
     l = model.train_func(x,t,n,lr)
     if i%250==0:
         print i,l
@@ -231,14 +253,22 @@ for i in range(epochs):
             plt.clf()
             if DATASET == 'identity':
                 # SAMPLES
-                n_mc = 100
+                n_mc = 1000
                 thetas = np.zeros((n_mc,2))
                 for i in range(n_mc):
                     #sp = np.random.randn(n_,1).astype(floatX) 
                     thetas[i] = model.sample_theta()[0,:2]
+                    
                 # PLOTTING
                 plt.subplot(121)
                 plt.scatter(thetas[:,0], thetas[:,1])
+                
+                X=np.arange(100)/10.-5
+                Y = 1/X
+                plt.plot(X,Y,'r')
+                plt.xlim(-3.5,3.5)
+                plt.ylim(-1,1)
+                
                 plt.subplot(122)
         
             # SAMPLES
@@ -258,12 +288,16 @@ for i in range(epochs):
             plot = plt.scatter(x,t)
             plot1 = plt.plot(xx,yy,'y--')
 
+            y1 = 4
+            y2 = 15
+            
+            plt.vlines(left1,y1,y2)
+            plt.vlines(right1,y1,y2)
 
-            plt.vlines(left1,yy.min(),yy.max())
-            plt.vlines(right1,yy.min(),yy.max())
-
-            plt.vlines(left2,yy.min(),yy.max())
-            plt.vlines(right2,yy.min(),yy.max())
+            plt.vlines(left2,y1,y2)
+            plt.vlines(right2,y1,y2)
+            plt.xlim(4,15)
+            plt.ylim(y1,y2)
             plt.pause(.01)
 
 
@@ -304,4 +338,20 @@ plt.vlines(right1,yy.min(),yy.max())
 plt.vlines(left2,yy.min(),yy.max())
 plt.vlines(right2,yy.min(),yy.max())
 
+
+from numpy import linspace, meshgrid
+from scipy.stats import gaussian_kde
+
+def grid(x, y, xmin, xmax, ymin, ymax, resX=100, resY=100):
+    "Convert 3 column data to matplotlib grid"
+    xi = np.linspace(xmin, xmax, resX)
+    yi = np.linspace(ymin, ymax, resY)
+    inp = np.vstack([xi.flatten(), yi.flatten()])
+    
+    k = gaussian_kde(thetas.T)
+    z = k(inp)
+    return xi,yi,z.reshape(xi.shape)
+
+X, Y, Z = grid(thetas[:,0], thetas[:,1], y1, y2, y1, y2)
+plt.imshow(X, Y, Z)
 
