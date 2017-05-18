@@ -14,9 +14,9 @@ floatX = 'float32'
 
 def load_mnist(filename):
     try:
-        tr,va,te = pickle.load(gzip.open(filename,'r'))
-    except:
         tr,va,te = pickle.load(gzip.open('mnist.pkl.gz','r'))
+    except:
+        tr,va,te = pickle.load(gzip.open(filename,'r'))
     tr_x,tr_y = tr
     va_x,va_y = va
     te_x,te_y = te
