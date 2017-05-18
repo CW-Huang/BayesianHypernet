@@ -110,18 +110,10 @@ class ValueFunctionDQN_TEST_TRAIN_DROPOUT:
         q = self.session.run(self.test_prediction, feed_dict=feed_dict)
         return q
 
-    # def predict_decaying(self, states, dropout_prob):
-    #     self.init_tf_session()  # Make sure the Tensorflow session exists
 
-    #     feed_dict = {self.x: states, self.dropout_keep_prob : dropout_prob}
-    #     q = self.session.run(self.test_prediction, feed_dict=feed_dict)
-
-    #     return q
-
-
-    def predict_stochastic(self, states):
+    def predict_stochastic(self, states, dropout_prob):
         self.init_tf_session()  # Make sure the Tensorflow session exists
-        feed_dict = {self.x: states, self.dropout_keep_prob : 0.1}
+        feed_dict = {self.x: states, self.dropout_keep_prob : 0.2}
         q = self.session.run(self.test_prediction, feed_dict=feed_dict)
         return q
 
@@ -147,20 +139,6 @@ class ValueFunctionDQN_TEST_TRAIN_DROPOUT:
         [l, _, w1_m, w2_m, w3_m] = self.session.run([self.eval_train_loss, self.eval_train_optimizer, self.w1_max, self.w2_max, self.w3_max],
                                                     feed_dict=feed_dict)
         return [l, w1_m, w2_m, w3_m]
-
-
-
-    #WRONG HERE - this is training on the validation data
-    # def eval_valid(self, states, targets, dropout_probability):
-
-    #     self.init_tf_session()  # Make sure the Tensorflow session exists
-
-
-    #     #applying dropout to DQN during training
-    #     feed_dict = {self.eval_valid_data: states, self.eval_valid_targets: targets, self.dropout_keep_prob : dropout_probability}
-    #     [l, _, w1_m, w2_m, w3_m] = self.session.run([self.eval_valid_loss, self.eval_valid_optimizer, self.w1_max, self.w2_max, self.w3_max],
-    #                                                 feed_dict=feed_dict)
-    #     return [l, w1_m, w2_m, w3_m]
 
 
     def eval_valid(self, states, targets, dropout_probability):
