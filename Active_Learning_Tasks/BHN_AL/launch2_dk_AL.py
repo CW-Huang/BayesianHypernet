@@ -107,7 +107,7 @@ job_prefix += exp_script
 
 
 grid = [] 
-grid += [["acq", ['bald', 'max_ent', 'var_ratio', 'random']]]
+grid += [["acq", ['bald', 'max_ent', 'random']]]
 #grid += [["acq", ['var_ratio']]]
 grid += [["num_experiments", ['3']]]
 grid += [["arch", ['hyperCNN', 'CNN', 'CNN_dropout', 'CNN_spatial_dropout']]]
