@@ -345,7 +345,7 @@ def active_learning(acquisition_iterations):
 
 def main():
 
-    num_experiments = 3
+    #num_experiments = 3
     acquisition_iterations = 98
     all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
     
@@ -374,9 +374,9 @@ if __name__ == '__main__':
     parser.add_argument('--coupling',default=4,type=int)  
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)  
-    
     parser.add_argument('--lr0',default=0.0001,type=float)  
     parser.add_argument('--lbda',default=1,type=float)  
+    parser.add_argument('--num_experiments',default=1,type=int)  
     parser.add_argument('--size',default=10000,type=int)      
     parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--epochs',default=50,type=int)
