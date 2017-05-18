@@ -250,6 +250,38 @@ def active_learning(acquisition_iterations):
             a_1d = BayesSegnet_Sigma.flatten()
             x_pool_index = a_1d.argsort()[-Queries:][::-1]
             
+        elif acq == 'least_confidence':
+            #compute the class predicted probabilities for the pool points
+            predicted_probabilities = model.predict(X_Pool_Dropout, batch_size=batch_size, verbose=1)
+
+            Least_Confident = 0
+            # compute least confidency for each pool point
+            for d in range(predicted_probabilities.shape[0]):
+                D = predicted_probabilities[d, :]
+                Z = np.array(heapq.nlargest(1, D))
+                LM = 1 - Z
+                Least_Confident = np.append(Least_Confident, LM)
+
+            Least_Confident = Least_Confident[1:]
+            a_1d = Least_Confident.flatten()
+            x_pool_index = a_1d.argsort()[-Queries:]
+
+        elif acq == 'BvSB': #compute the class predicted probabilities for the pool points
+            predicted_probabilities = model.predict(X_Pool_Dropout, batch_size=batch_size, verbose=1)
+
+            BvSB = 0
+            #compute BvSB for each pool point
+            for d in range(predicted_probabilities.shape[0]):
+                D = predicted_probabilities[d, :]
+                Z = heapq.nlargest(2, D)
+                v = np.absolute(np.diff(Z))
+                BvSB = np.append(BvSB, v)
+
+            # Finding the minimum "Queries" probability difference values
+            BvSB = BvSB[1:]
+            a_1d = BvSB.flatten()
+            x_pool_index = a_1d.argsort()[-Queries:]
+
         elif acq == 'random':
             x_pool_index = np.asarray(random.sample(range(0, 38000), Queries))
             #x_pool_index = np.random.choice(range(pool_size), Queries, replace=False)
