@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Pick actions with highest variance estimated from Q network 
 

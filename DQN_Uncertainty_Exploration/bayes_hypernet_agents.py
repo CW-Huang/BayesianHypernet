@@ -2,15 +2,26 @@ import numpy as np
 
 
 class AgentEpsGreedy:
-    def __init__(self, n_actions, value_function_model, eps=0.5):
+    # def __init__(self, n_actions, value_function_model, eps=0.5):
+    #     self.n_actions = n_actions
+    #     self.value_func = value_function_model
+    #     self.eps = eps
+
+    def __init__(self, n_actions, value_function_model, state_dim, batch_size, eps=0.5):
         self.n_actions = n_actions
         self.value_func = value_function_model
         self.eps = eps
-
+        self.state_dim = state_dim
+        self.batch_size = batch_size
 
 
     def act(self, state):
-        action_values = self.value_func.predict([state])[0]
+        # action_values = self.value_func.predict([state])[0]
+
+        state = np.array([state])
+
+        action_values = self.value_func.predict(state)
+
         policy = np.ones(self.n_actions) * self.eps / self.n_actions
         a_max = np.argmax(action_values)
         policy[a_max] += 1. - self.eps
@@ -38,6 +49,34 @@ class AgentEpsGreedy:
 
     def evaluate_predicted_q_values(self, states, dropout_probability):
         return self.value_func.predict_stochastic(states, dropout_probability)
+
+
+
+
+    def train(self, X,Y, lr0=0.1,lrdecay=1,bs=20,epochs=50):
+        
+    
+        train_func = self.value_func.train_func
+        predict_func = self.value_func.predict
+
+        # print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
+        N = X.shape[0]    
+        
+        for e in range(epochs):
+            
+            if lrdecay:
+                lr = lr0 * 10**(-e/float(epochs-1))
+            else:
+                lr = lr0         
+                
+            for i in range(N/bs):
+                x = X[i*bs:(i+1)*bs]
+                y = Y[i*bs:(i+1)*bs]
+                
+                loss = train_func(x,y,N,lr)
+                                
+            
+        return loss
 
 
 

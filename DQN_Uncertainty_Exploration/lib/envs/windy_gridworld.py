@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import gym
 import numpy as np
 import sys

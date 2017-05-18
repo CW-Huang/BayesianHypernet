@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 '''
 Random Exploration in DQN
 '''

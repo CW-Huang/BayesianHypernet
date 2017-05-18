@@ -3,22 +3,29 @@ import gym
 from gym import wrappers
 import matplotlib.pyplot as plt
 import time
-from utils import *
+from utils_dqn import *
 from ReplayMemory import ReplayMemory
-from agents import AgentEpsGreedy
-from valuefunctions import ValueFunctionDQN
-from valuefunctions import ValueFunctionDQN3
+from bayes_hypernet_agents import AgentEpsGreedy
+from bayes_value_functions import ValueFunctionBayesHypernet
 from lib import plotting
+
+
+from BHNs import BHN_Q_Network
+from ops import load_mnist
+from utils import log_normal, log_laplace
+import numpy as np
+
+
+
 
 
 discount = 0.9
 decay_eps = 0.9
 batch_size = 64
-max_n_ep = 2000    #originally defined! Don't change this.
+max_n_ep = 1000    #originally defined! Don't change this.
 
 min_avg_Rwd = 200000000  # Minimum average reward to consider the problem as solved
 n_avg_ep = 100      # Number of consecutive episodes to calculate the average reward
-
 
 
 def run_episode(env,
@@ -54,7 +61,8 @@ def run_episode(env,
         if done:
             break
         
-        action = agent.act_boltzmann(state)
+
+        action = agent.act(state)
 
         #take a, get s' and reward
         state_next, reward, done, info = env.step(action)
@@ -74,9 +82,11 @@ def run_episode(env,
             states_n_b = np.array(states_n_b)
             done_b = np.array(done_b).astype(int)
 
+
             #agent arrives at next state s'
             #compute action values on the next state Q(s', a)
             q_n_b = agent.predict_q_values(states_n_b)  # Action values on the arriving state
+
 
             #target - Q-learning here - taking max_a over Q(s', a)
             targets_b = rewards_b + (1. - done_b) * discount * np.amax(q_n_b, axis=1)
@@ -89,7 +99,8 @@ def run_episode(env,
             t_train = time.time()
 
             #training the agent based on the target function
-            loss_v, w1_m, w2_m, w3_m = agent.train(states_b, targets)
+            loss_v = agent.train(states_b, targets)
+
             train_duration_s[i - batch_size] = time.time() - t_train
 
 
@@ -100,8 +111,7 @@ def run_episode(env,
 
 
 
-    return loss_v, w1_m, w2_m, w3_m, total_reward, step_length
-
+    return loss_v, total_reward, step_length
 
 
 
@@ -112,29 +122,43 @@ env = gym.make("CartPole-v0")
 n_actions = env.action_space.n
 state_dim = env.observation_space.high.shape[0]
 
-#using a smaller network for the value function
+
+print ("nb_actions", n_actions)
+print ("state_dim", state_dim)
 
 max_n_ep = 2000      #number of episodes
 #max_step - number of steps within an episode
 
-
 Experiments = 1
-
 Experiments_All_Rewards = np.zeros(shape=(max_n_ep))
+
+
+lbda = 1
+perdatapoint = 0
+prior = log_normal
+coupling = 0
+
+
+
+
 
 for e in range(Experiments):
 
 
-    value_function = ValueFunctionDQN(state_dim=state_dim, n_actions=n_actions, batch_size=batch_size)
 
-    epsilon_parameter = 0.9
-    agent = AgentEpsGreedy(n_actions=n_actions, value_function_model=value_function, eps=epsilon_parameter)
+
+    value_function = BHN_Q_Network(lbda=lbda, perdatapoint=perdatapoint, prior=prior, coupling=coupling)
+
+
+    # value_function = ValueFunctionBayesHypernet(state_dim=state_dim, n_actions=n_actions, batch_size=batch_size)
+
+    epsilon = 0.5
+    #decay rate for the temperature parameter
+    discount = 0.9
+
+    agent = AgentEpsGreedy(n_actions=n_actions, value_function_model=value_function, state_dim=state_dim, batch_size=batch_size, eps=epsilon)
     memory = ReplayMemory(max_size=100000)
 
-    
-    print('Experiment Number ', e)
-
-    print "Epsilon Parameter : ", e
 
 
     loss_per_ep = []
@@ -146,33 +170,33 @@ for e in range(Experiments):
 
     ep = 0
     avg_Rwd = -np.inf
-    episode_end_msg = 'loss={:2.10f}, w1_m={:3.1f}, w2_m={:3.1f}, w3_m={:3.1f}, total reward={}'
+    episode_end_msg = 'loss={:2.10f}, total reward={}'
 
     stats = plotting.EpisodeStats(episode_lengths=np.zeros(max_n_ep),episode_rewards=np.zeros(max_n_ep))  
 
     while avg_Rwd < min_avg_Rwd and ep < max_n_ep:
         if ep >= n_avg_ep:
             avg_Rwd = np.mean(total_reward[ep-n_avg_ep:ep])
-            print("EPISODE {}. Average reward over the last {} episodes: {}.".format(ep, n_avg_ep, avg_Rwd))
         else:
             print("EPISODE {}.".format(ep))
 
 
-        loss_v, w1_m, w2_m, w3_m, cum_R, step_length = run_episode(env, agent, None, memory, batch_size=batch_size, discount=discount,
+        loss_v, cum_R, step_length = run_episode(env, agent, None, memory, batch_size=batch_size, discount=discount,
                                                       max_step=2000)
-        print(episode_end_msg.format(loss_v, w1_m, w2_m, w3_m, cum_R))
+
+        print ("Episode Number", ep)
+        print ("Cumulative Reward", cum_R)
 
         stats.episode_rewards[ep] = cum_R
         stats.episode_lengths[ep] = step_length
 
-        # if agent.eps > 0.0001:
-        #      agent.eps *= decay_eps
+
+
+        if agent.eps > 0.0001:
+            agent.eps *= decay_eps
 
         # Collect episode results
         loss_per_ep.append(loss_v)
-        w1_m_per_ep.append(w1_m)
-        w2_m_per_ep.append(w2_m)
-        w3_m_per_ep.append(w3_m)
         total_reward.append(cum_R)
 
         ep += 1
@@ -180,18 +204,14 @@ for e in range(Experiments):
     Experiments_All_Rewards = Experiments_All_Rewards + total_reward
     episode_length_over_time = stats.episode_lengths
 
-    np.save('/Users/Riashat/Documents/PhD_Research/BASIC_ALGORITHMS/My_Implementations/Exploration_DQN/All_Results/'  + 'Cum_Rwd_' + 'Boltzmann_Exploration_' + str(e) + '.npy', total_reward)
+    #np.save('/Users/Riashat/Documents/PhD_Research/BASIC_ALGORITHMS/My_Implementations/Exploration_DQN/All_Results/'  + 'Cum_Rwd_' + 'Dropout_Boltzmann_' + str(e) + '.npy', total_reward)
 
 env.close()
 
-print('Saving Average Cumulative Rewards Over Experiments')
+
 
 Average_Cum_Rwd = np.divide(Experiments_All_Rewards, Experiments)
 
-np.save('/Users/Riashat/Documents/PhD_Research/BASIC_ALGORITHMS/My_Implementations/Exploration_DQN/All_Results/'   + 'Average_Cum_Rwd_' + 'Boltzmann_Exploration_' + '.npy', Average_Cum_Rwd)
 
 
-print "All Experiments DONE - Deep Q Learning"
 
-
-print "Boltzmann Exploration DONE"
