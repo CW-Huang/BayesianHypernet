@@ -59,9 +59,9 @@ class MCdropoutCNN(object):
             )
             if dropout is not None and j!=len(self.weight_shapes)-1:
                 if dropout == 'spatial':
-                    layer = lasagne.layers.spatial_dropout(layer, dropout)
+                    layer = lasagne.layers.spatial_dropout(layer)
                 else:
-                    layer = lasagne.layers.dropout(layer, dropout)
+                    layer = lasagne.layers.dropout(layer)
 
         # MLP layers
         layer = lasagne.layers.DenseLayer(layer, 128)

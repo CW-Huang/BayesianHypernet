@@ -212,62 +212,108 @@ def active_learning(acquisition_iterations):
     	y_pool_Dropout = pool_y[pool_subset_dropout]
 
 
-    	score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
-    	All_Entropy_BH = np.zeros(shape=X_pool_Dropout.shape[0])
 
-    	all_bh_classes = np.zeros(shape=(X_pool_Dropout.shape[0], bh_iterations))
-
-
-    	for d in range(bh_iterations):
-    		bh_score = model.predict_proba(X_pool_Dropout)
-    		score_All = score_All + bh_score
-
-    		bh_score_log = np.log2(bh_score)
-    		Entropy_Compute = - np.multiply(bh_score, bh_score_log)
-
-    		Entropy_Per_BH = np.sum(Entropy_Compute, axis=1)
-
-    		All_Entropy_BH = All_Entropy_BH + Entropy_Per_BH
-
-    		bh_classes = np.max(bh_score, axis=1)
-    		all_bh_classes[:, d] = bh_classes
+        #####################################3
+        # BEGIN ACQUISITION
+        if acq == 'bald':
+    	    score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
+            All_Entropy_BH = np.zeros(shape=X_pool_Dropout.shape[0])
+            all_bh_classes = np.zeros(shape=(X_pool_Dropout.shape[0], bh_iterations))
 
 
+            for d in range(bh_iterations):
+                bh_score = model.predict_proba(X_pool_Dropout)
+                score_All = score_All + bh_score
 
-        ### for plotting uncertainty
-        predicted_class = np.max(all_bh_classes, axis=1)
-        predicted_class_std = np.std(all_bh_classes, axis=1)
+                bh_score_log = np.log2(bh_score)
+                Entropy_Compute = - np.multiply(bh_score, bh_score_log)
 
-        Avg_Pi = np.divide(score_All, bh_iterations)
-        Log_Avg_Pi = np.log2(Avg_Pi)
-        Entropy_Avg_Pi = - np.multiply(Avg_Pi, Log_Avg_Pi)
-        Entropy_Average_Pi = np.sum(Entropy_Avg_Pi, axis=1)
+                Entropy_Per_BH = np.sum(Entropy_Compute, axis=1)
 
-        G_X = Entropy_Average_Pi
+                All_Entropy_BH = All_Entropy_BH + Entropy_Per_BH
 
-        Average_Entropy = np.divide(All_Entropy_BH, bh_iterations)
-        F_X = Average_Entropy
-        U_X = G_X - F_X
+                bh_classes = np.max(bh_score, axis=1)
+                all_bh_classes[:, d] = bh_classes
 
-        sort_values = U_X.flatten()
-        x_pool_index = sort_values.argsort()[-Queries:][::-1]
+
+
+            ### for plotting uncertainty
+            predicted_class = np.max(all_bh_classes, axis=1)
+            predicted_class_std = np.std(all_bh_classes, axis=1)
+
+            Avg_Pi = np.divide(score_All, bh_iterations)
+            Log_Avg_Pi = np.log2(Avg_Pi)
+            Entropy_Avg_Pi = - np.multiply(Avg_Pi, Log_Avg_Pi)
+            Entropy_Average_Pi = np.sum(Entropy_Avg_Pi, axis=1)
+
+            G_X = Entropy_Average_Pi
+
+            Average_Entropy = np.divide(All_Entropy_BH, bh_iterations)
+            F_X = Average_Entropy
+            U_X = G_X - F_X
+            sort_values = U_X.flatten()
+            x_pool_index = sort_values.argsort()[-Queries:][::-1]
+            print x_pool_index.shape
+            assert False
+
+        elif acq == 'max_ent':
+    	    score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
+            for d in range(bh_iterations):
+                bh_score = model.predict_proba(X_pool_Dropout)
+                score_All = score_All + bh_score
+
+            Avg_Pi = np.divide(score_All, bh_iterations)
+            Log_Avg_Pi = np.log2(Avg_Pi)
+            Entropy_Avg_Pi = - np.multiply(Avg_Pi, Log_Avg_Pi)
+            Entropy_Average_Pi = np.sum(Entropy_Avg_Pi, axis=1)
+
+            U_X = Entropy_Average_Pi
+            sort_values = U_X.flatten()
+            x_pool_index = sort_values.argsort()[-Queries:][::-1]
+
+        elif acq == 'var_ratio':
+            All_BH_Classes = np.zeros(shape=(X_pool_Dropout.shape[0],1))
+
+            for d in range(bh_iterations):
+                bh_score = model.predict(X_pool_Dropout)
+                bh_score = np.array([bh_score]).T
+                All_BH_Classes = np.append(All_BH_Classes, bh_score, axis=1)
+
+
+            Variation = np.zeros(shape=(X_pool_Dropout.shape[0]))
+
+            for t in range(X_pool_Dropout.shape[0]):
+                L = np.array([0])
+                for d_iter in range(bh_iterations):
+                    L = np.append(L, All_BH_Classes[t, d_iter+1])                      
+                Predicted_Class, Mode = mode(L[1:])
+                v = np.array(  [1 - Mode/float(bh_iterations)])
+                Variation[t] = v     
+
+            sort_values = Variation.flatten()
+            x_pool_index = sort_values.argsort()[-Queries:][::-1]
+
+        elif acq == 'mean_std':
+            pass
+
+        elif acq == 'random':
+
+
+            pass
+
+
+        # END ACQUISITION
+        #####################################3
 
 
         Pooled_X = X_pool_Dropout[x_pool_index, :, :, :]
         Pooled_Y = y_pool_Dropout[x_pool_index] 
-
         delete_Pool_X = np.delete(pool_x, (pool_subset_dropout), axis=0)
         delete_Pool_Y = np.delete(pool_y, (pool_subset_dropout), axis=0)        
-
         delete_Pool_X_Dropout = np.delete(X_pool_Dropout, (x_pool_index), axis=0)
         delete_Pool_Y_Dropout = np.delete(y_pool_Dropout, (x_pool_index), axis=0)
-
-
         pool_x = np.concatenate((pool_x, X_pool_Dropout), axis=0)
         pool_y = np.concatenate((pool_y, y_pool_Dropout), axis=0)
-
-
-
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
         train_y = np.concatenate((train_y, Pooled_Y), axis=0).astype('float32')
 
@@ -307,13 +353,13 @@ def main():
         
         accuracy = active_learning(acquisition_iterations)
         all_accuracy[:, i] = accuracy
-        np.save('BH_HyperCNN_bald_all_accuracy.npy', all_accuracy)
+        np.save('BH_HyperCNN_' + acq + '_all_accuracy.npy', all_accuracy)
 
     
     mean_accuracy = np.mean(all_accuracy)
 
-    np.save('BH_HyperCNN_bald_all_accuracy.npy', all_accuracy)
-    np.save('BH_HyperCNN_bald_mean_accuracy.npy',mean_accuracy)    
+    np.save('BH_HyperCNN_' + acq + '_all_accuracy.npy', all_accuracy)
+    np.save('BH_HyperCNN_' + acq + '_mean_accuracy.npy',mean_accuracy)    
 
 
 
@@ -324,7 +370,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     
     # boolean: 1 -> True ; 0 -> False
-    parser.add_argument('--acq',default='bald',type=str, choices=['bald', 'max_ent', 'var_ratio', 'mean_std', 'random'])
+    parser.add_argument('--acq',default='bald',type=str, choices=['bald', 'max_ent', 'var_ratio', 'mean_std', 'random']) # TODO!
     parser.add_argument('--coupling',default=4,type=int)  
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)  
@@ -338,6 +384,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print args
     
+
+    acq = args.acq
     coupling = args.coupling
     perdatapoint = args.perdatapoint
     lrdecay = args.lrdecay
