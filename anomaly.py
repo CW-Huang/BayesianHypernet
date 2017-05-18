@@ -15,6 +15,8 @@ TODO: everything except Gaussian noise
 """
 
 
+import time
+t0 = time.time()
 import theano
 import theano.tensor as T
 from theano.tensor.shared_randomstreams import RandomStreams
@@ -67,40 +69,54 @@ def noised(dset, lvl, type='Gaussian'):
 
 ##################################################
 # from https://github.com/hendrycks/error-detection/blob/master/Vision/MNIST_Abnormality_Module.ipynb
-# load notMNIST, CIFAR-10, and Omniglot
-import pickle
-pickle_file = './data/notMNIST.pickle'
-with open(pickle_file, 'rb') as f:
-    #save = pickle.load(f, encoding='latin1')
-    save = pickle.load(f)
-    notmnist_dataset = save['test_dataset'].reshape((-1, 28 * 28))
-    del save
-
-from helpers import load_data10
-_, _, X_test, _ = load_data10()
-import tensorflow as tf
+print "load notMNIST, CIFAR-10, and Omniglot"
 try:
-    sess = tf.Session()
-    with sess.as_default():
-        cifar_batch = sess.run(tf.image.resize_images(tf.image.rgb_to_grayscale(X_test), (28, 28))).reshape((-1, 784))
+    notmnist_dataset = np.load('not_mnist.npy')
+    cifar_batch = np.load('CIFAR10-bw.npy')
+    omni_images = np.load('omniglot.npy')
+    print "loaded saved npy files"
 except:
-    pass
+    import pickle
+    pickle_file = './data/notMNIST.pickle'
+    with open(pickle_file, 'rb') as f:
+        #save = pickle.load(f, encoding='latin1')
+        save = pickle.load(f)
+        notmnist_dataset = save['test_dataset'].reshape((-1, 28 * 28))
+        del save
 
-import scipy.io as sio
-import scipy.misc as scimisc
-# other alphabets have characters which overlap
-safe_list = [0,2,5,6,8,12,13,14,15,16,17,18,19,21,26]
-m = sio.loadmat("./data/data_background.mat")
+    np.save('not_mnist.npy', notmnist_dataset)
 
-squished_set = []
-for safe_number in safe_list:
-    for alphabet in m['images'][safe_number]:
-        for letters in alphabet:
-            for letter in letters:
-                for example in letter:
-                    squished_set.append(scimisc.imresize(1 - example[0], (28,28)).reshape(1, 28*28))
+    from helpers import load_data10
+    _, _, X_test, _ = load_data10()
+    import tensorflow as tf
+    try:
+        sess = tf.Session()
+        with sess.as_default():
+            cifar_batch = sess.run(tf.image.resize_images(tf.image.rgb_to_grayscale(X_test), (28, 28))).reshape((-1, 784))
+    except:
+        pass
 
-omni_images = np.concatenate(squished_set, axis=0)
+    np.save('CIFAR10-bw.npy', cifar_batch)
+
+    import scipy.io as sio
+    import scipy.misc as scimisc
+    # other alphabets have characters which overlap
+    safe_list = [0,2,5,6,8,12,13,14,15,16,17,18,19,21,26]
+    m = sio.loadmat("./data/data_background.mat")
+
+    squished_set = []
+    for safe_number in safe_list:
+        for alphabet in m['images'][safe_number]:
+            for letters in alphabet:
+                for letter in letters:
+                    for example in letter:
+                        squished_set.append(scimisc.imresize(1 - example[0], (28,28)).reshape(1, 28*28))
+
+    omni_images = np.concatenate(squished_set, axis=0)
+    np.save('omniglot.npy', omni_images)
+
+
+
 print "done loading notMNIST, CIFAR-10, and Omniglot"
 ################################################################
 ################################################################
@@ -178,6 +194,7 @@ def entropy():
     pass
 
 
+print "DONE,   total time=", time.time() - t0
 
 
 

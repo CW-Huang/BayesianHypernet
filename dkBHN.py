@@ -41,6 +41,8 @@ from lasagne.layers import get_output
 from lasagne.objectives import categorical_crossentropy as cc
 import numpy as np
 
+from helpers import gelu
+
 np.random.seed(427)
 
 
