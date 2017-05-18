@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Implementation of Dropout based Thompson Sampling - estimating Q posterior at every state
 

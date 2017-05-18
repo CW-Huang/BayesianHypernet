@@ -2,108 +2,19 @@
 from BHNs import HyperCNN
 from ops import load_mnist
 from utils import log_normal, log_laplace
-import numpy as np
+import numpy
+np = numpy
 import random
 random.seed(5001)
-
+from lasagne import layers
+from scipy.stats import mode
 
 from dk_hyperCNN import MCdropoutCNN
 
+import time
+import os
 
-def to_categorical(y):
-    num_classes=10
-    y = np.array(y, dtype='int').ravel()
-    if not num_classes:
-        num_classes = np.max(y) + 1
-    n = y.shape[0]
-    categorical = np.zeros((n, num_classes))
-    categorical[np.arange(n), y] = 1
-
-    return categorical
-
-
-def split_train_pool_data(X_train, y_train):
-
-    X_train_All = X_train
-    y_train_All = y_train
-
-    random_split = np.asarray(random.sample(range(0,X_train_All.shape[0]), X_train_All.shape[0]))
-
-    X_train_All = X_train_All[random_split, :, :, :]
-    y_train_All = y_train_All[random_split]
-
-    X_pool = X_train_All[10000:50000, :, :, :]
-    y_pool = y_train_All[10000:50000]
-
-
-    X_train = X_train_All[0:10000, :, :, :]
-    y_train = y_train_All[0:10000]
-
-
-    return X_train, y_train, X_pool, y_pool
-
-def get_initial_training_data(X_train_All, y_train_All):
-    #training data to have equal distribution of classes
-    idx_0 = np.array( np.where(y_train_All==0)  ).T
-    idx_0 = idx_0[0:2,0]
-    X_0 = X_train_All[idx_0, :, :, :]
-    y_0 = y_train_All[idx_0]
-
-    idx_1 = np.array( np.where(y_train_All==1)  ).T
-    idx_1 = idx_1[0:2,0]
-    X_1 = X_train_All[idx_1, :, :, :]
-    y_1 = y_train_All[idx_1]
-
-    idx_2 = np.array( np.where(y_train_All==2)  ).T
-    idx_2 = idx_2[0:2,0]
-    X_2 = X_train_All[idx_2, :, :, :]
-    y_2 = y_train_All[idx_2]
-
-    idx_3 = np.array( np.where(y_train_All==3)  ).T
-    idx_3 = idx_3[0:2,0]
-    X_3 = X_train_All[idx_3, :, :, :]
-    y_3 = y_train_All[idx_3]
-
-    idx_4 = np.array( np.where(y_train_All==4)  ).T
-    idx_4 = idx_4[0:2,0]
-    X_4 = X_train_All[idx_4, :, :, :]
-    y_4 = y_train_All[idx_4]
-
-    idx_5 = np.array( np.where(y_train_All==5)  ).T
-    idx_5 = idx_5[0:2,0]
-    X_5 = X_train_All[idx_5, :, :, :]
-    y_5 = y_train_All[idx_5]
-
-    idx_6 = np.array( np.where(y_train_All==6)  ).T
-    idx_6 = idx_6[0:2,0]
-    X_6 = X_train_All[idx_6, :, :, :]
-    y_6 = y_train_All[idx_6]
-
-    idx_7 = np.array( np.where(y_train_All==7)  ).T
-    idx_7 = idx_7[0:2,0]
-    X_7 = X_train_All[idx_7, :, :, :]
-    y_7 = y_train_All[idx_7]
-
-    idx_8 = np.array( np.where(y_train_All==8)  ).T
-    idx_8 = idx_8[0:2,0]
-    X_8 = X_train_All[idx_8, :, :, :]
-    y_8 = y_train_All[idx_8]
-
-    idx_9 = np.array( np.where(y_train_All==9)  ).T
-    idx_9 = idx_9[0:2,0]
-    X_9 = X_train_All[idx_9, :, :, :]
-    y_9 = y_train_All[idx_9]
-
-    X_train = np.concatenate((X_0, X_1, X_2, X_3, X_4, X_5, X_6, X_7, X_8, X_9), axis=0 )
-    y_train = np.concatenate((y_0, y_1, y_2, y_3, y_4, y_5, y_6, y_7, y_8, y_9), axis=0 )
-    
-    y_train = to_categorical(y_train)
-
-    return X_train, y_train
-
-
-
-
+from AL_helpers import *
 
 
 def train_model(train_func,predict_func,X,Y,Xt,Yt,
@@ -127,7 +38,7 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
             
             loss = train_func(x,y,N,lr)
             
-            if i==0:#t%100==0:
+            if e == epochs-1:#i==0:#t%100==0:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
                 tr_acc = (predict_func(X)==Y.argmax(1)).mean()
                 te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()
@@ -158,6 +69,8 @@ def test_model(predict_proba, X_test, y_test):
 
 def active_learning(acquisition_iterations):
 
+    t0 = time.time()
+
     bh_iterations = 100
     nb_classes = 10
     Queries = 10
@@ -178,8 +91,9 @@ def active_learning(acquisition_iterations):
 
     train_x, train_y = get_initial_training_data(train_x, train_y_multiclass)
 
-    print ("Initial Training Data", train_x.shape)
+    print "Initial Training Data", train_x.shape
 
+    # select model
     if arch == 'hyperCNN':
         model = HyperCNN(lbda=lbda,
                          perdatapoint=perdatapoint,
@@ -187,7 +101,7 @@ def active_learning(acquisition_iterations):
                          coupling=coupling,
                          kernel_width=4,
                          pad='valid',
-                         stride=1,
+                         stride=1)
                          #dataset=dataset)
     elif arch == 'CNN':
         model = MCdropoutCNN(kernel_width=4,
@@ -203,17 +117,10 @@ def active_learning(acquisition_iterations):
                          kernel_width=4,
                          pad='valid',
                          stride=1)
-                             
     else:
         raise Exception('no model named `{}`'.format(model))
         
 
-    if arch == 'hyperCNN':
-        model = HyperCNN(lbda=lbda,
-                              perdatapoint=perdatapoint,
-                              prior=prior,
-                              coupling=coupling)
-    
     
     train_y = train_y.astype('float32')
     recs = train_model(model.train_func,model.predict,
@@ -223,14 +130,14 @@ def active_learning(acquisition_iterations):
    
     test_accuracy = test_model(model.predict_proba, test_x, test_y)
 
-    print ("Test Accuracy", test_accuracy)
+    print "                                                          Test Accuracy", test_accuracy
 
     all_accuracy = test_accuracy
 
-
     for i in range(acquisition_iterations):
 
-    	print('POOLING ITERATION', i)
+        print'time', time.time() - t0
+    	print'POOLING ITERATION', i
     	pool_subset = pool_size
 
     	pool_subset_dropout = np.asarray(random.sample(range(0,pool_x.shape[0]), pool_subset))
@@ -362,11 +269,11 @@ def active_learning(acquisition_iterations):
         pool_y = np.concatenate((pool_y, y_pool_Dropout), axis=0)
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
         train_y = np.concatenate((train_y, Pooled_Y), axis=0).astype('float32')
-        print pool_x.shape, Pooled_X.shape, train_x.shape
-        assert False
+        #print pool_x.shape, Pooled_X.shape, train_x.shape
+        #assert False
 
 
-        if 0:# don't warm start
+        if 0:# don't warm start (TODO!)
             model = HyperCNN(lbda=lbda,
                               perdatapoint=perdatapoint,
                               prior=prior,
@@ -383,7 +290,7 @@ def active_learning(acquisition_iterations):
 
         test_accuracy = test_model(model.predict_proba, test_x, test_y)   
 
-        print ("Test Accuracy", test_accuracy)
+        print "                                                          Test Accuracy", test_accuracy
 
         all_accuracy = np.append(all_accuracy, test_accuracy)
 
@@ -401,13 +308,13 @@ def main():
         
         accuracy = active_learning(acquisition_iterations)
         all_accuracy[:, i] = accuracy
-        np.save('BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy', all_accuracy)
+        np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy'), all_accuracy)
 
     
     mean_accuracy = np.mean(all_accuracy)
 
-    np.save('BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy', all_accuracy)
-    np.save('BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_mean_accuracy.npy', mean_accuracy)
+    np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy'), all_accuracy)
+    np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_mean_accuracy.npy'), mean_accuracy)
 
 
 
@@ -418,7 +325,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     
     # boolean: 1 -> True ; 0 -> False
-    parser.add_argument('--acq',default='bald',type=str, choices=['bald', 'max_ent', 'var_ratio', 'mean_std', 'random']) # TODO!
+    parser.add_argument('--acq',default='bald',type=str, choices=['bald', 'max_ent', 'var_ratio', 'mean_std', 'random'])
     parser.add_argument('--arch',default='hyperCNN',type=str)
     parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--coupling',default=4,type=int)  
@@ -430,7 +337,8 @@ if __name__ == '__main__':
     parser.add_argument('--params_reset',default='none', type=str, choices=['deterministic', 'random', 'none'] ) # TODO
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--pool_size',default=2000,type=int) # FIXME: should be 50000!!
+    parser.add_argument('--pool_size',default=2000,type=int)
+    parser.add_argument('--save_dir',default='./',type=str)      
     parser.add_argument('--size',default=10000,type=int)      
     args = parser.parse_args()
     print args

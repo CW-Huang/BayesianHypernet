@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import numpy as np
 
 
@@ -8,9 +7,10 @@ class AgentEpsGreedy:
         self.value_func = value_function_model
         self.eps = eps
 
+
+
     def act(self, state):
         action_values = self.value_func.predict([state])[0]
-
         policy = np.ones(self.n_actions) * self.eps / self.n_actions
         a_max = np.argmax(action_values)
         policy[a_max] += 1. - self.eps
@@ -97,7 +97,7 @@ class AgentEpsGreedy:
         dropout_iterations = 100
         dropout_acton_values = np.array([[0, 0]]).T
         for d in range(dropout_iterations):
-            action_values = self.value_func.predict_stochastic([state])[0]
+            action_values = self.value_func.predict([state])[0]
             action_values = np.array([action_values]).T
             dropout_acton_values = np.append(dropout_acton_values, action_values, axis=1)
         dropout_acton_values = dropout_acton_values[:, 1:]

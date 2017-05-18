@@ -100,7 +100,7 @@ if 1:
     parser.add_argument('--burn_in',default=0,type=int)  
     parser.add_argument('--coupling',default=0,type=bool)  
     parser.add_argument('--epochs',default=5000,type=int)  
-    parser.add_argument('--init_lr',default=.0001,type=float)  
+    parser.add_argument('--lr0',default=.0001,type=float)  
     parser.add_argument('--mem_size',default=4096,type=int)  
     parser.add_argument('--num_hids',default=100,type=int)  
     parser.add_argument('--opt',default='adam',type=str)  
@@ -108,20 +108,13 @@ if 1:
     parser.add_argument('--resume',default=1,type=int)    
     parser.add_argument('--selection',default='BbB',type=str)    
     parser.add_argument('--std',default=1.,type=float)    
-    # num_ex
-    parser.add_argument('--size',default=10000,type=int)  
     parser.add_argument('--warm_start',default=0,type=int)  
     args = parser.parse_args()
     locals().update(args.__dict__)
     print args
 
-    perdatapoint = args.perdatapoint
-    coupling = args.coupling
-    size = max(10,min(50000,args.size))
-    print "size",size
-    # these seem large!
-    clip_grad = 100
-    max_norm = 1000
+    clip_grad = 5
+    max_norm = 10
     
     if not resume:
         # load dataset
@@ -264,7 +257,7 @@ if 1:
                 actions = action_buffer[batch]
                 rewards = reward_buffer[batch]
                 inputs = np.hstack((contexts, actions))
-                train(inputs, rewards, bs, init_lr)
+                train(inputs, rewards, bs, lr0)
 
         # sample context
         ind = np.random.choice(range(len(X)))
