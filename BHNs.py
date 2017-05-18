@@ -867,3 +867,96 @@ class HyperCNN(Base_BHN):
         self.predict_proba = theano.function([self.input_var],self.y)
         self.predict = theano.function([self.input_var],self.y.argmax(1))       
         
+
+        
+
+
+class BHN_Q_Network(Base_BHN):
+    """
+    Hypernet with dense coupling layer outputing posterior of rescaling 
+    parameters of weightnorm MLP
+    """
+    # 784 -> 20 -> 10
+    # weight_shapes = [(784, 200),
+    #                  (200,  10)]
+    
+
+    weight_shapes = [(784, 200),
+                     (200,  2)]
+
+    num_params = sum(ws[1] for ws in weight_shapes)
+    
+    def __init__(self,
+                 lbda=1,
+                 perdatapoint=False,
+                 srng = RandomStreams(seed=427),
+                 prior = log_normal,
+                 coupling=True):
+        
+        self.coupling = coupling
+        super(BHN_Q_Network, self).__init__(lbda=lbda,
+                                                perdatapoint=perdatapoint,
+                                                srng=srng,
+                                                prior=prior)
+        
+    
+    def _get_hyper_net(self):
+        # inition random noise
+        ep = self.srng.normal(size=(self.wd1,
+                                    self.num_params),dtype=floatX)
+        logdets_layers = []
+        h_net = lasagne.layers.InputLayer([None,self.num_params])
+        
+        # mean and variation of the initial noise
+        layer_temp = LinearFlowLayer(h_net)
+        h_net = IndexLayer(layer_temp,0)
+        logdets_layers.append(IndexLayer(layer_temp,1))
+        
+        if self.coupling:
+            layer_temp = CoupledDenseLayer(h_net,200)
+            h_net = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+            
+            for c in range(self.coupling-1):
+                h_net = PermuteLayer(h_net,self.num_params)
+                
+                layer_temp = CoupledDenseLayer(h_net,200)
+                h_net = IndexLayer(layer_temp,0)
+                logdets_layers.append(IndexLayer(layer_temp,1))
+        
+        self.h_net = h_net
+        self.weights = lasagne.layers.get_output(h_net,ep)
+        self.logdets = sum([get_output(ld,ep) for ld in logdets_layers])
+    
+    def _get_primary_net(self):
+        t = np.cast['int32'](0)
+        #p_net = lasagne.layers.InputLayer([None,784])
+        
+        p_net = lasagne.layers.InputLayer([None,4])
+        inputs = {p_net:self.input_var}
+        for ws in self.weight_shapes:
+            # using weightnorm reparameterization
+            # only need ws[1] parameters (for rescaling of the weight matrix)
+            num_param = ws[1]
+            w_layer = lasagne.layers.InputLayer((None,ws[1]))
+            weight = self.weights[:,t:t+num_param].reshape((self.wd1,ws[1]))
+            inputs[w_layer] = weight
+            p_net = stochasticDenseLayer2([p_net,w_layer],ws[1])
+            print p_net.output_shape
+            t += num_param
+            
+        p_net.nonlinearity = nonlinearities.softmax # replace the nonlinearity
+                                                    # of the last layer
+                                                    # with softmax for
+                                                    # classification
+        
+        y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
+        
+        self.p_net = p_net
+        self.y = y
+        
+    def _get_useful_funcs(self):
+        self.predict_proba = theano.function([self.input_var],self.y)
+        #self.predict = theano.function([self.input_var],self.y.argmax(1))
+
+        self.predict = theano.function([self.input_var],self.y)
