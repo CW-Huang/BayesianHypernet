@@ -204,7 +204,7 @@ def active_learning(acquisition_iterations):
     for i in range(acquisition_iterations):
 
     	print('POOLING ITERATION', i)
-    	pool_subset = 2000
+    	pool_subset = pool_size
 
     	pool_subset_dropout = np.asarray(random.sample(range(0,pool_x.shape[0]), pool_subset))
 
@@ -294,9 +294,10 @@ def active_learning(acquisition_iterations):
             x_pool_index = sort_values.argsort()[-Queries:][::-1]
 
         elif acq == 'mean_std':
-            pass
+            assert False
 
         elif acq == 'random':
+            x_pool_index = np.random.choice(range(pool_size
 
 
             pass
@@ -316,6 +317,8 @@ def active_learning(acquisition_iterations):
         pool_y = np.concatenate((pool_y, y_pool_Dropout), axis=0)
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
         train_y = np.concatenate((train_y, Pooled_Y), axis=0).astype('float32')
+        print pool_x.shape, Pooled_X.shape, train_x.shape
+        assert False
 
 
         if 0:# don't warm start
@@ -381,6 +384,8 @@ if __name__ == '__main__':
     parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--epochs',default=50,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
+    parser.add_argument('--pool_size',default=2000,type=int) # FIXME: should be 50000!!
+    parser.add_argument('--params_reset',default='none', type=str, choices=['deterministic', 'random', 'none'] ) # TODO
     args = parser.parse_args()
     print args
     
