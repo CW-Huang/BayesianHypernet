@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''This demonstrates how to reach a score of 0.4890 (local validation)
 on the Kaggle Otto challenge, with a deep net using Keras.
 

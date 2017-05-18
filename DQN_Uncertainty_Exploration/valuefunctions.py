@@ -103,6 +103,7 @@ class ValueFunctionDQN_TEST_TRAIN_DROPOUT:
 
 
     def predict(self, states):
+
         self.init_tf_session()  # Make sure the Tensorflow session exists
 
         feed_dict = {self.x: states, self.dropout_keep_prob : 1.0}

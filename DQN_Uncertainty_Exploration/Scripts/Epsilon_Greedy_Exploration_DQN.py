@@ -11,7 +11,7 @@ from utils import *
 from ReplayMemory import ReplayMemory
 from agents import AgentEpsGreedy
 from valuefunctions import ValueFunctionDQN
-from valuefunctions import ValueFunctionDQN3
+# from valuefunctions import ValueFunctionDQN3
 from lib import plotting
 
 

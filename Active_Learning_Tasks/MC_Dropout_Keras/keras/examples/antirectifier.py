@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''The example demonstrates how to write custom layers for Keras.
 
 We build a custom activation layer called 'Antirectifier',

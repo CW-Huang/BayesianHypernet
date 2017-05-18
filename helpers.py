@@ -1,11 +1,29 @@
+#!/usr/bin/env python
     
 import theano.tensor as T
 import numpy
 np = numpy
+
 # from Hendrycks
 def gelu_fast(x):
     return 0.5 * x * (1 + T.tanh(T.sqrt(2 / np.pi) * (x + 0.044715 * T.pow(x, 3))))
 gelu = gelu_fast
+
+
+######################
+
+def flatten_list(plist):
+    return T.concatenate([p.flatten() for p in plist])
+
+
+def plot_dict(dd):
+    from pylab import *
+    figure()
+    for kk, vv in dd.items():
+        plot(vv, label=kk)
+    legend()
+
+######################
 
 def get_mushrooms():
     from mushroom_data import X,Y

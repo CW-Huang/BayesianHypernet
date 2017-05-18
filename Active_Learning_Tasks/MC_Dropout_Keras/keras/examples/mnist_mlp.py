@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Train a simple deep NN on the MNIST dataset.
 
 Get to 98.40% test accuracy after 20 epochs

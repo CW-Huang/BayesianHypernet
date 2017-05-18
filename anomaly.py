@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 WIP
 
@@ -44,6 +45,7 @@ def get_AOC(ins, oos): #in/out of sample
     rval = []
     y_true = np.hstack((np.ones(len(ins)), np.zeros(len(oos))))
     y_score = np.vstack((ins, oos))
+    # TODO: use different scores (e.g. entropy, acq fns)
     y_score = y_score.max(axis=1)
     #print y_score
     #import ipdb; ipdb.set_trace()
@@ -126,6 +128,7 @@ print "done sampling clean data!"
 # error-detection
 preds = np.argmax(yhtm, axis=-1)
 gtruth = np.argmax(Yt, axis=-1)
+
 is_correct = np.equal(preds, gtruth[:num_examples])
 correct = yhtm[is_correct]
 incorrect = yhtm[np.logical_not(is_correct)]

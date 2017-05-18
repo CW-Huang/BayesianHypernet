@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Ryan Turner (turnerry@iro.umontreal.ca)
 from collections import OrderedDict
 import numpy as np

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''This is a reproduction of the IRNN experiment
 with pixel-by-pixel sequential MNIST in
 "A Simple Way to Initialize Recurrent Networks of Rectified Linear Units"

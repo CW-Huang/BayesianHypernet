@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import numpy as np
 
 # the type of float to use throughout the session.

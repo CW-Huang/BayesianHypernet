@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Train and evaluate a simple MLP on the Reuters newswire topic classification task.
 GPU run command:
     THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 python examples/reuters_mlp.py

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''Train a Bidirectional LSTM on the IMDB sentiment classification task.
 
 GPU command:

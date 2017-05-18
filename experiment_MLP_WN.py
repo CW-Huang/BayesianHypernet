@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Sun May 14 19:49:51 2017
@@ -111,10 +112,9 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
     return records
 
 
-def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=1000):
-    n = X.shape[0]
-    MCt = np.zeros((n_mc,n,10))
-    MCv = np.zeros((n_mc,n,10))
+def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=100):
+    MCt = np.zeros((n_mc,X.shape[0],10))
+    MCv = np.zeros((n_mc,Xt.shape[0],10))
     for i in range(n_mc):
         MCt[i] = predict_proba(X)
         MCv[i] = predict_proba(Xt)
@@ -134,11 +134,11 @@ def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=1000):
     
     ind = ind_negative[-1] #TO-DO: complete evaluation
     for ii in range(15): 
-        print np.round(MCt[ii][ind] * 1000)
+        print np.round(MCv[ii][ind] * 1000)
     
     ind = ind_negative[-2] #TO-DO: complete evaluation
     for ii in range(15): 
-        print np.round(MCt[ii][ind] * 1000)
+        print np.round(MCv[ii][ind] * 1000)
 
 #def main():
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Fri May 12 17:46:38 2017
@@ -23,9 +24,7 @@ from lasagne.objectives import categorical_crossentropy as cc
 import numpy as np
 
 
-
-def flatten_list(plist):
-    return T.concatenate([p.flatten() for p in plist])
+from helpers import flatten_list
 
 
 if 1:#def main():

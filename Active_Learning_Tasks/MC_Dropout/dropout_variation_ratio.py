@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from __future__ import print_function
 import sys
 import os
@@ -352,7 +353,7 @@ def active_learning(model, num_epochs, acquisition_iterations, nb_classes):
     all_accuracy = test_accuracy
     all_error = test_error
 
-    dropout_iterations = 5
+    dropout_iterations = 100
     Queries = 10
 
 
@@ -435,29 +436,29 @@ def main():
 
     num_experiments = 3
     model='mlp'
-    num_epochs=3
-    acquisition_iterations=5
+    num_epochs=50
+    acquisition_iterations=98
     nb_classes=10
-    average_accuracy = np.array([])
+    
+    all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
 
     for i in range(num_experiments):
 
-        all_accuracy = active_learning(model, num_epochs, acquisition_iterations, nb_classes)
+        accuracy = active_learning(model, num_epochs, acquisition_iterations, nb_classes)
 
-        average_accuracy = np.append(average_accuracy, all_accuracy)
+        all_accuracy[:, i] = accuracy 
 
-    print ("average_accuracy", average_accuracy.shape)
-    print ("average_accuracy", average_accuracy)
+    mean_accuracy = np.mean(all_accuracy)  
 
-    mean_accuracy = np.mean(average_accuracy)
-
-    np.save('dropout_var_ratio_average_accuracy.npy', average_accuracy)
-    np.save('dropout_var_ratio_mean_accuracy.npy',mean_accuracy)    
+    np.save('dropout_variation_ratio_all_accuracy.npy', all_accuracy)
+    np.save('dropout_variation_ratio_mean_accuracy.npy',mean_accuracy)    
 
 
 if __name__ == '__main__':
 
     main()
+
+
 
 
 

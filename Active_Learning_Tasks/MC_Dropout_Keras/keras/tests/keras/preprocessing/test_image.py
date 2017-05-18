@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import pytest
 from keras.preprocessing.image import *
 from PIL import Image

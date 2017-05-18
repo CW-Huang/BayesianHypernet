@@ -55,7 +55,7 @@ def run_episode(env,
             break
         
 
-        action = agent.act_mc_dropout_Boltzmann(state)
+        action = agent.act(state)
 
         #take a, get s' and reward
         state_next, reward, done, info = env.step(action)
@@ -102,8 +102,6 @@ def run_episode(env,
 
 
     return loss_v, w1_m, w2_m, w3_m, total_reward, step_length
-
-
 
 
 

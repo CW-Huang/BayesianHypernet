@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from ..layers.core import Layer
 from .. import initializations
 from .. import backend as K
