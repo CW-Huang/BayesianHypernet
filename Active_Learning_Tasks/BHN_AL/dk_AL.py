@@ -101,7 +101,8 @@ def active_learning(acquisition_iterations):
                          coupling=coupling,
                          kernel_width=4,
                          pad='valid',
-                         stride=1)
+                         stride=1,
+                         extra_linear=extra_linear)
                          #dataset=dataset)
     elif arch == 'CNN':
         model = MCdropoutCNN(kernel_width=4,
@@ -280,7 +281,8 @@ def active_learning(acquisition_iterations):
                               kernel_width=4,
                               pad='valid',
                               stride=1,
-                              coupling=coupling)
+                              coupling=coupling,
+                              extra_linear=extra_linear)
     
         recs = train_model(model.train_func,model.predict,
 	                       train_x[:size],train_y[:size],
