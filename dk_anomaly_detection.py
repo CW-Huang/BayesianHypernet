@@ -61,8 +61,8 @@ if 1:#def main():
     parser.add_argument('--model', default='mlp', type=str, choices=['mlp', 'hnet', 'hnet2', 'dropout', 'dropout2', 'weight_uncertainty'])
     parser.add_argument('--nonlinearity',default='rectify', type=str)
     parser.add_argument('--perdatapoint',action='store_true')    
-    parser.add_argument('--num_examples',default=10000,type=int)  
-    parser.add_argument('--num_samples',default=100,type=int)  
+    parser.add_argument('--num_examples',default=1000,type=int)  
+    parser.add_argument('--num_samples',default=10,type=int)  
     parser.add_argument('--size',default=50000,type=int)  
     #
     #parser.add_argument('--save_path',default=None,type=str)  
@@ -279,7 +279,7 @@ if 1:#def main():
                 te_inds = np.random.choice(len(Xt), num_examples, replace=False)
                 tr_acc = (MCpred(X, inds=tr_inds)==Y[tr_inds].argmax(1)).mean()
                 te_acc = (MCpred(Xt, inds=te_inds)==Yt[te_inds].argmax(1)).mean()
-                assert False
+                #assert False
                 print '\ttrain acc: {}'.format(tr_acc)
                 print '\ttest acc: {}'.format(te_acc)
                 records['loss'].append(loss)
@@ -292,6 +292,11 @@ if 1:#def main():
                         np.save(save_path + '_params_best.npy', lasagne.layers.get_all_param_values([h_layer, layer]))
 
             t+=1
+
+# load best and do proper evaluation
+lasagne.layers.set_all_param_values([h_layer, layer], np.load(save_path + '_params_best.npy'))
+best_acc = (MCpred(Xt, inds=range(len(Xt))) == Yt.argmax(1)).mean()
+np.save(save_path + '_best_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
 
         
 # --------------------------------------------

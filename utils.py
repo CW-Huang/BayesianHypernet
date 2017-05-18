@@ -75,4 +75,3 @@ def MCpred(X, predict_probs_fn=None, num_samples=100, inds=None, returns='preds'
         return rval.mean(0).argmax(-1)
 
 
-
