@@ -2,13 +2,17 @@
 from BHNs import HyperCNN
 from ops import load_mnist
 from utils import log_normal, log_laplace
-import numpy as np
+import numpy
+np = numpy
 import random
 random.seed(5001)
-
+from lasagne import layers
+from scipy.stats import mode
 
 from dk_hyperCNN import MCdropoutCNN
 
+import time
+import os
 
 def to_categorical(y):
     num_classes=10
@@ -127,7 +131,7 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
             
             loss = train_func(x,y,N,lr)
             
-            if i==0:#t%100==0:
+            if e == epochs-1:#i==0:#t%100==0:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
                 tr_acc = (predict_func(X)==Y.argmax(1)).mean()
                 te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()
@@ -158,6 +162,8 @@ def test_model(predict_proba, X_test, y_test):
 
 def active_learning(acquisition_iterations):
 
+    t0 = time.time()
+
     bh_iterations = 100
     nb_classes = 10
     Queries = 10
@@ -180,6 +186,7 @@ def active_learning(acquisition_iterations):
 
     print ("Initial Training Data", train_x.shape)
 
+    # select model
     if arch == 'hyperCNN':
         model = HyperCNN(lbda=lbda,
                          perdatapoint=perdatapoint,
@@ -187,7 +194,7 @@ def active_learning(acquisition_iterations):
                          coupling=coupling,
                          kernel_width=4,
                          pad='valid',
-                         stride=1,
+                         stride=1)
                          #dataset=dataset)
     elif arch == 'CNN':
         model = MCdropoutCNN(kernel_width=4,
@@ -203,17 +210,10 @@ def active_learning(acquisition_iterations):
                          kernel_width=4,
                          pad='valid',
                          stride=1)
-                             
     else:
         raise Exception('no model named `{}`'.format(model))
         
 
-    if arch == 'hyperCNN':
-        model = HyperCNN(lbda=lbda,
-                              perdatapoint=perdatapoint,
-                              prior=prior,
-                              coupling=coupling)
-    
     
     train_y = train_y.astype('float32')
     recs = train_model(model.train_func,model.predict,
@@ -227,9 +227,9 @@ def active_learning(acquisition_iterations):
 
     all_accuracy = test_accuracy
 
-
     for i in range(acquisition_iterations):
 
+        print('time', time.time() - t0)
     	print('POOLING ITERATION', i)
     	pool_subset = pool_size
 
@@ -362,11 +362,11 @@ def active_learning(acquisition_iterations):
         pool_y = np.concatenate((pool_y, y_pool_Dropout), axis=0)
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
         train_y = np.concatenate((train_y, Pooled_Y), axis=0).astype('float32')
-        print pool_x.shape, Pooled_X.shape, train_x.shape
-        assert False
+        #print pool_x.shape, Pooled_X.shape, train_x.shape
+        #assert False
 
 
-        if 0:# don't warm start
+        if 0:# don't warm start (TODO!)
             model = HyperCNN(lbda=lbda,
                               perdatapoint=perdatapoint,
                               prior=prior,
@@ -381,7 +381,7 @@ def active_learning(acquisition_iterations):
 	                       lr0,lrdecay,bs,epochs)
    
 
-        test_accuracy = test_model(model.predict_proba, test_x, test_y)   
+        hyperCNN = test_model(model.predict_proba, test_x, test_y)   
 
         print ("Test Accuracy", test_accuracy)
 
@@ -401,13 +401,13 @@ def main():
         
         accuracy = active_learning(acquisition_iterations)
         all_accuracy[:, i] = accuracy
-        np.save('BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy', all_accuracy)
+        np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy'), all_accuracy)
 
     
     mean_accuracy = np.mean(all_accuracy)
 
-    np.save('BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy', all_accuracy)
-    np.save('BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_mean_accuracy.npy', mean_accuracy)
+    np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy'), all_accuracy)
+    np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_mean_accuracy.npy'), mean_accuracy)
 
 
 
@@ -418,7 +418,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     
     # boolean: 1 -> True ; 0 -> False
-    parser.add_argument('--acq',default='bald',type=str, choices=['bald', 'max_ent', 'var_ratio', 'mean_std', 'random']) # TODO!
+    parser.add_argument('--acq',default='bald',type=str, choices=['bald', 'max_ent', 'var_ratio', 'mean_std', 'random'])
     parser.add_argument('--arch',default='hyperCNN',type=str)
     parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--coupling',default=4,type=int)  
@@ -430,7 +430,8 @@ if __name__ == '__main__':
     parser.add_argument('--params_reset',default='none', type=str, choices=['deterministic', 'random', 'none'] ) # TODO
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--pool_size',default=2000,type=int) # FIXME: should be 50000!!
+    parser.add_argument('--pool_size',default=2000,type=int)
+    parser.add_argument('--save_dir',default='./',type=str)      
     parser.add_argument('--size',default=10000,type=int)      
     args = parser.parse_args()
     print args
