@@ -86,7 +86,7 @@ class Base_BHN(object):
         params0 = lasagne.layers.get_all_param_values([self.h_net,self.p_net])
         params = lasagne.layers.get_all_params([self.h_net,self.p_net])
         updates = {p:p0 for p, p0 in zip(params,params0)}
-        self.resume = theano.function([],None,
+        self.reset = theano.function([],None,
                                       updates=updates)
     
     def _get_theano_variables(self):

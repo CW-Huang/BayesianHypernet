@@ -7,6 +7,8 @@ import random
 random.seed(5001)
 
 
+from dk_hyperCNN import MCdropoutCNN
+
 
 def to_categorical(y):
     num_classes=10
@@ -178,13 +180,38 @@ def active_learning(acquisition_iterations):
 
     print ("Initial Training Data", train_x.shape)
 
+    if arch == 'hyperCNN':
+        model = HyperCNN(lbda=lbda,
+                         perdatapoint=perdatapoint,
+                         prior=prior,
+                         coupling=coupling,
+                         kernel_width=4,
+                         pad='valid',
+                         stride=1,
+                         #dataset=dataset)
+    elif arch == 'CNN':
+        model = MCdropoutCNN(kernel_width=4,
+                         pad='valid',
+                         stride=1)
+    elif arch == 'CNN_spatial_dropout':
+        model = MCdropoutCNN(dropout='spatial',
+                         kernel_width=4,
+                         pad='valid',
+                         stride=1)
+    elif arch == 'CNN_dropout':
+        model = MCdropoutCNN(dropout=1,
+                         kernel_width=4,
+                         pad='valid',
+                         stride=1)
+                             
+    else:
+        raise Exception('no model named `{}`'.format(model))
+        
 
-    model = HyperCNN(lbda=lbda,
+    if arch == 'hyperCNN':
+        model = HyperCNN(lbda=lbda,
                               perdatapoint=perdatapoint,
                               prior=prior,
-                              kernel_width=4,
-                              pad='valid',
-                              stride=1,
                               coupling=coupling)
     
     
@@ -253,8 +280,8 @@ def active_learning(acquisition_iterations):
             U_X = G_X - F_X
             sort_values = U_X.flatten()
             x_pool_index = sort_values.argsort()[-Queries:][::-1]
-            print x_pool_index.shape
-            assert False
+            #print x_pool_index.shape # 10
+            #assert False
 
         elif acq == 'max_ent':
     	    score_All = np.zeros(shape=(X_pool_Dropout.shape[0], nb_classes))
@@ -316,13 +343,9 @@ def active_learning(acquisition_iterations):
             a_1d = BayesSegnet_Sigma.flatten()
             x_pool_index = a_1d.argsort()[-Queries:][::-1]
             
-
-            assert False
-
         elif acq == 'random':
             x_pool_index = np.asarray(random.sample(range(0, 38000), Queries))
-
-            pass
+            #x_pool_index = np.random.choice(range(pool_size), Queries, replace=False)
 
 
         # END ACQUISITION
@@ -370,7 +393,7 @@ def active_learning(acquisition_iterations):
 
 def main():
 
-    num_experiments = 3
+    #num_experiments = 3
     acquisition_iterations = 98
     all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
     
@@ -378,13 +401,13 @@ def main():
         
         accuracy = active_learning(acquisition_iterations)
         all_accuracy[:, i] = accuracy
-        np.save('BH_HyperCNN_' + acq + '_all_accuracy.npy', all_accuracy)
+        np.save('BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy', all_accuracy)
 
     
     mean_accuracy = np.mean(all_accuracy)
 
-    np.save('BH_HyperCNN_' + acq + '_all_accuracy.npy', all_accuracy)
-    np.save('BH_HyperCNN_' + acq + '_mean_accuracy.npy',mean_accuracy)    
+    np.save('BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy', all_accuracy)
+    np.save('BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_mean_accuracy.npy', mean_accuracy)
 
 
 
@@ -396,22 +419,24 @@ if __name__ == '__main__':
     
     # boolean: 1 -> True ; 0 -> False
     parser.add_argument('--acq',default='bald',type=str, choices=['bald', 'max_ent', 'var_ratio', 'mean_std', 'random']) # TODO!
+    parser.add_argument('--arch',default='hyperCNN',type=str)
+    parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--coupling',default=4,type=int)  
-    parser.add_argument('--perdatapoint',default=0,type=int)
+    parser.add_argument('--epochs',default=50,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)  
-    
     parser.add_argument('--lr0',default=0.0001,type=float)  
     parser.add_argument('--lbda',default=1,type=float)  
-    parser.add_argument('--size',default=10000,type=int)      
-    parser.add_argument('--bs',default=128,type=int)  
-    parser.add_argument('--epochs',default=50,type=int)
+    parser.add_argument('--num_experiments',default=3,type=int)  
+    parser.add_argument('--params_reset',default='none', type=str, choices=['deterministic', 'random', 'none'] ) # TODO
+    parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
     parser.add_argument('--pool_size',default=2000,type=int) # FIXME: should be 50000!!
-    parser.add_argument('--params_reset',default='none', type=str, choices=['deterministic', 'random', 'none'] ) # TODO
+    parser.add_argument('--size',default=10000,type=int)      
     args = parser.parse_args()
     print args
     
 
+    locals().update(args.__dict__) 
     acq = args.acq
     coupling = args.coupling
     perdatapoint = args.perdatapoint
