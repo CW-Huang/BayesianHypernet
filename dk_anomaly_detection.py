@@ -8,7 +8,8 @@ Created on Fri May 12 17:46:38 2017
 """
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer, ReverseLayer
-from modules import CoupledDenseLayer, stochasticDenseLayer2
+from modules import CoupledDenseLayer, stochasticDenseLayer2, ConvexBiasLayer
+from modules import * # just in case
 from utils import log_normal, log_stdnormal
 from ops import load_mnist
 import theano
@@ -28,6 +29,12 @@ import numpy as np
 from helpers import flatten_list, gelu, plot_dict
 
 
+# TODO: 
+#   AD in script
+#   init
+
+NUM_CLASSES = 10
+
 
 if 1:#def main():
     """
@@ -44,14 +51,18 @@ if 1:#def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--arch',type=str, default='Dan', choices=['CW', 'Dan'])
     parser.add_argument('--bs',default=128,type=int)  
+    parser.add_argument('--convex_combination', type=int, default=0) 
     parser.add_argument('--coupling', type=int, default=4) 
     parser.add_argument('--epochs', type=int, default=100)  
+    parser.add_argument('--init', type=str, default='normal')  
     parser.add_argument('--lrdecay',action='store_true')  
     parser.add_argument('--lr0',default=0.001,type=float)  
     parser.add_argument('--lbda',default=1.,type=float)  
     parser.add_argument('--model', default='mlp', type=str, choices=['mlp', 'hnet', 'hnet2', 'dropout', 'dropout2', 'weight_uncertainty'])
     parser.add_argument('--nonlinearity',default='rectify', type=str)
     parser.add_argument('--perdatapoint',action='store_true')    
+    parser.add_argument('--num_examples',default=10000,type=int)  
+    parser.add_argument('--num_samples',default=100,type=int)  
     parser.add_argument('--size',default=50000,type=int)  
     #
     #parser.add_argument('--save_path',default=None,type=str)  
@@ -150,6 +161,16 @@ if 1:#def main():
             h_layer = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
         
+        if convex_combination:
+            if init == 'normal':
+                h_layer = ConvexBiasLayer(h_layer, b=init.Normal(0.01, 0))
+            else: # TODO
+                assert False
+                h_layer = ConvexBiasLayer(h_layer, b=init.Normal(0.01, 0))
+            h_layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+
+
         weights = lasagne.layers.get_output(h_layer,ep)
         
         # primary net
@@ -215,6 +236,13 @@ if 1:#def main():
                             loss,updates=updates,
                             on_unused_input='warn')
     predict = theano.function([input_var],y.argmax(1))
+    predict_probs = theano.function([input_var],y)
+
+    def MCpred(X, inds):
+        from utils import MCpred
+        return MCpred(X, predict_probs_fn=predict_probs, num_samples=num_samples, inds=inds, returns='preds')
+
+
 
     ##################
     # TRAIN
@@ -247,8 +275,11 @@ if 1:#def main():
             if i == 0:# or t>8000:
                 print 'time', time.time() - t0
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
-                tr_acc = (predict(X)==Y.argmax(1)).mean()
-                te_acc = (predict(Xt)==Yt.argmax(1)).mean()
+                tr_inds = np.random.choice(len(X), num_examples, replace=False)
+                te_inds = np.random.choice(len(Xt), num_examples, replace=False)
+                tr_acc = (MCpred(X, inds=tr_inds)==Y[tr_inds].argmax(1)).mean()
+                te_acc = (MCpred(Xt, inds=te_inds)==Yt[te_inds].argmax(1)).mean()
+                assert False
                 print '\ttrain acc: {}'.format(tr_acc)
                 print '\ttest acc: {}'.format(te_acc)
                 records['loss'].append(loss)
@@ -263,6 +294,12 @@ if 1:#def main():
             t+=1
 
         
+# --------------------------------------------
+# Anomaly Detection Metrics
+if 1:
+
+
+    pass
 
     
 

@@ -58,6 +58,21 @@ def softmax(x,axis=1):
     x_max = T.max(x, axis=axis, keepdims=True)
     exp = T.exp(x-x_max)
     return exp / T.sum(exp, axis=axis, keepdims=True)
-    
-    
-    
+
+
+
+# inds : the indices of the examples you wish to evaluate
+#   these should probably be ALL of the inds, OR be randomly sampled
+def MCpred(X, predict_probs_fn=None, num_samples=100, inds=None, returns='preds', num_classes=10):
+    rval = np.empty((num_samples, len(inds), num_classes))
+    for ind in range(num_samples):
+        rval[ind] = predict_probs_fn(X[inds])
+    if returns == 'samples':
+        return rval
+    elif returns == 'probs':
+        return rval.mean(0)
+    elif returns == 'preds':
+        return rval.mean(0).argmax(-1)
+
+
+

@@ -333,6 +333,7 @@ class LinearFlowLayer(lasagne.layers.base.Layer):
         
         return output, (T.ones_like(input)*T.log(s)).sum(1)
 
+# CC
 class ConvexBiasLayer(lasagne.layers.base.Layer):    
     """
     Scale and shift inputs, elementwise
