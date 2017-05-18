@@ -345,6 +345,11 @@ if __name__ == '__main__':
     
 
     locals().update(args.__dict__) 
+
+    if not os.path.exists(save_dir):
+         os.makedirs(save_dir)
+    
+
     acq = args.acq
     coupling = args.coupling
     perdatapoint = args.perdatapoint
