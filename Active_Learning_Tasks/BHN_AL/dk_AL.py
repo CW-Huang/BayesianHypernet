@@ -341,6 +341,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir',default='./',type=str)      
     parser.add_argument('--size',default=10000,type=int)      
     args = parser.parse_args()
+    print "\n\n\n-----------------------------------------------------------------------\n\n\n"
     print args
     
 
