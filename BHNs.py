@@ -1063,7 +1063,6 @@ class HyperCNN(Base_BHN):
 
         
 
-
 class BHN_Q_Network(Base_BHN):
     """
     Hypernet with dense coupling layer outputing posterior of rescaling 
@@ -1074,8 +1073,8 @@ class BHN_Q_Network(Base_BHN):
     #                  (200,  10)]
     
 
-    weight_shapes = [(784, 200),
-                     (200,  2)]
+    weight_shapes = [(512, 256),
+                     (256,  2)]
 
     num_params = sum(ws[1] for ws in weight_shapes)
     
@@ -1151,5 +1150,4 @@ class BHN_Q_Network(Base_BHN):
     def _get_useful_funcs(self):
         self.predict_proba = theano.function([self.input_var],self.y)
         #self.predict = theano.function([self.input_var],self.y.argmax(1))
-
         self.predict = theano.function([self.input_var],self.y)

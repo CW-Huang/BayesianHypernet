@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Wed May 10 17:29:14 2017
@@ -33,19 +32,19 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
 
         num_inputs = int(np.prod(self.input_shape[1]/2))
 
-        self.W1 = self.add_param(W, (num_inputs, num_units), name="W1")
-        self.W21 = self.add_param(W, (num_units, num_inputs), name="W21")
-        self.W22 = self.add_param(W, (num_units, num_inputs), name="W22")
+        self.W1 = self.add_param(W, (num_inputs, num_units), name="cpds_W1")
+        self.W21 = self.add_param(W, (num_units, num_inputs), name="cpds_W21")
+        self.W22 = self.add_param(W, (num_units, num_inputs), name="cdds_W22")
         if b is None:
             self.b1 = None
             self.b21 = None
             self.b22 = None
         else:
-            self.b1 = self.add_param(b, (num_units,), name="b1",
+            self.b1 = self.add_param(b, (num_units,), name="cpds_b1",
                                      regularizable=False)
-            self.b21 = self.add_param(b, (num_inputs,), name="b21",
+            self.b21 = self.add_param(b, (num_inputs,), name="cpds_b21",
                                       regularizable=False)
-            self.b22 = self.add_param(b, (num_inputs,), name="b22",
+            self.b22 = self.add_param(b, (num_inputs,), name="cpds_b22",
                                       regularizable=False)
             
     def get_output_shape_for(self, input_shape):
@@ -77,6 +76,73 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
         
         return output, ls.sum(1)
 
+
+class CoupledWNDenseLayer(lasagne.layers.base.Layer):    
+    def __init__(self, incoming, num_units, W=init.Normal(1),
+                 r=init.Normal(0.0001),
+                 b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
+                 **kwargs):
+        super(CoupledWNDenseLayer, self).__init__(incoming, **kwargs)
+        self.nonlinearity = (nonlinearities.identity if nonlinearity is None
+                             else nonlinearity)
+
+        self.num_units = num_units
+
+        num_inputs = int(np.prod(self.input_shape[1]/2))
+
+        self.W1 = self.add_param(W, (num_inputs, num_units), name="cpds_W1")
+        self.W21 = self.add_param(W, (num_units, num_inputs), name="cpds_W21")
+        self.W22 = self.add_param(W, (num_units, num_inputs), name="cdds_W22")
+        self.r1 = self.add_param(r, (num_units,), name='cpds_r1')
+        self.r21 = self.add_param(r, (num_units,), name='cpds_r21')
+        self.r22 = self.add_param(r, (num_units,), name='cpds_r22')
+        if b is None:
+            self.b1 = None
+            self.b21 = None
+            self.b22 = None
+        else:
+            self.b1 = self.add_param(b, (num_units,), name="cpds_b1",
+                                     regularizable=False)
+            self.b21 = self.add_param(b, (num_inputs,), name="cpds_b21",
+                                      regularizable=False)
+            self.b22 = self.add_param(b, (num_inputs,), name="cpds_b22",
+                                      regularizable=False)
+            
+    def get_output_shape_for(self, input_shape):
+        return input_shape
+
+    def get_output_for(self, input, **kwargs):
+        num_inputs = input.shape[1]
+        input1 = input[:,:num_inputs/2]
+        input2 = input[:,num_inputs/2:]
+        output1 = input1
+        
+        norm1 = T.sqrt(T.sum(T.square(self.W1),axis=0,keepdims=True))
+        W1 = self.W1 / norm1
+        norm21 = T.sqrt(T.sum(T.square(self.W21),axis=0,keepdims=True))
+        W21 = self.W21 / norm21
+        norm22 = T.sqrt(T.sum(T.square(self.W22),axis=0,keepdims=True))
+        W22 = self.W22 / norm22
+        
+        a = self.r1 * T.dot(input1,W1)
+        if self.b1 is not None:
+            a = a + self.b1
+        h = self.nonlinearity(a)
+        
+        s_ = self.r21 * T.dot(h,W21)
+        if self.b21 is not None:
+            s_ = s_ + self.b21
+        s = T.exp(s_) + 0.001
+        ls = T.log(s)
+        
+        m = self.r22 * T.dot(h,W22)
+        if self.b22 is not None:
+            m = m + self.b22
+            
+        output2 = s * input2 + m
+        output = T.concatenate([output1,output2],1)
+        
+        return output, ls.sum(1)
 
 class CoupledConv1DLayer(lasagne.layers.base.Layer):
     """
@@ -181,11 +247,11 @@ class LinearFlowLayer(lasagne.layers.base.Layer):
         
         num_inputs = int(np.prod(self.input_shape[1]))
 
-        self.W = self.add_param(W, (num_inputs,), name="W")
+        self.W = self.add_param(W, (num_inputs,), name="lf_W")
         if b is None:
             self.b = None
         else:
-            self.b = self.add_param(b, (num_inputs,), name="b",
+            self.b = self.add_param(b, (num_inputs,), name="lf_b",
                                     regularizable=False)
             
             
@@ -301,13 +367,16 @@ class stochasticDenseLayer(lasagne.layers.base.MergeLayer):
         if b is None:
             self.b = None
         else:
-            self.b = self.add_param(b, (num_units,), name="b",
+            self.b = self.add_param(b, (num_units,), name="stocds_b",
                                     regularizable=False)
                                     
     def get_output_shape_for(self,input_shapes):
         input_shape = input_shapes[0]
         weight_shape = input_shapes[1]
-        return (input_shape[0], weight_shape[2])
+        try:
+            return (input_shape[0], weight_shape[2])
+        except:
+            return (input_shape[0], weight_shape[1])
         
     def get_output_for(self, inputs, **kwargs):
         """
