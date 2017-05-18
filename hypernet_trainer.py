@@ -12,14 +12,14 @@ def log_abs_det_T(W):
 
 
 def hypernet_elbo(X, y, loglik_primary_f, logprior_f, hypernet_f, z_noise, N,
-                  log_det_dtheta_dz_f=None):
+                  log_det_dtheta_dz_f=None, prelim=False):
     assert(X.ndim == 2 and y.ndim == 2)
     assert(z_noise.ndim == 1)
 
     B = X.shape[0]
     rescale = float(N) / B  # Ensure not integer division
 
-    theta = hypernet_f(z_noise)
+    theta = hypernet_f(z_noise, prelim)
 
     loglik = loglik_primary_f(X, y, theta)
     assert(loglik.ndim == 1)
@@ -34,7 +34,7 @@ def hypernet_elbo(X, y, loglik_primary_f, logprior_f, hypernet_f, z_noise, N,
         J = T.jacobian(theta, z_noise)
         penalty = log_abs_det_T(J)
     else:
-        penalty = log_det_dtheta_dz_f(z_noise)
+        penalty = log_det_dtheta_dz_f(z_noise, prelim)
     assert(penalty.ndim == 0)
 
     logprior_z = 0.5 * T.dot(z_noise, z_noise)
@@ -52,33 +52,36 @@ def build_trainer(phi_shared, N, loglik_primary_f, logprior_f, hypernet_f,
     X = T.matrix('x')
     y = T.matrix('y')  # Assuming multivariate output
     z_noise = T.vector('z')
+    prelim = T.bscalar('prelim')
 
     lr = T.scalar('lr')
 
     elbo = hypernet_elbo(X, y, loglik_primary_f, logprior_f, hypernet_f,
-                         z_noise, N, log_det_dtheta_dz_f=log_det_dtheta_dz_f)
+                         z_noise, N, log_det_dtheta_dz_f=log_det_dtheta_dz_f,
+                         prelim=prelim)
     loss = -elbo
     grads = T.grad(loss, phi_shared)
     updates = lasagne.updates.adam(grads, phi_shared, learning_rate=lr)
 
-    trainer = theano.function([X, y, z_noise, lr], loss, updates=updates)
+    trainer = theano.function([X, y, z_noise, lr, prelim], loss, updates=updates)
 
     # Build get_err in case you want to check Jacobian logic
     elbo_no_J = hypernet_elbo(X, y, loglik_primary_f, logprior_f, hypernet_f,
-                              z_noise, N)
+                              z_noise, N, prelim=prelim)
     err = T.abs_(elbo - elbo_no_J)
-    get_err = theano.function([X, y, z_noise], err)
+    get_err = theano.function([X, y, z_noise, prelim], err)
 
-    theta = hypernet_f(z_noise)
+    theta = hypernet_f(z_noise, prelim=prelim)
     test_loglik = loglik_primary_f(X, y, theta)
-    test_f = theano.function([X, y, z_noise], test_loglik)
+    test_f = theano.function([X, y, z_noise, prelim], test_loglik)
 
     primary_out = None
     if primary_f is not None:
         yp = primary_f(X, theta)
-        primary_out = theano.function([X, z_noise], yp)
+        primary_out = theano.function([X, z_noise, prelim], yp)
 
-    return trainer, get_err, test_f, primary_out
+    grad_f = theano.function([X, y, z_noise, prelim], grads)
+    return trainer, get_err, test_f, primary_out, grad_f
 
 # ============================================================================
 # Example with learning Gaussian for linear predictor

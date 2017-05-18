@@ -81,32 +81,19 @@ def simple_test(X, y, X_valid, y_valid,
     num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
 
     WL_init = 1e-2  # 10.0 ** (-2.0 / n_layers)
-    layers = ign.init_ign_diag(n_layers, num_params, WL_val=WL_init)
+    layers = ign.init_ign_LU(n_layers, num_params, WL_val=WL_init)
     phi_shared = make_shared_dict(layers, '%d%s')
 
-    # TODO make diagnalization an argument and pass in as param
-
     ll_primary_f = lambda X, y, w: loglik_primary_f(X, y, w, weight_shapes)
-    hypernet_f = lambda z: ign.network_T_and_J_diag(z[None, :], phi_shared)[0][0, :]
+    hypernet_f = lambda z, prelim: ign.network_T_and_J_LU(z[None, :], phi_shared, force_diag=prelim)[0][0, :]
     # TODO verify this length of size 1
-    log_det_dtheta_dz_f = lambda z: T.sum(ign.network_T_and_J_diag(z[None, :], phi_shared)[1])
+    log_det_dtheta_dz_f = lambda z, prelim: T.sum(ign.network_T_and_J_LU(z[None, :], phi_shared, force_diag=prelim)[1])
     primary_f = lambda X, w: primary_net_f(X, w, weight_shapes)
     params_to_opt = phi_shared.values()
     R = ht.build_trainer(params_to_opt, N, ll_primary_f, logprior_f,
                          hypernet_f, primary_f=primary_f,
                          log_det_dtheta_dz_f=log_det_dtheta_dz_f)
-    trainer_prelim = R[0]
-
-    ll_primary_f = lambda X, y, w: loglik_primary_f(X, y, w, weight_shapes)
-    hypernet_f = lambda z: ign.network_T_and_J(z[None, :], phi_shared)[0][0, :]
-    # TODO verify this length of size 1
-    log_det_dtheta_dz_f = lambda z: T.sum(ign.network_T_and_J(z[None, :], phi_shared)[1])
-    primary_f = lambda X, w: primary_net_f(X, w, weight_shapes)
-    params_to_opt = phi_shared.values()
-    R = ht.build_trainer(params_to_opt, N, ll_primary_f, logprior_f,
-                         hypernet_f, primary_f=primary_f,
-                         log_det_dtheta_dz_f=log_det_dtheta_dz_f)
-    trainer, get_err, test_loglik, primary_out = R
+    trainer, get_err, test_loglik, primary_out, grad_f = R
 
     batch_order = np.arange(int(N / n_batch))
 
@@ -122,10 +109,11 @@ def simple_test(X, y, X_valid, y_valid,
             z_noise = z_std * np.random.randn(num_params)
             if epoch <= 500:
                 current_lr = init_lr
-                batch_cost = trainer_prelim(x_batch, y_batch, z_noise, current_lr)
+                prelim = True
             else:
                 current_lr = init_lr * 0.01
-                batch_cost = trainer(x_batch, y_batch, z_noise, current_lr)
+                prelim = False
+            batch_cost = trainer(x_batch, y_batch, z_noise, current_lr, prelim)
             cost += batch_cost
         cost /= len(batch_order)
         print cost
@@ -134,13 +122,13 @@ def simple_test(X, y, X_valid, y_valid,
         loglik_valid_s = np.zeros((N_valid, n_samples))
         for ss in xrange(n_samples):
             z_noise = z_std * np.random.randn(num_params)
-            loglik_valid_s[:, ss] = test_loglik(X_valid, y_valid, z_noise)
+            loglik_valid_s[:, ss] = test_loglik(X_valid, y_valid, z_noise, False)
         loglik_valid_s_adj = loglik_valid_s - np.log(n_samples)
         loglik_valid[epoch] = np.mean(logsumexp(loglik_valid_s_adj, axis=1))
         print 'valid %f' % loglik_valid[epoch]
 
     phi = make_unshared_dict(phi_shared)
-    return phi, cost_hist, loglik_valid, primary_out
+    return phi, cost_hist, loglik_valid, primary_out, grad_f
 
 
 if __name__ == '__main__':
@@ -164,7 +152,7 @@ if __name__ == '__main__':
 
     X, y = dm_example(N)
     X_valid, y_valid = dm_example(N)
-    phi, cost_hist, loglik_valid, primary_out = \
+    phi, cost_hist, loglik_valid, primary_out, grad_f = \
         simple_test(X, y, X_valid, y_valid,
                     n_epochs, n_batch, init_lr, weight_shapes,
                     n_layers=3, z_std=z_std)
@@ -178,7 +166,7 @@ if __name__ == '__main__':
     y_grid = np.zeros((n_samples, n_grid))
     for ss in xrange(n_samples):
         z_noise = z_std * np.random.randn(num_params)
-        mu, prec = primary_out(x_grid[:, None], z_noise)
+        mu, prec = primary_out(x_grid[:, None], z_noise, False)
         std_dev = np.sqrt(1.0 / prec)
         # Just store an MC version than do the mixture of Gauss logic
         mu_grid[ss, :] = mu[:, 0]
