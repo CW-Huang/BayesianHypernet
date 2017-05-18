@@ -890,7 +890,8 @@ class HyperCNN(Base_BHN):
                  pad='same',
                  stride=2,
                  kernel_width=None,
-                 dataset='mnist'):
+                 dataset='mnist',
+                 extra_linear=0):
         
         self.dataset = dataset
         
@@ -939,6 +940,7 @@ class HyperCNN(Base_BHN):
         self.num_params = self.num_mlp_params + self.num_cnn_params
         
         self.coupling = coupling
+        self.extra_linear = extra_linear
         super(HyperCNN, self).__init__(lbda=lbda,
                                          perdatapoint=perdatapoint,
                                          srng=srng,
@@ -988,10 +990,30 @@ class HyperCNN(Base_BHN):
                 h_net1 = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
 
-        self.kernel_weights = lasagne.layers.get_output(h_net1,ep)
-        h_net1 = lasagne.layers.ReshapeLayer(h_net1,
-                                             (1, self.n_kernels *
-                                                 np.prod(self.kernel_shape) ) )
+
+        if self.extra_linear:
+            h_net1 = lasagne.layers.ReshapeLayer(
+                h_net1,(1, self.n_kernels * np.prod(self.kernel_shape) ) 
+            )
+                                                 
+            layer_temp = ConvexBiasLayer(h_net1)
+            h_net1 = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+    
+            
+            h_net1_w = lasagne.layers.ReshapeLayer(
+                h_net1, (self.n_kernels, np.prod(self.kernel_shape) ) 
+            )
+                 
+            self.kernel_weights = lasagne.layers.get_output(h_net1_w,ep)
+            
+        else:
+        
+            self.kernel_weights = lasagne.layers.get_output(h_net1,ep)
+            h_net1 = lasagne.layers.ReshapeLayer(
+                h_net1, (1, self.n_kernels * np.prod(self.kernel_shape) ) 
+            )
+
 
         # MLP coupling
         if self.coupling:
