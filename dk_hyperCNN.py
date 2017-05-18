@@ -29,6 +29,9 @@ class MCdropoutCNN(object):
                      
     def __init__(self, dropout=None, 
             opt='adam',
+            pad='same',
+            stride=2,
+            kernel_width=None,
             dataset='mnist'):
         if dataset == 'mnist':
             weight_shapes = [(32,1,3,3),        # -> (None, 16, 14, 14)
@@ -38,11 +41,18 @@ class MCdropoutCNN(object):
             weight_shapes = [(32,3,5,5),        # -> (None, 16, 16, 16)
                              (32,32,5,5),       # -> (None, 16,  8,  8)
                              (32,32,5,5)]       # -> (None, 16,  4,  4)
+
+        if kernel_width is not None: # OVERRIDE dataset argument!!!
+            weight_shapes = [(32,1,kernel_width,kernel_width),        # -> (None, 16, 14, 14)
+                                  (32,32,kernel_width,kernel_width),       # -> (None, 16,  7,  7)
+                                  (32,32,kernel_width,kernel_width)]       # -> (None, 16,  4,  4)
+                                  
+
         n_kernels = np.array(weight_shapes)[:,1].sum()
         kernel_shape = weight_shapes[0][:1]+weight_shapes[0][2:]
         
         # needs to be consistent with weight_shapes
-        args = [32,3,2,'same',lasagne.nonlinearities.rectify]#
+        args = [32,kernel_width,stride,pad,lasagne.nonlinearities.rectify]#
         num_filters, filter_size, stride, pad, nonlinearity = args
         self.__dict__.update(locals())
         ##################
