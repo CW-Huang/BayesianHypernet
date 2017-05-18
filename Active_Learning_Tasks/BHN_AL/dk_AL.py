@@ -317,11 +317,13 @@ def active_learning(acquisition_iterations):
         pool_y = np.concatenate((pool_y, y_pool_Dropout), axis=0)
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
         train_y = np.concatenate((train_y, Pooled_Y), axis=0).astype('float32')
-        print pool_x.shape, Pooled_X.shape, train_x.shape
-        assert False
+        #print pool_x.shape, Pooled_X.shape, train_x.shape
+        #assert False
 
-
-        if 0:# don't warm start
+        if params_reset == 'deterministic':# don't warm start
+            model.reset()
+        elif params_reset == 'random':# don't warm start
+            # TODO: more efficient!
             model = HyperCNN(lbda=lbda,
                               perdatapoint=perdatapoint,
                               prior=prior,
