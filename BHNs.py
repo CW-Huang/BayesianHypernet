@@ -9,8 +9,8 @@ Created on Sun May 14 17:58:58 2017
 # TODO: we should have a function for the core hypernet architecture (agnostic of whether we do WN/CNN/full Hnet)
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer, SplitLayer, ReverseLayer
-from modules import CoupledDenseLayer, stochasticDenseLayer2, \
-                    stochasticConv2DLayer
+from modules import CoupledDenseLayer, ConvexBiasLayer, \
+                    stochasticDenseLayer2, stochasticConv2DLayer
 from utils import log_normal
 import theano
 import theano.tensor as T
@@ -698,10 +698,10 @@ class HyperCNN_CW(Base_BHN):
         self.num_params = self.num_mlp_params + self.num_cnn_params
         
         self.coupling = coupling
-        super(HyperCNN, self).__init__(lbda=lbda,
-                                         perdatapoint=perdatapoint,
-                                         srng=srng,
-                                         prior=prior)
+        super(HyperCNN_CW, self).__init__(lbda=lbda,
+                                          perdatapoint=perdatapoint,
+                                          srng=srng,
+                                          prior=prior)
     
     def _get_theano_variables(self):
         # redefine a 4-d tensor for convnet
@@ -746,10 +746,21 @@ class HyperCNN_CW(Base_BHN):
                 h_net1 = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
 
-        self.kernel_weights = lasagne.layers.get_output(h_net1,ep)
         h_net1 = lasagne.layers.ReshapeLayer(h_net1,
                                              (1, self.n_kernels *
                                                  np.prod(self.kernel_shape) ) )
+                                                 
+        layer_temp = ConvexBiasLayer(h_net1)
+        h_net1 = IndexLayer(layer_temp,0)
+        logdets_layers.append(IndexLayer(layer_temp,1))
+
+        
+        h_net1_w = lasagne.layers.ReshapeLayer(h_net1,
+                                               (self.n_kernels,
+                                                np.prod(self.kernel_shape) ) )
+             
+        self.kernel_weights = lasagne.layers.get_output(h_net1_w,ep)
+        
 
         # MLP coupling
         if self.coupling:
@@ -1063,6 +1074,7 @@ class HyperCNN(Base_BHN):
 
         
 
+
 class BHN_Q_Network(Base_BHN):
     """
     Hypernet with dense coupling layer outputing posterior of rescaling 
@@ -1073,8 +1085,9 @@ class BHN_Q_Network(Base_BHN):
     #                  (200,  10)]
     
 
-    weight_shapes = [(512, 256),
-                     (256,  2)]
+    weight_shapes = [(4,   512),
+                     (512, 256),
+                     (256,   4)] # output two means and two log_variances
 
     num_params = sum(ws[1] for ws in weight_shapes)
     
@@ -1083,7 +1096,7 @@ class BHN_Q_Network(Base_BHN):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
-                 coupling=True):
+                 coupling=4):
         
         self.coupling = coupling
         super(BHN_Q_Network, self).__init__(lbda=lbda,
@@ -1146,8 +1159,73 @@ class BHN_Q_Network(Base_BHN):
         
         self.p_net = p_net
         self.y = y
+    
+    def _get_primary_net(self):
+        t = np.cast['int32'](0)
+        p_net = lasagne.layers.InputLayer([None,1])
+        inputs = {p_net:self.input_var}
+        for ws in self.weight_shapes:
+            # using weightnorm reparameterization
+            # only need ws[1] parameters (for rescaling of the weight matrix)
+            num_param = ws[1]
+            w_layer = lasagne.layers.InputLayer((None,ws[1]))
+            weight = self.weights[:,t:t+num_param].reshape((self.wd1,ws[1]))
+            inputs[w_layer] = weight
+            p_net = stochasticDenseLayer2([p_net,w_layer],ws[1],
+                                          nonlinearity=nonlinearities.tanh)
+            #print p_net.output_shape
+            t += num_param
+            
+
+            
+        p_net.nonlinearity = nonlinearities.linear  # replace the nonlinearity
+                                                    # of the last layer
+                                                    # with linear for
+                                                    # regression
         
+        y = get_output(p_net,inputs)
+        
+        self.p_net = p_net
+        self.y = y
+        
+    def _get_elbo(self):
+        """
+        negative elbo, an upper bound on NLL
+        """
+
+        logdets = self.logdets
+        logqw = - logdets
+        """
+        originally...
+        logqw = - (0.5*(ep**2).sum(1)+0.5*T.log(2*np.pi)*num_params+logdets)
+            --> constants are neglected in this wrapper
+        """
+        logpw = self.prior(self.weights,0.,-T.log(self.lbda)).sum(1)
+        """
+        using normal prior centered at zero, with lbda being the inverse 
+        of the variance
+        """
+        kl = (logqw - logpw).mean()
+        num_outputs = self.weight_shapes[-1][1]
+        y_, lv = self.y[:,:1], self.y[:,1:]
+        
+        logpyx = log_normal(y_,self.target_var,lv).mean()
+        self.loss = - (logpyx - kl/T.cast(self.dataset_size,floatX))
+        
+    def _get_useful_funcs(self):
+        self.predict = theano.function([self.input_var],self.y[:,:1])
+        sp = T.matrix('sp')
+        predict_sp = self.y[:,:1] + sp * T.exp(0.5*self.y[:,1:])
+        self.predict_sp = theano.function([self.input_var,sp],predict_sp)
+        if self.perdatapoint:
+            self.sample_theta = theano.function([self.input_var], 
+                                                self.weights)
+        else:
+            self.sample_theta = theano.function([], 
+                                                self.weights)
+                                                
     def _get_useful_funcs(self):
         self.predict_proba = theano.function([self.input_var],self.y)
         #self.predict = theano.function([self.input_var],self.y.argmax(1))
+
         self.predict = theano.function([self.input_var],self.y)
