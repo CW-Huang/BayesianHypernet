@@ -294,11 +294,33 @@ def active_learning(acquisition_iterations):
             x_pool_index = sort_values.argsort()[-Queries:][::-1]
 
         elif acq == 'mean_std':
+            All_Dropout_Scores = np.zeros(shape=(X_Pool_Dropout.shape[0], nb_classes))
+
+            for d in range(dropout_iterations):
+                dropout_score = model.predict_stochastic(X_Pool_Dropout,batch_size=batch_size, verbose=1)
+                All_Dropout_Scores = np.append(All_Dropout_Scores, dropout_score, axis=1)
+
+            All_Std = np.zeros(shape=(X_Pool_Dropout.shape[0],nb_classes))
+            BayesSegnet_Sigma = np.zeros(shape=(X_Pool_Dropout.shape[0],1)) 
+
+            for t in range(X_Pool_Dropout.shape[0]):
+                for r in range(nb_classes):
+                    L = np.array([0])
+                    L = np.append(L, All_Dropout_Scores[t, r+10])
+                    
+                    L_std = np.std(L[1:])
+                    All_Std[t,r] = L_std
+                    E = All_Std[t,:]
+                    BayesSegnet_Sigma[t,0] = sum(E)
+
+            a_1d = BayesSegnet_Sigma.flatten()
+            x_pool_index = a_1d.argsort()[-Queries:][::-1]
+            
+
             assert False
 
         elif acq == 'random':
-            x_pool_index = np.random.choice(range(pool_size
-
+            x_pool_index = np.asarray(random.sample(range(0, 38000), Queries))
 
             pass
 
@@ -317,13 +339,11 @@ def active_learning(acquisition_iterations):
         pool_y = np.concatenate((pool_y, y_pool_Dropout), axis=0)
         train_x = np.concatenate((train_x, Pooled_X), axis=0)
         train_y = np.concatenate((train_y, Pooled_Y), axis=0).astype('float32')
-        #print pool_x.shape, Pooled_X.shape, train_x.shape
-        #assert False
+        print pool_x.shape, Pooled_X.shape, train_x.shape
+        assert False
 
-        if params_reset == 'deterministic':# don't warm start
-            model.reset()
-        elif params_reset == 'random':# don't warm start
-            # TODO: more efficient!
+
+        if 0:# don't warm start
             model = HyperCNN(lbda=lbda,
                               perdatapoint=perdatapoint,
                               prior=prior,
