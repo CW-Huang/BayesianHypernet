@@ -120,6 +120,7 @@ grid = []
 grid += [["model", ['mlp', 'hnet', 'hnet2', 'dropout', 'dropout2', 'weight_uncertainty']]]
 grid += [["lr0", ['.001', '.0001']]]
 grid += [["nonlinearity", ['rectify', 'gelu']]]
+grid += [["save", ['1']]]
 
 # TODO: savepath should also contain exp_script? 
 #   (actually, we should make a log of everything in a text file or something...)

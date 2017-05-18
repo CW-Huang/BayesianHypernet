@@ -125,7 +125,7 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
             
             loss = train_func(x,y,N,lr)
             
-            if i==0:#t%100==0:
+            if e == epochs-1:#i==0:#t%100==0:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
                 tr_acc = (predict_func(X)==Y.argmax(1)).mean()
                 te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()

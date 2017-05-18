@@ -36,6 +36,10 @@ if 1:#def main():
     """
     
     import argparse
+    import sys
+    import os
+    import numpy 
+    np = numpy
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--arch',type=str, default='Dan', choices=['CW', 'Dan'])
@@ -252,9 +256,9 @@ if 1:#def main():
                 records['val_acc'].append(te_acc)
                 if save_path is not None:
                     np.save(save_path + '_records.npy', records)
-                    np.save(save_path + '_params.npy', lasagne.layers.get_all_param_values([self.h_net,self.p_net]))
+                    np.save(save_path + '_params.npy', lasagne.layers.get_all_param_values([h_layer, layer]))
                     if records['val_acc'][-1] == np.max(records['val_acc']):
-                        np.save(save_path + '_params_best.npy', lasagne.layers.get_all_param_values([self.h_net,self.p_net]))
+                        np.save(save_path + '_params_best.npy', lasagne.layers.get_all_param_values([h_layer, layer]))
 
             t+=1
 
