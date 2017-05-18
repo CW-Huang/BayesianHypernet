@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Fri Mar 31 21:39:54 2017
@@ -45,6 +44,14 @@ def log_normal(x,mean,log_var,eps=0.0):
 def log_laplace(x,mean,inv_scale,epsilon=1e-7):
     return - T.log(2*(inv_scale+epsilon)) - T.abs_(x-mean)/(inv_scale+epsilon)
 
+
+def log_scale_mixture_normal(x,m,log_var1,log_var2,p1,p2):
+    axis = x.ndim
+    log_n1 = T.log(p1)+log_normal(x,m,log_var1)
+    log_n2 = T.log(p2)+log_normal(x,m,log_var2)
+    log_n_ = T.stack([log_n1,log_n2],axis=axis)
+    log_n = log_sum_exp(log_n_,-1)
+    return log_n.sum(-1)
 
 
 def softmax(x,axis=1):
