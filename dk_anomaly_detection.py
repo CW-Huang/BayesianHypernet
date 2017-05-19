@@ -8,7 +8,7 @@ Created on Fri May 12 17:46:38 2017
 """
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer, ReverseLayer
-from modules import CoupledDenseLayer, stochasticDenseLayer2, ConvexBiasLayer
+from modules import CoupledDenseLayer, stochasticDenseLayer2, ConvexBiasLayer#, CoupledWNDenseLayer
 from modules import * # just in case
 from utils import log_normal, log_stdnormal
 from ops import load_mnist
@@ -52,22 +52,23 @@ if 1:#def main():
     np = numpy
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--arch',type=str, default='Dan', choices=['CW', 'Dan'])
+    parser.add_argument('--arch',type=str, default='Dan', choices=['CW', 'Dan', 'Dan2'])
     parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--convex_combination', type=int, default=0) 
     parser.add_argument('--coupling', type=int, default=4) 
     parser.add_argument('--epochs', type=int, default=100)  
-    parser.add_argument('--init', type=str, default='normal')  
+    parser.add_argument('--init_', type=str, default='normal')  
     parser.add_argument('--lrdecay',action='store_true')  
     parser.add_argument('--lr0',default=0.001,type=float)  
     parser.add_argument('--lbda',default=1.,type=float)  
-    parser.add_argument('--model', default='mlp', type=str, choices=['mlp', 'hnet', 'hnet2', 'dropout', 'dropout2', 'weight_uncertainty'])
+    parser.add_argument('--model', default='mlp', type=str, choices=['mlp', 'hnet', 'hnetWN', 'dropout', 'weight_uncertainty'])
     parser.add_argument('--nonlinearity',default='rectify', type=str)
     parser.add_argument('--perdatapoint',action='store_true')    
     parser.add_argument('--num_examples',default=1000,type=int)  
     parser.add_argument('--num_samples',default=10,type=int)  
     parser.add_argument('--size',default=50000,type=int)  
     parser.add_argument('--test_eval',default=0,type=int)  
+    parser.add_argument('--coupledWN',default=0,type=int)  
     #
     #parser.add_argument('--save_path',default=None,type=str)  
     parser.add_argument('--save', type=int, default=0)
@@ -134,10 +135,9 @@ if 1:#def main():
     if arch == 'CW':
         weight_shapes = [(784, 200), (200,  10)]
     elif arch == 'Dan':
-        if model in ['hnet2', 'dropout2']:
-            weight_shapes = [(784, 512), (512, 512), (512,512), (512,  10)]
-        else:
-            weight_shapes = [(784, 256), (256, 256), (256,256), (256,  10)]
+        weight_shapes = [(784, 256), (256, 256), (256,256), (256,  10)]
+    elif arch == 'Dan2':
+        weight_shapes = [(784, 512), (512, 512), (512,512), (512,  10)]
     
     if model == 'weight_uncertainty': 
         num_params = sum(np.prod(ws) for ws in weight_shapes)
@@ -149,7 +149,7 @@ if 1:#def main():
     else:
         wd1 = 1
 
-    if model in ['hnet', 'hnet2', 'weight_uncertainty']:
+    if model in ['hnet', 'hnetWN', 'weight_uncertainty']:
         # stochastic hypernet    
         ep = srng.normal(std=0.01,size=(wd1,num_params),dtype=floatX)
         logdets_layers = []
@@ -161,12 +161,15 @@ if 1:#def main():
 
         for c in range(coupling):
             h_layer = ReverseLayer(h_layer,num_params)
-            layer_temp = CoupledDenseLayer(h_layer,10)
+            if model == 'hnetWN':
+                layer_temp = CoupledWNDenseLayer(h_layer,10)
+            elif model == 'hnet':
+                layer_temp = CoupledDenseLayer(h_layer,10)
             h_layer = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
         
         if convex_combination:
-            if init == 'normal':
+            if init_ == 'normal':
                 h_layer = ConvexBiasLayer(h_layer, b=init.Normal(0.01, 0))
             else: # TODO
                 assert False
@@ -217,7 +220,7 @@ if 1:#def main():
         inputs = {layer:input_var}
         for nn, ws in enumerate(weight_shapes):
             layer = lasagne.layers.DenseLayer(layer, ws[1], nonlinearity=nonlinearity)
-            if nn < len(weight_shapes)-1 and model in ['dropout', 'dropout2']:
+            if nn < len(weight_shapes)-1 and model == 'dropout':
                 layer = lasagne.layers.dropout(layer, .5)
             print layer.output_shape
         layer.nonlinearity = nonlinearities.softmax
