@@ -385,8 +385,6 @@ if 1:
         omni_images = np.concatenate(squished_set, axis=0)
         np.save('omniglot.npy', omni_images)
 
-
-
     print "done loading notMNIST, CIFAR-10, and Omniglot"
     ################################################################
     ################################################################
