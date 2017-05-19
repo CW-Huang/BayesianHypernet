@@ -21,4 +21,9 @@
 LOGS
 SMART_DISPATCH_LOGS
 
-SLURMS
+#
+SLURMs
+slurm*
+cifar-10-batches*
+
+
