@@ -24,6 +24,7 @@ from modules import *
 
 
 # TODO: fixme... learning rates!!
+# TODO: VALID AND TEST
 
 def train_model(train_func,predict_func,X,Y,Xt,Yt,
                 lr0=0.1,lrdecay=1,bs=20,epochs=50):
@@ -137,10 +138,12 @@ def active_learning(acquisition_iterations):
                        valid_x,valid_y,
                        lr0,lrdecay,bs,epochs)
    
+    valid_accuracy = test_model(model.predict_proba, valid_x, valid_y)
+    print "                                                          valid Accuracy", valid_accuracy
+    all_valid_accuracy = test_accuracy
+
     test_accuracy = test_model(model.predict_proba, test_x, test_y)
-
     print "                                                          Test Accuracy", test_accuracy
-
     all_accuracy = test_accuracy
 
     for i in range(acquisition_iterations):
@@ -282,7 +285,7 @@ def active_learning(acquisition_iterations):
         #assert False
 
 
-        if 0:# don't warm start (TODO!)
+        if params_reset == 'random':# don't warm start (TODO!)
             model = HyperCNN(lbda=lbda,
                               perdatapoint=perdatapoint,
                               prior=prior,
@@ -291,6 +294,8 @@ def active_learning(acquisition_iterations):
                               stride=1,
                               coupling=coupling,
                               extra_linear=extra_linear)
+        elif params_reset == 'deterministic':
+            model.reset()
     
         recs = train_model(model.train_func,model.predict,
 	                       train_x[:size],train_y[:size],
@@ -298,35 +303,44 @@ def active_learning(acquisition_iterations):
 	                       lr0,lrdecay,bs,epochs)
    
 
+        valid_accuracy = test_model(model.predict_proba, valid_x, valid_y)   
+        print "                                                          Valid Accuracy", valid_accuracy
+        all_valid_accuracy = np.append(all_valid_accuracy, valid_accuracy)
+
         if test_eval:
             test_accuracy = test_model(model.predict_proba, test_x, test_y)   
             print "                                                          Test Accuracy", test_accuracy
             all_accuracy = np.append(all_accuracy, test_accuracy)
-        else:
-            test_accuracy = test_model(model.predict_proba, valid_x, valid_y)   
-            print "                                                          Test Accuracy", test_accuracy
-            all_accuracy = np.append(all_accuracy, test_accuracy)
 
-    return all_accuracy
+    return all_accuracy, all_valid_accuracy
 
 
 def main():
 
     #num_experiments = 3
     acquisition_iterations = 98
-    all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
+    valid_all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
+    test_all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
     
     for i in range(num_experiments):
         
-        accuracy = active_learning(acquisition_iterations)
-        all_accuracy[:, i] = accuracy
-        np.save(save_path + '_all_accuracy.npy', all_accuracy)
+        test_accuracy, valid_accuracy = active_learning(acquisition_iterations)
+        valid_all_accuracy[:, i] = valid_accuracy
+        np.save(save_path + '_valid_all_accuracy.npy', valid_all_accuracy)
+
+        if test_eval:
+            test_all_accuracy[:, i] = test_accuracy
+            np.save(save_path + '_test_all_accuracy.npy', test_all_accuracy)
 
     
-    mean_accuracy = np.mean(all_accuracy)
+    valid_mean_accuracy = np.mean(valid_all_accuracy)
+    np.save(save_path + '_valid_all_accuracy.npy', all_accuracy)
+    np.save(save_path + '_valid_mean_accuracy.npy', mean_accuracy)
 
-    np.save(save_path + '_all_accuracy.npy', all_accuracy)
-    np.save(save_path + '_mean_accuracy.npy', mean_accuracy)
+    if test_eval:
+        valid_mean_accuracy = np.mean(valid_all_accuracy)
+        np.save(save_path + '_valid_all_accuracy.npy', all_accuracy)
+        np.save(save_path + '_valid_mean_accuracy.npy', mean_accuracy)
 
 
 
@@ -356,7 +370,7 @@ if __name__ == '__main__':
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
     parser.add_argument('--pool_size',default=2000,type=int)
-    parser.add_argument('--size',default=10000,type=int)      
+    parser.add_argument('--size',default=10000,type=int)       # NOT USED!!!
     parser.add_argument('--test_eval',default=0,type=int)      
     #
     #parser.add_argument('--save_path',default=None,type=str)  
