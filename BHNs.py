@@ -250,10 +250,9 @@ class MLPWeightNorm_BHN(Base_BHN):
             # using weightnorm reparameterization
             # only need ws[1] parameters (for rescaling of the weight matrix)
             num_param = ws[1]
-            w_layer = lasagne.layers.InputLayer((None,ws[1]))
             weight = self.weights[:,t:t+num_param].reshape((self.wd1,ws[1]))
-            inputs[w_layer] = weight
-            p_net = stochasticDenseLayer2([p_net,w_layer],ws[1])
+            p_net = lasagne.layers.DenseLayer(p_net,ws[1])
+            p_net = stochastic_weight_norm(p_net,weight)
             print p_net.output_shape
             t += num_param
             
@@ -890,7 +889,8 @@ class HyperCNN(Base_BHN):
                  pad='same',
                  stride=2,
                  kernel_width=None,
-                 dataset='mnist'):
+                 dataset='mnist',
+                 extra_linear=0):
         
         self.dataset = dataset
         
@@ -939,6 +939,7 @@ class HyperCNN(Base_BHN):
         self.num_params = self.num_mlp_params + self.num_cnn_params
         
         self.coupling = coupling
+        self.extra_linear = extra_linear
         super(HyperCNN, self).__init__(lbda=lbda,
                                          perdatapoint=perdatapoint,
                                          srng=srng,
@@ -988,10 +989,30 @@ class HyperCNN(Base_BHN):
                 h_net1 = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
 
-        self.kernel_weights = lasagne.layers.get_output(h_net1,ep)
-        h_net1 = lasagne.layers.ReshapeLayer(h_net1,
-                                             (1, self.n_kernels *
-                                                 np.prod(self.kernel_shape) ) )
+
+        if self.extra_linear:
+            h_net1 = lasagne.layers.ReshapeLayer(
+                h_net1,(1, self.n_kernels * np.prod(self.kernel_shape) ) 
+            )
+                                                 
+            layer_temp = ConvexBiasLayer(h_net1)
+            h_net1 = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+    
+            
+            h_net1_w = lasagne.layers.ReshapeLayer(
+                h_net1, (self.n_kernels, np.prod(self.kernel_shape) ) 
+            )
+                 
+            self.kernel_weights = lasagne.layers.get_output(h_net1_w,ep)
+            
+        else:
+        
+            self.kernel_weights = lasagne.layers.get_output(h_net1,ep)
+            h_net1 = lasagne.layers.ReshapeLayer(
+                h_net1, (1, self.n_kernels * np.prod(self.kernel_shape) ) 
+            )
+
 
         # MLP coupling
         if self.coupling:

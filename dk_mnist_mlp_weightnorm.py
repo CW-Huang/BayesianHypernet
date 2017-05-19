@@ -24,7 +24,7 @@ from lasagne.objectives import categorical_crossentropy as cc
 import numpy as np
 
 
-from helpers import flatten_list, gelu, plot_dict
+from helpers import flatten_list
 
 
 if 1:#def main():
@@ -36,26 +36,19 @@ if 1:#def main():
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--arch',type=str, default='Dan', choices=['CW', 'Dan'])
+    parser.add_argument('--arch',type=str, default='CW', choices=['CW', 'Dan'])
     parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--coupling', type=int, default=4)  
-    parser.add_argument('--epochs', type=int, default=100)  
+    parser.add_argument('--epochs', type=int, default=30)  
     parser.add_argument('--lrdecay',action='store_true')  
-    parser.add_argument('--lr0',default=0.001,type=float)  
-    parser.add_argument('--lbda',default=1.,type=float)  
-    parser.add_argument('--model', default='mlp', type=str, choices=['mlp', 'hnet', 'hnet2', 'dropout', 'dropout2', 'weight_uncertainty'])
-    parser.add_argument('--nonlinearity',default='rectify', type=str)
+    parser.add_argument('--lr0',default=0.003,type=float)  
+    parser.add_argument('--lbda',default=0.5,type=float)  
+    parser.add_argument('--model', default='hnet', type=str, choices=['mlp', 'hnet', 'hnet2', 'dropout', 'dropout2', 'weight_uncertainty'])
     parser.add_argument('--perdatapoint',action='store_true')    
-    parser.add_argument('--size',default=50000,type=int)  
-    parser.add_argument('--save_path',default=None,type=str)  
+    parser.add_argument('--size',default=10000,type=int)  
     args = parser.parse_args()
     print args
     locals().update(args.__dict__)
-
-    if nonlinearity == 'rectify':
-        nonlinearity = lasagne.nonlinearities.rectify
-    elif nonlinearity == 'gelu':
-        nonlinearity = gelu
     
     perdatapoint = args.perdatapoint
     lr0 = args.lr0
@@ -126,7 +119,7 @@ if 1:#def main():
             # TODO: why is reshape needed??
             weight = weights[:,t:t+num_param].reshape((wd1,num_param))
             inputs[w_layer] = weight
-            layer = stochasticDenseLayer2([layer,w_layer],num_param, nonlinearity=nonlinearity)
+            layer = stochasticDenseLayer2([layer,w_layer],num_param)
             print layer.output_shape
             t += num_param
 
@@ -152,7 +145,7 @@ if 1:#def main():
         layer = lasagne.layers.InputLayer([None,784])
         inputs = {layer:input_var}
         for nn, ws in enumerate(weight_shapes):
-            layer = lasagne.layers.DenseLayer(layer, ws[1], nonlinearity=nonlinearity)
+            layer = lasagne.layers.DenseLayer(layer, ws[1])
             if nn < len(weight_shapes)-1 and model in ['dropout', 'dropout2']:
                 layer = lasagne.layers.dropout(layer, .5)
             print layer.output_shape
@@ -183,10 +176,8 @@ if 1:#def main():
     Xt, Yt = valid_x,valid_y
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
-    records={}
-    records['loss'] = []
-    records['acc'] = []
-    records['val_acc'] = []
+    #epochs = 30
+    records=list()
     
     t = 0
     import time
@@ -205,21 +196,15 @@ if 1:#def main():
             loss = train(x,y,N,lr)
             
             #if t%100==0:
-            if i == 0:# or t>8000:
-                print 'time', time.time() - t0
-                print 'epoch: {} {}, loss:{}'.format(e,t,loss)
-                tr_acc = (predict(X)==Y.argmax(1)).mean()
-                te_acc = (predict(Xt)==Yt.argmax(1)).mean()
-                print '\ttrain acc: {}'.format(tr_acc)
-                print '\ttest acc: {}'.format(te_acc)
-                records['loss'].append(loss)
-                records['acc'].append(tr_acc)
-                records['val_acc'].append(te_acc)
-                if save_path is not None:
-                    np.save(save_path, records)
-
             t+=1
-
+        print 'epoch: {} {}, loss:{}'.format(e,t,loss)
+        tr_acc = (predict(X)==Y.argmax(1)).mean()
+        te_acc = (predict(Xt)==Yt.argmax(1)).mean()
+        print '\ttrain acc: {}'.format(tr_acc)
+        print '\ttest acc: {}'.format(te_acc)
+        print 'time', time.time() - t0
+            
+        records.append(loss)
         
 
     

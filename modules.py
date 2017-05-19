@@ -14,6 +14,8 @@ import lasagne
 from lasagne import init
 from lasagne import nonlinearities
 from lasagne.layers import get_output
+from theano.tensor.var import TensorVariable as tv
+
 
 conv = lasagne.theano_extensions.conv
 
@@ -333,7 +335,6 @@ class LinearFlowLayer(lasagne.layers.base.Layer):
         
         return output, (T.ones_like(input)*T.log(s)).sum(1)
 
-# CC
 class ConvexBiasLayer(lasagne.layers.base.Layer):    
     """
     Scale and shift inputs, elementwise
@@ -577,6 +578,71 @@ def stochasticConv2DLayer(incomings, num_filters, filter_size, stride=(1, 1),
 
     return layer
     
+
+
+
+class WeightNormLayer(lasagne.layers.Layer):
+    def __init__(self, incoming, b=lasagne.init.Constant(0.), 
+                 g=lasagne.init.Constant(1.),
+                 W=lasagne.init.Normal(0.05), 
+                 nonlinearity=nonlinearities.rectify, **kwargs):
+                     
+        super(WeightNormLayer, self).__init__(incoming, **kwargs)
+        self.nonlinearity = nonlinearity
+        k = self.input_shape[1]
+        if b is not None:
+            self.b = self.add_param(b, (k,), name="b", regularizable=False)
+        if type(g) == tv:
+            self.g = g
+        elif g is not None:
+            self.g = self.add_param(g, (k,), name="g")
+        if len(self.input_shape)==4:
+            self.axes_to_sum = (0,2,3)
+            self.dimshuffle_args = ['x',0,'x','x']
+        else:
+            self.axes_to_sum = 0
+            self.dimshuffle_args = ['x',0]
+        
+        # scale weights in layer below
+        incoming.W_param = incoming.W
+        incoming.W_param.set_value(W.sample(incoming.W_param.get_value().shape))
+        if incoming.W_param.ndim==4:
+            W_axes_to_sum = (1,2,3)
+            W_dimshuffle_args = [0,'x','x','x']
+        else:
+            W_axes_to_sum = 0
+            W_dimshuffle_args = ['x',0]
+        if g is not None:
+            incoming.W = self.g * incoming.W_param / T.sqrt(T.sum(T.square(incoming.W_param),axis=W_axes_to_sum)).dimshuffle(*W_dimshuffle_args)
+        else:
+            incoming.W = incoming.W_param / T.sqrt(T.sum(T.square(incoming.W_param),axis=W_axes_to_sum,keepdims=True))        
+
+    def get_output_for(self, input, init=False, **kwargs):
+        if init:
+            m = T.mean(input, self.axes_to_sum)
+            input -= m.dimshuffle(*self.dimshuffle_args)
+            stdv = T.sqrt(T.mean(T.square(input),axis=self.axes_to_sum))
+            input /= stdv.dimshuffle(*self.dimshuffle_args)
+            self.init_updates = [(self.b, -m/stdv), (self.g, self.g/stdv)]
+        elif hasattr(self,'b'):
+            input += self.b.dimshuffle(*self.dimshuffle_args)
+            
+        return self.nonlinearity(input)
+        
+def stochastic_weight_norm(layer, weight, **kwargs):
+    nonlinearity = getattr(layer, 'nonlinearity', None)
+    if nonlinearity is not None:
+        layer.nonlinearity = lasagne.nonlinearities.identity
+    if hasattr(layer, 'b'):
+        del layer.params[layer.b]
+        layer.b = None
+        
+    layer_out = WeightNormLayer(layer, g = weight,
+                                nonlinearity=nonlinearity, **kwargs)     
+    return layer_out
+
+
+        
         
 
 if __name__ == '__main__':

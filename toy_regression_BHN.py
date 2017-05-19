@@ -19,7 +19,7 @@ Toy regression example
 import numpy as np
 import matplotlib.pyplot as plt
 from BHNs import Base_BHN
-from modules import LinearFlowLayer, IndexLayer, PermuteLayer, ReverseLayer
+from modules import LinearFlowLayer, IndexLayer, PermuteLayer, ReverseLayer, NormalizingPlanarFlowLayer
 from modules import CoupledDenseLayer, stochasticDenseLayer2, stochasticDenseLayer
 from utils import log_normal, log_laplace
 import theano
@@ -33,79 +33,44 @@ from lasagne import nonlinearities
 rectify = nonlinearities.rectify
 softmax = nonlinearities.softmax
 from lasagne.layers import get_output
-from lasagne import init
 
 
 #DATASET = 'sinusoids'
-DATASET = 'identity'
-DATASET = 'mix'
+#DATASET = 'identity'
+DATASET = 'mixtureweight'
 
-if DATASET in ['mix', 'identity']:
+if DATASET == 'identity':
     nhids = 1
     coupling = 6
     coupling_hids = 100
     init_W = -0
     init_b = 0
     lbda = 20
-else:
+elif DATASET == 'sinusoids':
     nhids = 10
     coupling = 6
     coupling_hids = 10
     init_W = -7
     init_b = 0
     lbda = 2
-
-
-class DKstochasticDenseLayer(lasagne.layers.base.MergeLayer):
-    "fix shape stuff..."
-    
-    def __init__(self, incomings, num_units, 
-                 b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
-                 num_leading_axes=1, **kwargs):
-        super(DKstochasticDenseLayer, self).__init__(incomings, **kwargs)
-        self.nonlinearity = (nonlinearities.identity if nonlinearity is None
-                             else nonlinearity)
-        self.num_units = num_units
-        
-        if b is None:
-            self.b = None
-        else:
-            self.b = self.add_param(b, (num_units,), name="b",
-                                    regularizable=False)
-                                    
-    def get_output_shape_for(self,input_shapes):
-        input_shape = input_shapes[0]
-        weight_shape = input_shapes[1]
-        return (input_shape[0], weight_shape[1])
-        
-    def get_output_for(self, inputs, **kwargs):
-        """
-        inputs[0].shape = (None, num_inputs)
-        inputs[1].shape = (None/1, num_inputs, num_units)
-        """
-        input = inputs[0]
-        W = inputs[1]
-        activation = T.sum(input.dimshuffle(0,1,'x') * W, axis = 1)
-        if self.b is not None:
-            activation = activation + self.b
-        return self.nonlinearity(activation)
-
-
-
+elif DATASET == 'mixtureweight':
+    nhids = 10
+    coupling = 8
+    coupling_hids = 20
+    init_W = -0
+    init_b = 0
+    lbda = 0.10
 
 class ToyRegression(Base_BHN):
 
 
-    weight_shapes = [(1, nhids),
-                     #(nhids,nhids),
-                     (nhids, 2)]
+    if DATASET == 'sinusoids' or DATASET == 'identity':
+        weight_shapes = [(1, nhids),
+                         (nhids, 2)]
+    elif DATASET == 'mixtureweight':
+        weight_shapes = [(1, 2)]
     
     num_params = sum(ws[1] for ws in weight_shapes)
-    
-    if DATASET == 'mix':
-        weight_shapes = [(2,2)]
-        num_params = 4
-    
     
     def __init__(self,
                  lbda=1,
@@ -139,17 +104,27 @@ class ToyRegression(Base_BHN):
         
         if self.coupling:
             # add more to introduce more correlation if needed
-            layer_temp = CoupledDenseLayer(h_net,coupling_hids)
-            h_net = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
-            for c in range(self.coupling-1):
-                if self.mixing == 'permute':
-                    h_net = PermuteLayer(h_net,self.num_params)
-                elif self.mixing == 'reverse':
-                    h_net = ReverseLayer(h_net,self.num_params)
+            
+            if DATASET == 'mixtureweight':
+                layer_temp = NormalizingPlanarFlowLayer(h_net)
+                h_net = IndexLayer(layer_temp,0)
+                logdets_layers.append(IndexLayer(layer_temp,1))
+                for c in range(self.coupling-1):
+                    layer_temp = NormalizingPlanarFlowLayer(h_net)
+                    h_net = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+            else:
                 layer_temp = CoupledDenseLayer(h_net,coupling_hids)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+                for c in range(self.coupling-1):
+                    if self.mixing == 'permute':
+                        h_net = PermuteLayer(h_net,self.num_params)
+                    elif self.mixing == 'reverse':
+                        h_net = ReverseLayer(h_net,self.num_params)
+                    layer_temp = CoupledDenseLayer(h_net,coupling_hids)
+                    h_net = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
                         
         # FINAL scale and shift (TODO: optional)
         #layer_temp = LinearFlowLayer(h_net, W=lasagne.init.Normal(1.,0))
@@ -163,10 +138,7 @@ class ToyRegression(Base_BHN):
         
     def _get_primary_net(self):
         t = np.cast['int32'](0)
-        if DATASET == 'mix':
-            p_net = lasagne.layers.InputLayer([None,2])
-        else:
-            p_net = lasagne.layers.InputLayer([None,1])
+        p_net = lasagne.layers.InputLayer([None,1])
         inputs = {p_net:self.input_var}
         for ws in self.weight_shapes:
             # using weightnorm reparameterization
@@ -175,16 +147,13 @@ class ToyRegression(Base_BHN):
             w_layer = lasagne.layers.InputLayer((None,ws[1]))
             weight = self.weights[:,t:t+num_param].reshape((self.wd1,ws[1]))
             inputs[w_layer] = weight
-            if DATASET == 'sinusoids':
-                p_net = stochasticDenseLayer2([p_net,w_layer],ws[1],
-                                              nonlinearity=nonlinearities.tanh)
-            elif DATASET == 'mix':
-                p_net = DKstochasticDenseLayer([p_net,w_layer],2,#b=None,
-                                              nonlinearity=nonlinearities.linear)
-            else:
+            if DATASET == 'identity' or DATASET == 'mixtureweight':
                 p_net = stochasticDenseLayer([p_net,w_layer],ws[1],b=None,
                                               nonlinearity=nonlinearities.linear)
-            print p_net.output_shape
+            elif DATASET == 'sinusoid':
+                p_net = stochasticDenseLayer2([p_net,w_layer],ws[1],
+                                              nonlinearity=nonlinearities.tanh)
+            #print p_net.output_shape
             t += num_param
             
 
@@ -221,7 +190,6 @@ class ToyRegression(Base_BHN):
         
         logpyx = log_normal(y_,self.target_var,lv).mean()
         self.loss = - (logpyx - kl/T.cast(self.dataset_size,floatX))
-        self.monitored = [self.loss]
         
     def _get_useful_funcs(self):
         self.predict = theano.function([self.input_var],self.y[:,:1])
@@ -244,6 +212,13 @@ class ToyRegression(Base_BHN):
         self.updates = lasagne.updates.adam(cgrads, self.params, 
                                            learning_rate=self.learning_rate)
 
+    def _get_train_func(self):
+        train = theano.function([self.input_var,
+                                 self.target_var,
+                                 self.dataset_size,
+                                 self.learning_rate],
+                                self.loss,updates=self.updates)
+        self.train_func = train
 
 
 
@@ -268,7 +243,7 @@ if DATASET == 'sinusoids':
     lr0 = 0.005
     lrdecay = True
 elif DATASET == 'identity':
-    f = lambda x: x + ep1/(0.5*x)**2 
+    f = lambda x: (1*x + ep1/(0.5*x)**2) 
     t = f(x)
     # 
     n_ = 1000
@@ -277,23 +252,16 @@ elif DATASET == 'identity':
     yy = f_(xx)
     lr0 = 0.00025
     lrdecay = False
-
-elif DATASET == 'mix':
-    x = np.random.uniform(size=(500,2)).astype(floatX)
-    ep1 = np.random.randn(n).astype(floatX)
-    f1 = lambda x: x[:,0] + x[:,1]
-    f2 = lambda x: x[:,0] - x[:,1]
-    def f_(x):
-        if np.random.rand() > .4: # TODO different than .4
-            return f1(x)
-        else:
-            return f2(x)
-    f = lambda x: f_(x) + .1 * ep1
-    t = f(x).reshape((-1,1))
+elif DATASET == 'mixtureweight':
+    f = lambda x: ((np.random.choice([-0.5,2],x.shape).astype(floatX) + 
+                    np.random.randn(*x.shape).astype(floatX)*0.1) * 0.5 * x + \
+                  ep1*(0.02*x)**0.5) 
+    t = f(x)
     # 
     n_ = 1000
-    #xx = np.linspace(4,15,n_).astype(floatX).reshape(n_,1)
-    #yy = f_(xx)
+    f_ = lambda x: (np.random.choice([1,2],x.shape).astype(floatX)) *0.5*x -2
+    xx = np.linspace(4,15,n_).astype(floatX).reshape(n_,1)
+    yy = f_(xx)
     lr0 = 0.00025
     lrdecay = False
 
@@ -304,7 +272,7 @@ model = ToyRegression(lbda,coupling=coupling,
 
 ###############
 # TRAIN
-epochs=3000
+epochs=20000
 
 plt.ion()
 
@@ -313,14 +281,14 @@ for i in range(epochs):
         lr = lr0 * 10**(-i/float(epochs-1))
     else:
         lr = lr0
-    #print x.shape
-    #print t.shape
+    x.shape
+    t.shape
     l = model.train_func(x,t,n,lr)
     if i%250==0:
         print i,l
         if 1: # interactive plotting
             plt.clf()
-            if DATASET in ['identity', 'mix']:
+            if DATASET == 'identity':
                 # SAMPLES
                 n_mc = 1000
                 thetas = np.zeros((n_mc,2))
@@ -339,38 +307,52 @@ for i in range(epochs):
                 plt.ylim(-1,1)
                 
                 plt.subplot(122)
-        
-            #elif DATASET == 'mix':
-
-            else:
+            
+            if DATASET == 'mixtureweight':
                 # SAMPLES
-                n_mc = 100
-                mc = np.zeros((n_,n_mc))
+                n_mc = 1000
+                thetas = np.zeros((n_mc,1))
                 for i in range(n_mc):
-                    sp = np.random.randn(n_,1).astype(floatX) 
-                    mc[:,i:i+1] = model.predict_sp(xx,sp)
+                    #sp = np.random.randn(n_,1).astype(floatX) 
+                    thetas[i] = model.sample_theta()[0,:1]
+                    
                 # PLOTTING
-                plot2 = plt.fill_between(xx[:,0], 
-                                         mc.mean(1)-mc.std(1,ddof=1), 
-                                         mc.mean(1)+mc.std(1,ddof=1),
-                                         facecolor='gray')
-                                   
-                                   
-                plot2 = plt.plot(xx, mc.mean(1), 'r-')                 
-                plot = plt.scatter(x,t)
-                plot1 = plt.plot(xx,yy,'y--')
-
-                y1 = 4
-                y2 = 15
+                plt.subplot(121)
+                plt.hist(thetas)
+                plt.subplot(122)
                 
-                plt.vlines(left1,y1,y2)
-                plt.vlines(right1,y1,y2)
+            # SAMPLES
+            n_mc = 100
+            mc = np.zeros((n_,n_mc))
+            for i in range(n_mc):
+                sp = np.random.randn(n_,1).astype(floatX) 
+                mc[:,i:i+1] = model.predict_sp(xx,sp)
+            # PLOTTING
+            plot2 = plt.fill_between(xx[:,0], 
+                                     mc.mean(1)-mc.std(1,ddof=1), 
+                                     mc.mean(1)+mc.std(1,ddof=1),
+                                     facecolor='gray')
+                               
+                               
+            plot2 = plt.plot(xx, mc.mean(1), 'r-')                 
+            plot = plt.scatter(x,t)
+            plot1 = plt.plot(xx,yy,'y--')
 
-                plt.vlines(left2,y1,y2)
-                plt.vlines(right2,y1,y2)
+            y1 = 4
+            y2 = 15
+            
+            plt.vlines(left1,y1,y2)
+            plt.vlines(right1,y1,y2)
+
+            plt.vlines(left2,y1,y2)
+            plt.vlines(right2,y1,y2)
+            if DATASET == 'identity':
                 plt.xlim(4,15)
                 plt.ylim(y1,y2)
-                plt.pause(.01)
+            elif DATASET == 'mixtureweight':
+                plt.xlim(4,15)
+                plt.ylim(-y2,y2)
+            plt.pause(.01)
 
 
 y_ = model.predict(x)
@@ -410,20 +392,20 @@ plt.vlines(right1,yy.min(),yy.max())
 plt.vlines(left2,yy.min(),yy.max())
 plt.vlines(right2,yy.min(),yy.max())
 
-
-from numpy import linspace, meshgrid
-from scipy.stats import gaussian_kde
-
-def grid(x, y, xmin, xmax, ymin, ymax, resX=100, resY=100):
-    "Convert 3 column data to matplotlib grid"
-    xi = np.linspace(xmin, xmax, resX)
-    yi = np.linspace(ymin, ymax, resY)
-    inp = np.vstack([xi.flatten(), yi.flatten()])
-    
-    k = gaussian_kde(thetas.T)
-    z = k(inp)
-    return xi,yi,z.reshape(xi.shape)
-
-X, Y, Z = grid(thetas[:,0], thetas[:,1], y1, y2, y1, y2)
-plt.imshow(X, Y, Z)
+#
+#from numpy import linspace, meshgrid
+#from scipy.stats import gaussian_kde
+#
+#def grid(x, y, xmin, xmax, ymin, ymax, resX=100, resY=100):
+#    "Convert 3 column data to matplotlib grid"
+#    xi = np.linspace(xmin, xmax, resX)
+#    yi = np.linspace(ymin, ymax, resY)
+#    inp = np.vstack([xi.flatten(), yi.flatten()])
+#    
+#    k = gaussian_kde(thetas.T)
+#    z = k(inp)
+#    return xi,yi,z.reshape(xi.shape)
+#
+#X, Y, Z = grid(thetas[:,0], thetas[:,1], y1, y2, y1, y2)
+#plt.imshow(X, Y, Z)
 
