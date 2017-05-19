@@ -6,7 +6,6 @@ import time
 from utils_dqn import *
 from ReplayMemory import ReplayMemory
 from bayes_hypernet_agents import AgentEpsGreedy
-from bayes_value_functions import ValueFunctionBayesHypernet
 from lib import plotting
 
 from BHNs import BHN_Q_Network
@@ -26,8 +25,9 @@ min_avg_Rwd = 200000000  # Minimum average reward to consider the problem as sol
 n_avg_ep = 100      # Number of consecutive episodes to calculate the average reward
 
 LR = .0001
+#save_dir = '/home/ml/rislam4/Documents/BH_2/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/'
 
-SAVE_DIR = './dk_results/'
+save_dir = './dk_results/'
 
 def run_episode(env,
                 agent,
@@ -137,7 +137,7 @@ Experiments_All_Rewards = np.zeros(shape=(max_n_ep, Experiments))
 lbda = 1
 perdatapoint = 0
 prior = log_normal
-coupling = 1
+coupling = 5
 
 
 
@@ -211,7 +211,5 @@ env.close()
 
 Average_Cum_Rwd = np.mean(Experiments_All_Rewards, axis=1)
 np.save(save_dir + 'Average_BH_Thompson_CartPole' + '.npy', Average_Cum_Rwd)
-
-
 
 
