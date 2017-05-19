@@ -288,7 +288,7 @@ if 1:#def main():
                 records['loss'].append(loss)
                 records['acc'].append(tr_acc)
                 records['val_acc'].append(te_acc)
-                if save_path is not None:
+                if save:
                     np.save(save_path + '_records.npy', records)
                     np.save(save_path + '_params.npy', lasagne.layers.get_all_param_values([h_layer, layer]))
                     if records['val_acc'][-1] == np.max(records['val_acc']):
@@ -296,15 +296,16 @@ if 1:#def main():
 
             t+=1
 
-# load best and do proper evaluation
-lasagne.layers.set_all_param_values([h_layer, layer], np.load(save_path + '_params_best.npy'))
-best_acc = (MCpred(Xt, inds=range(len(Xt)), num_samples=100) == Yt.argmax(1)).mean()
-np.save(save_path + '_best_val_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
-
-if test_eval: # TEST SET
-    Xt, Yt = test_x, test_y
+if save:
+    # load best and do proper evaluation
+    lasagne.layers.set_all_param_values([h_layer, layer], np.load(save_path + '_params_best.npy'))
     best_acc = (MCpred(Xt, inds=range(len(Xt)), num_samples=100) == Yt.argmax(1)).mean()
-    np.save(save_path + '_best_test_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
+    np.save(save_path + '_best_val_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
+
+    if test_eval: # TEST SET
+        Xt, Yt = test_x, test_y
+        best_acc = (MCpred(Xt, inds=range(len(Xt)), num_samples=100) == Yt.argmax(1)).mean()
+        np.save(save_path + '_best_test_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
 
         
 
@@ -446,7 +447,7 @@ if 1:
             return scipy.stats.entropy(samples.mean(0).T)
         score_fns.append(min_margin)
     def mean_std(samples):
-        stds = ((samples**2).mean(0) - samples.mean(0)**2)**.5
+        stds = np.maximum(((samples**2).mean(0) - samples.mean(0)**2),0)**.5
         return stds.mean(-1)
     score_fns.append(mean_std)
     def var_ratio(samples):
@@ -494,19 +495,18 @@ if 1:
         # check that all score functions return a score for each example (i.e. have the right shape)
         assert len(clean_scores) == correct.shape[1]
         err_scores = score_fn(incorrect)
-        err_results[nscore][nood][:3] = get_results(clean_scores, err_scores)
-        #err_results[nscore][nood][6] = np.round(100 * (1 - best_acc), 2)
-        #err_results[nscore][nood][7] = np.round(100 * (1 - best_acc), 2)
-    if test_eval:
-        np.save(save_path + '_test_err_results.npy', ood_results)
-    else:
-        np.save(save_path + '_val_err_results.npy', ood_results)
+        err_results[nscore][:3] = get_results(clean_scores, err_scores)
+    if save:
+        if test_eval:
+            np.save(save_path + '_test_err_results.npy', err_results)
+        else:
+            np.save(save_path + '_val_err_results.npy', err_results)
             
 
     ##########################
     # OOD-detection
     print "\nOOD detection"
-    ood_results= np.empty((len(score_fns), len(tasks), 3))
+    ood_results= np.empty((len(score_fns), len(oods), 3))
     for nscore, score_fn in enumerate(score_fns):
         for nood, ood in enumerate(oods):
             print "OOD detection", nscore, nood
@@ -514,10 +514,11 @@ if 1:
             ood_samples = MCpred(ood, num_samples=100, returns='samples')
             ood_scores = score_fn(ood_scores)
             ood_results[nscore][nood] = get_results(clean_scores, ood_scores)
-    if test_eval:
-        np.save(save_path + '_test_ood_results.npy', ood_results)
-    else:
-        np.save(save_path + '_val_ood_results.npy', ood_results)
+    if save:
+        if test_eval:
+            np.save(save_path + '_test_ood_results.npy', ood_results)
+        else:
+            np.save(save_path + '_val_ood_results.npy', ood_results)
 
 
     print "                                                                                        DONE,   total time=", time.time() - t0
