@@ -30,8 +30,11 @@ from helpers import flatten_list, gelu, plot_dict
 
 
 # TODO: 
-#   AD in script
+#   look into numerical precision issues!!
 #   init
+
+
+# THIS SHOULD TAKE ~20 mins in total (OR LESS! I was running on CPU!)
 
 NUM_CLASSES = 10
 
@@ -239,6 +242,7 @@ if 1:#def main():
     predict = theano.function([input_var],y.argmax(1))
     predict_probs = theano.function([input_var],y)
 
+    # TODO: don't redefine :P 
     def MCpred(X, inds=None, num_samples=10, returns='preds'):
         from utils import MCpred
         return MCpred(X, predict_probs_fn=predict_probs, num_samples=num_samples, inds=inds, returns=returns)
@@ -286,7 +290,7 @@ if 1:#def main():
                 records['loss'].append(loss)
                 records['acc'].append(tr_acc)
                 records['val_acc'].append(te_acc)
-                if save_path is not None:
+                if save:
                     np.save(save_path + '_records.npy', records)
                     np.save(save_path + '_params.npy', lasagne.layers.get_all_param_values([h_layer, layer]))
                     if records['val_acc'][-1] == np.max(records['val_acc']):
@@ -294,15 +298,16 @@ if 1:#def main():
 
             t+=1
 
-# load best and do proper evaluation
-lasagne.layers.set_all_param_values([h_layer, layer], np.load(save_path + '_params_best.npy'))
-best_acc = (MCpred(Xt, inds=range(len(Xt))) == Yt.argmax(1), num_samples=100).mean()
-np.save(save_path + '_best_val_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
+if save:
+    # load best and do proper evaluation
+    lasagne.layers.set_all_param_values([h_layer, layer], np.load(save_path + '_params_best.npy'))
+    best_acc = (MCpred(Xt, inds=range(len(Xt)), num_samples=100) == Yt.argmax(1)).mean()
+    np.save(save_path + '_best_val_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
 
-if test_eval: # TEST SET
-    Xt, Yt = test_x, test_y
-    best_acc = (MCpred(Xt, inds=range(len(Xt))) == Yt.argmax(1), num_samples=100).mean()
-    np.save(save_path + '_best_test_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
+    if test_eval: # TEST SET
+        Xt, Yt = test_x, test_y
+        best_acc = (MCpred(Xt, inds=range(len(Xt)), num_samples=100) == Yt.argmax(1)).mean()
+        np.save(save_path + '_best_test_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
 
         
 
@@ -391,46 +396,21 @@ if 1:
     #######################
 
 
-    # TODO: get_results (base?)
+
     # TODO: score functions
 
+    # TODO: get_results CONFIDENCE
 
     #####################
     from sklearn.metrics import roc_auc_score as roc
     from sklearn.metrics import average_precision_score as pr
     def get_results(ins, oos): #in/out of sample
         """
-        returns AOROC/base, AOPR (success)/base, AOPR (failure)/base, avg prediction confidence on oos 
-        """
-        rval = []
-        y_true = np.hstack((np.ones(len(ins)), np.zeros(len(oos))))
-        y_score = np.vstack((ins, oos))
-        # TODO: use different scores (e.g. entropy, acq fns)
-        y_score = y_score.max(axis=1)
-        #print y_score
-        #import ipdb; ipdb.set_trace()
-        rval += [round(roc(y_true, y_score)*100, 2),
-                round(pr(y_true, y_score)*100, 2)]
-        y_true = np.hstack((np.zeros(len(ins)), np.ones(len(oos))))
-        y_score = -y_score
-        rval += [#round(roc(y_true, y_score)*100, 2),
-                round(pr(y_true, y_score)*100, 2)]
-        return rval
-
-
-    # TODO: rm
-    def get_AOC(ins, oos): #in/out of sample
-        # TODO: order of the last 2???
-        """
         returns AOROC, AOPR (success), AOPR (failure) 
         """
         rval = []
         y_true = np.hstack((np.ones(len(ins)), np.zeros(len(oos))))
-        y_score = np.vstack((ins, oos))
-        # TODO: use different scores (e.g. entropy, acq fns)
-        y_score = y_score.max(axis=1)
-        #print y_score
-        #import ipdb; ipdb.set_trace()
+        y_score = np.hstack((ins, oos))
         rval += [round(roc(y_true, y_score)*100, 2),
                 round(pr(y_true, y_score)*100, 2)]
         y_true = np.hstack((np.zeros(len(ins)), np.ones(len(oos))))
@@ -453,9 +433,28 @@ if 1:
 
     score_fns = []
 
-    def var_ratio1(samples):
+    # These score functions are NEGATIVEs of the acquisition functions they are named for
+    # SAMPLES: nsamples, nexamples, nclasses
+    # returns scores: nexamples
+    # they are listed in alphabetic order
+    import scipy.stats
+    def bald(samples):
+        return scipy.stats.entropy(samples.mean(0).T) - scipy.stats.entropy(samples.transpose(2,0,1)).mean(0)
+    score_fns.append(bald)
+    def max_ent(samples):
+        return scipy.stats.entropy(samples.mean(0).T)
+    score_fns.append(max_ent)
+    if 0: 
+        def min_margin(samples): # TODO
+            return scipy.stats.entropy(samples.mean(0).T)
+        score_fns.append(min_margin)
+    def mean_std(samples):
+        stds = np.maximum(((samples**2).mean(0) - samples.mean(0)**2),0)**.5
+        return stds.mean(-1)
+    score_fns.append(mean_std)
+    def var_ratio(samples):
         return samples.mean(0).max(-1)
-    score_fns.append(var_ratio1)
+    score_fns.append(var_ratio)
 
 
 
@@ -471,7 +470,7 @@ if 1:
     # predictions on clean data
 
     from utils import MCpred
-    clean_samples = MCpred(Xt, predict_probs_fn=probs, num_samples=100, returns='samples')
+    clean_samples = MCpred(X=Xt, predict_probs_fn=probs, num_samples=100, returns='samples')
     clean_probs = clean_samples.mean(0)
     clean_preds = clean_probs.argmax(-1)
 
@@ -487,7 +486,7 @@ if 1:
     ##########################
     # error-detection
     print "\n Error detection"
-    err_results= np.empty(len(score_fns), 8)
+    err_results= np.empty((len(score_fns), 3))
     for nscore, score_fn in enumerate(score_fns):
         print "Error detection", nscore
         gtruth = np.argmax(Yt, axis=-1)
@@ -495,30 +494,33 @@ if 1:
         correct = clean_samples[:, is_correct]
         incorrect = clean_samples[:, np.logical_not(is_correct)]
         clean_scores = score_fn(correct)
+        # check that all score functions return a score for each example (i.e. have the right shape)
+        assert len(clean_scores) == correct.shape[1]
         err_scores = score_fn(incorrect)
-        err_results[nscore][nood][:7] = get_results(clean_scores, err_scores)
-        err_results[nscore][nood][7] = np.round(100 * (1 - best_acc), 2)
-    if test_eval:
-        np.save(save_path + '_test_err_results.npy', ood_results)
-    else:
-        np.save(save_path + '_val_err_results.npy', ood_results)
+        err_results[nscore][:3] = get_results(clean_scores, err_scores)
+    if save:
+        if test_eval:
+            np.save(save_path + '_test_err_results.npy', err_results)
+        else:
+            np.save(save_path + '_val_err_results.npy', err_results)
             
 
     ##########################
     # OOD-detection
     print "\nOOD detection"
-    ood_results= np.empty(len(score_fns), len(tasks), 7)
+    ood_results= np.empty((len(score_fns), len(oods), 3))
     for nscore, score_fn in enumerate(score_fns):
         for nood, ood in enumerate(oods):
             print "OOD detection", nscore, nood
             clean_scores = score_fn(clean_samples)
-            ood_samples = MCpred(ood, num_samples=100, returns='samples')
-            ood_scores = score_fn(ood_scores)
+            ood_samples = MCpred(X=ood, predict_probs_fn=probs, num_samples=100, returns='samples')
+            ood_scores = score_fn(ood_samples)
             ood_results[nscore][nood] = get_results(clean_scores, ood_scores)
-    if test_eval:
-        np.save(save_path + '_test_ood_results.npy', ood_results)
-    else:
-        np.save(save_path + '_val_ood_results.npy', ood_results)
+    if save:
+        if test_eval:
+            np.save(save_path + '_test_ood_results.npy', ood_results)
+        else:
+            np.save(save_path + '_val_ood_results.npy', ood_results)
 
 
     print "                                                                                        DONE,   total time=", time.time() - t0

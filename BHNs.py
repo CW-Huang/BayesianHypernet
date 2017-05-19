@@ -1323,6 +1323,7 @@ class BHN_Q_Network(Base_BHN):
         
         logpyx = - se(self.y,self.target_var).sum(1).mean()
         self.loss = - (logpyx - kl/T.cast(self.dataset_size,floatX))
+        self.monitored = [self.loss]
         
         
     def _get_useful_funcs(self):

@@ -5,7 +5,7 @@ from utils import log_normal, log_laplace
 import numpy
 np = numpy
 import random
-random.seed(5001)
+#random.seed(5001)
 from lasagne import layers
 from scipy.stats import mode
 
@@ -16,6 +16,8 @@ import os
 
 from AL_helpers import *
 
+
+# TODO: fixme... learning rates!!
 
 def train_model(train_func,predict_func,X,Y,Xt,Yt,
                 lr0=0.1,lrdecay=1,bs=20,epochs=50):
@@ -252,8 +254,8 @@ def active_learning(acquisition_iterations):
             x_pool_index = a_1d.argsort()[-Queries:][::-1]
             
         elif acq == 'random':
-            x_pool_index = np.asarray(random.sample(range(0, 38000), Queries))
-            #x_pool_index = np.random.choice(range(pool_size), Queries, replace=False)
+            #x_pool_index = np.asarray(random.sample(range(0, 38000), Queries))
+            x_pool_index = np.random.choice(range(pool_size), Queries, replace=False)
 
 
         # END ACQUISITION
@@ -290,12 +292,14 @@ def active_learning(acquisition_iterations):
 	                       lr0,lrdecay,bs,epochs)
    
 
-        test_accuracy = test_model(model.predict_proba, test_x, test_y)   
-
-        print "                                                          Test Accuracy", test_accuracy
-
-        all_accuracy = np.append(all_accuracy, test_accuracy)
-
+        if test_eval:
+            test_accuracy = test_model(model.predict_proba, test_x, test_y)   
+            print "                                                          Test Accuracy", test_accuracy
+            all_accuracy = np.append(all_accuracy, test_accuracy)
+        else:
+            test_accuracy = test_model(model.predict_proba, valid_x, valid_y)   
+            print "                                                          Test Accuracy", test_accuracy
+            all_accuracy = np.append(all_accuracy, test_accuracy)
 
     return all_accuracy
 
@@ -310,13 +314,13 @@ def main():
         
         accuracy = active_learning(acquisition_iterations)
         all_accuracy[:, i] = accuracy
-        np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy'), all_accuracy)
+        np.save(save_path + '_all_accuracy.npy', all_accuracy)
 
     
     mean_accuracy = np.mean(all_accuracy)
 
-    np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy'), all_accuracy)
-    np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_mean_accuracy.npy'), mean_accuracy)
+    np.save(save_path + '_all_accuracy.npy'), all_accuracy)
+    np.save(save_path + '_mean_accuracy.npy'), mean_accuracy)
 
 
 
@@ -340,9 +344,57 @@ if __name__ == '__main__':
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
     parser.add_argument('--pool_size',default=2000,type=int)
-    parser.add_argument('--save_dir',default='./',type=str)      
     parser.add_argument('--size',default=10000,type=int)      
+    parser.add_argument('--test_eval',default=0,type=int)      
+    #
+    #parser.add_argument('--save_path',default=None,type=str)  
+    parser.add_argument('--save', type=int, default=0)
+    parser.add_argument('--save_dir', type=str, default="./")
+    parser.add_argument('--seed', type=int, default=1337)
+    parser.add_argument('--verbose', type=int, default=1)
+
+
+    # --------------------------------------------
+    # PARSE ARGS and SET-UP SAVING and RANDOM SEED
     args = parser.parse_args()
+    args_dict = args.__dict__
+
+    # save_path = filename + PROVIDED parser arguments
+    flags = [flag.lstrip('--') for flag in sys.argv[1:]]
+    flags = [ff for ff in flags if not ff.startswith('save_dir')]
+    save_dir = args_dict.pop('save_dir')
+    save_path = os.path.join(save_dir, os.path.basename(__file__) + '___' + '_'.join(flags))
+    args_dict['save_path'] = save_path
+
+    if args_dict['save']:
+        # make directory for results, save ALL parser arguments
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        with open (os.path.join(save_path,'exp_settings.txt'), 'w') as f:
+            for key in sorted(args_dict):
+                f.write(key+'\t'+str(args_dict[key])+'\n')
+        print( save_path)
+        #assert False
+
+    locals().update(args_dict)
+
+    if nonlinearity == 'rectify':
+        nonlinearity = lasagne.nonlinearities.rectify
+    elif nonlinearity == 'gelu':
+        nonlinearity = gelu
+    
+    lbda = np.cast[floatX](args.lbda)
+    size = max(10,min(50000,args.size))
+    clip_grad = 100
+    max_norm = 100
+
+    # SET RANDOM SEED (TODO: rng vs. random.seed)
+    if seed is not None:
+        np.random.seed(seed)  # for reproducibility
+        rng = numpy.random.RandomState(seed)
+    else:
+        rng = numpy.random.RandomState(np.random.randint(2**32 - 1))
+    # --------------------------------------------
     print "\n\n\n-----------------------------------------------------------------------\n\n\n"
     print args
     

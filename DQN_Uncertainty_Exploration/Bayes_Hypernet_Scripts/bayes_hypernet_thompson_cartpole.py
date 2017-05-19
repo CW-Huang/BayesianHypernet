@@ -22,6 +22,7 @@ max_n_ep = 1000    #originally defined! Don't change this.
 min_avg_Rwd = 200000000  # Minimum average reward to consider the problem as solved
 n_avg_ep = 100      # Number of consecutive episodes to calculate the average reward
 
+LR = .0001
 
 def run_episode(env,
                 agent,
@@ -94,7 +95,7 @@ def run_episode(env,
             t_train = time.time()
 
             #training the agent based on the target function
-            loss_v = agent.train(states_b, targets)
+            loss_v = agent.train(states_b, targets, lr0=LR)
 
             train_duration_s[i - batch_size] = time.time() - t_train
 
