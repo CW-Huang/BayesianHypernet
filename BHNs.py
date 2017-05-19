@@ -12,6 +12,7 @@ from modules import LinearFlowLayer, IndexLayer, PermuteLayer, SplitLayer, Rever
 from modules import CoupledDenseLayer, ConvexBiasLayer, \
                     stochasticDenseLayer2, stochasticConv2DLayer, \
                     stochastic_weight_norm
+from modules import *
 from utils import log_normal
 import theano
 import theano.tensor as T
@@ -1080,12 +1081,13 @@ class HyperCNN(Base_BHN):
 
 
         if kernel_width is not None: # OVERRIDE dataset argument!!!
+            # ONLY FOR MNIST ACTIVE LEARNING EXPERIMENT!
             self.weight_shapes = [(32,1,kernel_width,kernel_width),        # -> (None, 16, 14, 14)
                                   (32,32,kernel_width,kernel_width),       # -> (None, 16,  7,  7)
                                   (32,32,kernel_width,kernel_width)]       # -> (None, 16,  4,  4)
-            self.args = [[32,kernel_width,stride,pad, rectify],
-                         [32,kernel_width,stride,pad, rectify],
-                         [32,kernel_width,stride,pad, rectify]]
+            self.args = [[32,kernel_width,stride,pad, rectify, 'none'],
+                         [32,kernel_width,stride,pad, rectify, 'none'],
+                         [32,kernel_width,stride,pad, rectify, 'max']]
                                   
 
         self.n_kernels = np.array(self.weight_shapes)[:,1].sum()

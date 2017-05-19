@@ -16,6 +16,12 @@ import os
 
 from AL_helpers import *
 
+import lasagne
+import theano
+floatX = theano.config.floatX
+
+from modules import *
+
 
 # TODO: fixme... learning rates!!
 
@@ -319,14 +325,17 @@ def main():
     
     mean_accuracy = np.mean(all_accuracy)
 
-    np.save(save_path + '_all_accuracy.npy'), all_accuracy)
-    np.save(save_path + '_mean_accuracy.npy'), mean_accuracy)
+    np.save(save_path + '_all_accuracy.npy', all_accuracy)
+    np.save(save_path + '_mean_accuracy.npy', mean_accuracy)
 
 
 
 if __name__ == '__main__':
     
     import argparse
+    import os
+    import sys
+    import numpy
     
     parser = argparse.ArgumentParser()
     
@@ -334,11 +343,14 @@ if __name__ == '__main__':
     parser.add_argument('--acq',default='bald',type=str, choices=['bald', 'max_ent', 'var_ratio', 'mean_std', 'random'])
     parser.add_argument('--arch',default='hyperCNN',type=str)
     parser.add_argument('--bs',default=128,type=int)  
+    parser.add_argument('--convex_combination',default=0,type=int)  
     parser.add_argument('--coupling',default=4,type=int)  
     parser.add_argument('--epochs',default=50,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)  
     parser.add_argument('--lr0',default=0.0001,type=float)  
     parser.add_argument('--lbda',default=1,type=float)  
+    parser.add_argument('--new_model',default=1,type=int)  
+    parser.add_argument('--nonlinearity',default='rectify',type=str)  
     parser.add_argument('--num_experiments',default=3,type=int)  
     parser.add_argument('--params_reset',default='none', type=str, choices=['deterministic', 'random', 'none'] ) # TODO
     parser.add_argument('--perdatapoint',default=0,type=int)
@@ -377,6 +389,7 @@ if __name__ == '__main__':
         #assert False
 
     locals().update(args_dict)
+    extra_linear = convex_combination
 
     if nonlinearity == 'rectify':
         nonlinearity = lasagne.nonlinearities.rectify
