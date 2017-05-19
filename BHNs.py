@@ -9,7 +9,7 @@ Created on Sun May 14 17:58:58 2017
 # TODO: we should have a function for the core hypernet architecture (agnostic of whether we do WN/CNN/full Hnet)
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer, SplitLayer, ReverseLayer
-from modules import CoupledDenseLayer, ConvexBiasLayer, \
+from modules import CoupledDenseLayer, ConvexBiasLayer, CoupledWNDenseLayer, \
                     stochasticDenseLayer2, stochasticConv2DLayer, \
                     stochastic_weight_norm
 from modules import *
