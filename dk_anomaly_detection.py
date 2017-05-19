@@ -61,9 +61,10 @@ if 1:#def main():
     parser.add_argument('--model', default='mlp', type=str, choices=['mlp', 'hnet', 'hnet2', 'dropout', 'dropout2', 'weight_uncertainty'])
     parser.add_argument('--nonlinearity',default='rectify', type=str)
     parser.add_argument('--perdatapoint',action='store_true')    
-    parser.add_argument('--num_examples',default=10000,type=int)  
-    parser.add_argument('--num_samples',default=100,type=int)  
+    parser.add_argument('--num_examples',default=1000,type=int)  
+    parser.add_argument('--num_samples',default=10,type=int)  
     parser.add_argument('--size',default=50000,type=int)  
+    parser.add_argument('--test_eval',default=0,type=int)  
     #
     #parser.add_argument('--save_path',default=None,type=str)  
     parser.add_argument('--save', type=int, default=0)
@@ -218,7 +219,7 @@ if 1:#def main():
             print layer.output_shape
         layer.nonlinearity = nonlinearities.softmax
         y = get_output(layer,inputs)
-        #y = T.clip(y, 0.001, 0.999) # stability 
+        y = T.clip(y, 0.001, 0.999) # stability 
         loss = cc(y,target_var).mean()
         params = lasagne.layers.get_all_params([h_layer,layer])
         loss = loss + lasagne.regularization.l2(flatten_list(params)) * np.float32(1.e-5)
@@ -238,9 +239,9 @@ if 1:#def main():
     predict = theano.function([input_var],y.argmax(1))
     predict_probs = theano.function([input_var],y)
 
-    def MCpred(X, inds):
+    def MCpred(X, inds=None, num_samples=10, returns='preds'):
         from utils import MCpred
-        return MCpred(X, predict_probs_fn=predict_probs, num_samples=num_samples, inds=inds, returns='preds')
+        return MCpred(X, predict_probs_fn=predict_probs, num_samples=num_samples, inds=inds, returns=returns)
 
 
 
@@ -279,7 +280,7 @@ if 1:#def main():
                 te_inds = np.random.choice(len(Xt), num_examples, replace=False)
                 tr_acc = (MCpred(X, inds=tr_inds)==Y[tr_inds].argmax(1)).mean()
                 te_acc = (MCpred(Xt, inds=te_inds)==Yt[te_inds].argmax(1)).mean()
-                assert False
+                #assert False
                 print '\ttrain acc: {}'.format(tr_acc)
                 print '\ttest acc: {}'.format(te_acc)
                 records['loss'].append(loss)
@@ -293,13 +294,284 @@ if 1:#def main():
 
             t+=1
 
+# load best and do proper evaluation
+lasagne.layers.set_all_param_values([h_layer, layer], np.load(save_path + '_params_best.npy'))
+best_acc = (MCpred(Xt, inds=range(len(Xt))) == Yt.argmax(1), num_samples=100).mean()
+np.save(save_path + '_best_val_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
+
+if test_eval: # TEST SET
+    Xt, Yt = test_x, test_y
+    best_acc = (MCpred(Xt, inds=range(len(Xt))) == Yt.argmax(1), num_samples=100).mean()
+    np.save(save_path + '_best_test_acc=' + str(np.round(100*best_acc, 2)) + '.npy', best_acc)
+
         
+
+
+
+
+
+# --------------------------------------------
+# --------------------------------------------
+# --------------------------------------------
+# --------------------------------------------
+# --------------------------------------------
 # --------------------------------------------
 # Anomaly Detection Metrics
 if 1:
+    print "                                                                           RUNNING ANOMALY DETECTION EVALUATIONS!"
+
+        
+    import time
+    t0 = time.time()
+    import theano
+    import theano.tensor as T
+    from theano.tensor.shared_randomstreams import RandomStreams
+
+    noise_level=1.
 
 
-    pass
+    def noised(dset, lvl, type='Gaussian'):
+        #return dset + (lvl * np.random.randn(*dset.shape)).astype('float32') # <-- add instead
+        if type == 'uniform':
+            return (lvl * np.random.rand(*dset.shape)).astype('float32')
+        else:
+            return (lvl * np.random.randn(*dset.shape)).astype('float32')
 
-    
+    ##################################################
+    # from https://github.com/hendrycks/error-detection/blob/master/Vision/MNIST_Abnormality_Module.ipynb
+    print "load notMNIST, CIFAR-10, and Omniglot"
+    try:
+        notmnist_dataset = np.load('not_mnist.npy')
+        cifar_batch = np.load('CIFAR10-bw.npy')
+        omni_images = np.load('omniglot.npy')
+        print "loaded saved npy files"
+    except:
+        import pickle
+        pickle_file = './data/notMNIST.pickle'
+        with open(pickle_file, 'rb') as f:
+            #save = pickle.load(f, encoding='latin1')
+            save = pickle.load(f)
+            notmnist_dataset = save['test_dataset'].reshape((-1, 28 * 28))
+            del save
+
+        np.save('not_mnist.npy', notmnist_dataset)
+
+        from helpers import load_data10
+        _, _, X_test, _ = load_data10()
+        import tensorflow as tf
+        try:
+            sess = tf.Session()
+            with sess.as_default():
+                cifar_batch = sess.run(tf.image.resize_images(tf.image.rgb_to_grayscale(X_test), (28, 28))).reshape((-1, 784))
+        except:
+            pass
+
+        np.save('CIFAR10-bw.npy', cifar_batch)
+
+        import scipy.io as sio
+        import scipy.misc as scimisc
+        # other alphabets have characters which overlap
+        safe_list = [0,2,5,6,8,12,13,14,15,16,17,18,19,21,26]
+        m = sio.loadmat("./data/data_background.mat")
+
+        squished_set = []
+        for safe_number in safe_list:
+            for alphabet in m['images'][safe_number]:
+                for letters in alphabet:
+                    for letter in letters:
+                        for example in letter:
+                            squished_set.append(scimisc.imresize(1 - example[0], (28,28)).reshape(1, 28*28))
+
+        omni_images = np.concatenate(squished_set, axis=0)
+        np.save('omniglot.npy', omni_images)
+
+    print "done loading notMNIST, CIFAR-10, and Omniglot"
+    ################################################################
+    ################################################################
+    #######################
+
+
+    # TODO: get_results (base?)
+    # TODO: score functions
+
+
+    #####################
+    from sklearn.metrics import roc_auc_score as roc
+    from sklearn.metrics import average_precision_score as pr
+    def get_results(ins, oos): #in/out of sample
+        """
+        returns AOROC/base, AOPR (success)/base, AOPR (failure)/base, avg prediction confidence on oos 
+        """
+        rval = []
+        y_true = np.hstack((np.ones(len(ins)), np.zeros(len(oos))))
+        y_score = np.vstack((ins, oos))
+        # TODO: use different scores (e.g. entropy, acq fns)
+        y_score = y_score.max(axis=1)
+        #print y_score
+        #import ipdb; ipdb.set_trace()
+        rval += [round(roc(y_true, y_score)*100, 2),
+                round(pr(y_true, y_score)*100, 2)]
+        y_true = np.hstack((np.zeros(len(ins)), np.ones(len(oos))))
+        y_score = -y_score
+        rval += [#round(roc(y_true, y_score)*100, 2),
+                round(pr(y_true, y_score)*100, 2)]
+        return rval
+
+
+    # TODO: rm
+    def get_AOC(ins, oos): #in/out of sample
+        # TODO: order of the last 2???
+        """
+        returns AOROC, AOPR (success), AOPR (failure) 
+        """
+        rval = []
+        y_true = np.hstack((np.ones(len(ins)), np.zeros(len(oos))))
+        y_score = np.vstack((ins, oos))
+        # TODO: use different scores (e.g. entropy, acq fns)
+        y_score = y_score.max(axis=1)
+        #print y_score
+        #import ipdb; ipdb.set_trace()
+        rval += [round(roc(y_true, y_score)*100, 2),
+                round(pr(y_true, y_score)*100, 2)]
+        y_true = np.hstack((np.zeros(len(ins)), np.ones(len(oos))))
+        y_score = -y_score
+        rval += [#round(roc(y_true, y_score)*100, 2),
+                round(pr(y_true, y_score)*100, 2)]
+        return rval
+
+
+    #######################
+    # IDEAS FOR y_score:
+    """
+    baseline
+    entropy of estimated Dirichlet?
+    avg entropy of predictive distribution
+    avg entropy of predictions (along each axis)
+    entropy of flattened array
+    standard deviation (something something...)
+    """
+
+    score_fns = []
+
+    def var_ratio1(samples):
+        return samples.mean(0).max(-1)
+    score_fns.append(var_ratio1)
+
+
+
+
+    #######################
+    # get rid of clipping for maximum performance!
+    y = get_output(layer,inputs)
+    #y = T.clip(y, 0.001, 0.999)
+    probs = theano.function([input_var],y)
+
+
+    #######################
+    # predictions on clean data
+
+    from utils import MCpred
+    clean_samples = MCpred(Xt, predict_probs_fn=probs, num_samples=100, returns='samples')
+    clean_probs = clean_samples.mean(0)
+    clean_preds = clean_probs.argmax(-1)
+
+    oods = []
+    oods.append( noised(Xt, noise_level, 'uniform'))
+    oods.append( omni_images )
+    oods.append( cifar_batch )
+    oods.append( noised(Xt, noise_level) )
+    oods.append( notmnist_dataset )
+
+    # RESULTS ARE IN THE SAME ORDER AS IN THE TABLES IN DAN's paper
+
+    ##########################
+    # error-detection
+    print "\n Error detection"
+    err_results= np.empty(len(score_fns), 8)
+    for nscore, score_fn in enumerate(score_fns):
+        print "Error detection", nscore
+        gtruth = np.argmax(Yt, axis=-1)
+        is_correct = np.equal(clean_preds, gtruth)
+        correct = clean_samples[:, is_correct]
+        incorrect = clean_samples[:, np.logical_not(is_correct)]
+        clean_scores = score_fn(correct)
+        err_scores = score_fn(incorrect)
+        err_results[nscore][nood][:7] = get_results(clean_scores, err_scores)
+        err_results[nscore][nood][7] = np.round(100 * (1 - best_acc), 2)
+    if test_eval:
+        np.save(save_path + '_test_err_results.npy', ood_results)
+    else:
+        np.save(save_path + '_val_err_results.npy', ood_results)
+            
+
+    ##########################
+    # OOD-detection
+    print "\nOOD detection"
+    ood_results= np.empty(len(score_fns), len(tasks), 7)
+    for nscore, score_fn in enumerate(score_fns):
+        for nood, ood in enumerate(oods):
+            print "OOD detection", nscore, nood
+            clean_scores = score_fn(clean_samples)
+            ood_samples = MCpred(ood, num_samples=100, returns='samples')
+            ood_scores = score_fn(ood_scores)
+            ood_results[nscore][nood] = get_results(clean_scores, ood_scores)
+    if test_eval:
+        np.save(save_path + '_test_ood_results.npy', ood_results)
+    else:
+        np.save(save_path + '_val_ood_results.npy', ood_results)
+
+
+    print "                                                                                        DONE,   total time=", time.time() - t0
+            
+
+
+
+
+
+
+
+
+
+
+if 0: # DEPRECATED
+    ##########################
+    # OOD-detection
+    import collections
+    risky = collections.OrderedDict() # easy-to-hard
+    risky['uniform'] = noised(Xt, noise_level, 'uniform')
+    risky['omniglot'] = omni_images
+    risky['CIFARbw'] = cifar_batch
+    risky['normal'] = noised(Xt, noise_level)
+    risky['notMNIST'] = notmnist_dataset
+
+    for kk, vv in risky.items():
+        print "\n",kk
+        nyht = np.zeros((num_samples, num_examples, 10))
+        for ind in range(num_samples):
+            nyht[ind] = probs(vv[:num_examples])
+        print "done sampling!"
+        nyht = np.mean(nyht, axis=0)
+        print get_AOC(yhtm, nyht)
+
+    # samples: nsample, nexample, 10
+    def baseline(samples):
+        return np.mean(samples, 0)
+
+    def entropy():
+        pass
+
+
+    if 0:
+
+        # TODO: how diverse are the samples? (how to evaluate that?? what to compare to / expect??)
+
+        # 2D scatter-plots of sampled params
+        for i in range(9):                                                                                                                     
+            subplot(3,3,i+1)
+            seaborn.regplot(thet[:, np.random.choice(7940)], thet[:, np.random.choice(7940)]) 
+        # look at actual correlation coefficients
+        hist([scipy.stats.pearsonr(thet[:, np.random.choice(7940)], thet[:, np.random.choice(7940)])[1] for _ in range(10000)], 100) 
+
+        # TODO: what does the posterior over parameters look like? (we expect to see certain dependencies... e.g. in the simplest case...)
+        #   So we can actually see that easily in a toy example, where output = a*b*input, so we just need a*b to equal the right thing, and we can compute the exact posterior based on #examples, etc... and then we can see the difference between independent and not
 

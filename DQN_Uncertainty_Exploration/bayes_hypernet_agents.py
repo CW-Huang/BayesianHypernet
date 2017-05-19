@@ -109,7 +109,7 @@ class AgentEpsGreedy:
 
 
     #good lr0 : 0.0001
-    def train(self, X,Y, lr0=0.0001,lrdecay=1,bs=20,epochs=50):
+    def train(self, X,Y, lr0=0.001,lrdecay=1,bs=20,epochs=50):
 
         train_func = self.value_func.train_func
 
