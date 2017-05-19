@@ -250,10 +250,9 @@ class MLPWeightNorm_BHN(Base_BHN):
             # using weightnorm reparameterization
             # only need ws[1] parameters (for rescaling of the weight matrix)
             num_param = ws[1]
-            w_layer = lasagne.layers.InputLayer((None,ws[1]))
             weight = self.weights[:,t:t+num_param].reshape((self.wd1,ws[1]))
-            inputs[w_layer] = weight
-            p_net = stochasticDenseLayer2([p_net,w_layer],ws[1])
+            p_net = lasagne.layers.DenseLayer(p_net,ws[1])
+            p_net = stochastic_weight_norm(p_net,weight)
             print p_net.output_shape
             t += num_param
             
