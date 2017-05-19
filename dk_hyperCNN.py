@@ -95,6 +95,11 @@ class MCdropoutCNN(object):
                                                              self.target_var)
         self.loss = losses.mean() + self.dataset_size * 0.
         self.params = lasagne.layers.get_all_params(self.layer)
+        # reset!
+        params0 = lasagne.layers.get_all_param_values(self.layer)
+        updates = {p:p0 for p, p0 in zip(self.params,params0)}
+        self.reset = theano.function([],None, updates=updates)
+
         if opt == 'adam':
             self.updates = lasagne.updates.adam(self.loss,self.params,
                                                 self.learning_rate)
@@ -117,6 +122,7 @@ class MCdropoutCNN(object):
         self.predict_proba = theano.function([self.input_var],self.y)
         self.predict = theano.function([self.input_var],self.y_det.argmax(1))
         
+    
 
 
 
