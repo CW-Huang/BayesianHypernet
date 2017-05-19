@@ -6,6 +6,9 @@
 *.swo
 *.swp
 *.pyc
+**.pyc
+***.pyc
+****.pyc
 *.log
 *.aux
 *.synctex.gz
