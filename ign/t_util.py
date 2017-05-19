@@ -43,6 +43,11 @@ def log_abs_det_T(W):
     return T.log(T.abs_(T.nlinalg.det(W)))
 
 
+def log_abs_det_tri_T(L):
+    '''Warning! only valid for triangular matrices.'''
+    return T.sum(T.log(T.abs_(T.nlinalg.extract_diag(L))))
+
+
 def L2_T(T_var):
     return T.sum(T_var ** 2)
 
