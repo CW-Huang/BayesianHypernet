@@ -14,6 +14,8 @@ import lasagne
 from lasagne import init
 from lasagne import nonlinearities
 from lasagne.layers import get_output
+from theano.tensor.var import TensorVariable as tv
+
 
 conv = lasagne.theano_extensions.conv
 
@@ -75,6 +77,73 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
         output = T.concatenate([output1,output2],1)
         
         return output, ls.sum(1)
+
+class NormalizingPlanarFlowLayer(lasagne.layers.Layer):
+    """
+    Adapted from 
+    https://github.com/casperkaae/parmesan/blob/master/parmesan/layers/flow.py
+    
+    Normalizing Planar Flow Layer as described in Rezende et
+    al. [REZENDE]_ (Equation numbers and appendixes refers to this paper)
+    Eq. (8) is used for calculating the forward transformation f(z).
+    The last term of eq. (13) is also calculated within this layer and
+    returned as an output for computational reasons. Furthermore, the
+    transformation is ensured to be invertible using the constrains
+    described in appendix A.1
+    Parameters
+    ----------
+    incoming : a :class:`Layer` instance or a tuple
+        The layer feeding into this layer, or the expected input shape
+    u,w : Theano shared variable, numpy array or callable
+        An initializer for the weights of the layer. If a shared variable or a
+        numpy array is provided the shape should be (num_inputs, num_units).
+        See :meth:`Layer.create_param` for more information.
+    b : Theano shared variable, numpy array, callable or None
+        An initializer for the biases of the layer. If a shared variable or a
+        numpy array is provided the shape should be (num_units,).
+        If None is provided the layer will have no biases.
+        See :meth:`Layer.create_param` for more information.
+    References
+    ----------
+        ..  [REZENDE] Rezende, Danilo Jimenez, and Shakir Mohamed.
+            "Variational Inference with Normalizing Flows."
+            arXiv preprint arXiv:1505.05770 (2015).
+    """
+    def __init__(self, incoming, u=lasagne.init.Normal(),
+                 w=lasagne.init.Normal(),
+                 b=lasagne.init.Constant(0.0), **kwargs):
+        super(NormalizingPlanarFlowLayer, self).__init__(incoming, **kwargs)
+        
+        num_latent = int(np.prod(self.input_shape[1:]))
+        
+        self.u = self.add_param(u, (num_latent,), name="u")
+        self.w = self.add_param(w, (num_latent,), name="w")
+        self.b = self.add_param(b, tuple(), name="b") # scalar
+    
+    def get_output_shape_for(self, input_shape):
+        return input_shape
+    
+    
+    def get_output_for(self, input, **kwargs):
+        # 1) calculate u_hat to ensure invertibility (appendix A.1 to)
+        # 2) calculate the forward transformation of the input f(z) (Eq. 8)
+        # 3) calculate u_hat^T psi(z) 
+        # 4) calculate logdet-jacobian log|1 + u_hat^T psi(z)| to be used in the LL function
+        
+        z = input
+        # z is (batch_size, num_latent_units)
+        uw = T.dot(self.u,self.w)
+        muw = -1 + T.nnet.softplus(uw) # = -1 + T.log(1 + T.exp(uw))
+        u_hat = self.u + (muw - uw) * T.transpose(self.w) / T.sum(self.w**2)
+        zwb = T.dot(z,self.w) + self.b
+        f_z = z + u_hat.dimshuffle('x',0) * lasagne.nonlinearities.tanh(zwb).dimshuffle(0,'x')
+        
+        psi = T.dot( (1-lasagne.nonlinearities.tanh(zwb)**2).dimshuffle(0,'x'),  self.w.dimshuffle('x',0)) # tanh(x)dx = 1 - tanh(x)**2
+        psi_u = T.dot(psi, u_hat)
+
+        logdet_jacobian = T.log(T.abs_(1 + psi_u))
+        
+        return [f_z, logdet_jacobian]
 
 
 class CoupledWNDenseLayer(lasagne.layers.base.Layer):    
@@ -263,6 +332,31 @@ class LinearFlowLayer(lasagne.layers.base.Layer):
         output = input * s
         if self.b is not None:
             output = output + self.b
+        
+        return output, (T.ones_like(input)*T.log(s)).sum(1)
+
+class ConvexBiasLayer(lasagne.layers.base.Layer):    
+    """
+    Scale and shift inputs, elementwise
+    """
+    def __init__(self, incoming, W=init.Normal(0.01,-7),
+                 b=init.Normal(0.01,0),
+                 **kwargs):
+        super(ConvexBiasLayer, self).__init__(incoming, **kwargs)
+        
+        num_inputs = int(np.prod(self.input_shape[1]))
+
+        self.W = self.add_param(W, (1,), name="lf_W")
+        self.b = self.add_param(b, (num_inputs,), name="lf_b",
+                                regularizable=False)
+            
+            
+    def get_output_shape_for(self, input_shape):
+        return input_shape
+
+    def get_output_for(self, input, **kwargs):
+        s = T.nnet.sigmoid(self.W) + delta
+        output = input * s + (1-s) * self.b
         
         return output, (T.ones_like(input)*T.log(s)).sum(1)
 
@@ -484,6 +578,71 @@ def stochasticConv2DLayer(incomings, num_filters, filter_size, stride=(1, 1),
 
     return layer
     
+
+
+
+class WeightNormLayer(lasagne.layers.Layer):
+    def __init__(self, incoming, b=lasagne.init.Constant(0.), 
+                 g=lasagne.init.Constant(1.),
+                 W=lasagne.init.Normal(0.05), 
+                 nonlinearity=nonlinearities.rectify, **kwargs):
+                     
+        super(WeightNormLayer, self).__init__(incoming, **kwargs)
+        self.nonlinearity = nonlinearity
+        k = self.input_shape[1]
+        if b is not None:
+            self.b = self.add_param(b, (k,), name="b", regularizable=False)
+        if type(g) == tv:
+            self.g = g
+        elif g is not None:
+            self.g = self.add_param(g, (k,), name="g")
+        if len(self.input_shape)==4:
+            self.axes_to_sum = (0,2,3)
+            self.dimshuffle_args = ['x',0,'x','x']
+        else:
+            self.axes_to_sum = 0
+            self.dimshuffle_args = ['x',0]
+        
+        # scale weights in layer below
+        incoming.W_param = incoming.W
+        incoming.W_param.set_value(W.sample(incoming.W_param.get_value().shape))
+        if incoming.W_param.ndim==4:
+            W_axes_to_sum = (1,2,3)
+            W_dimshuffle_args = [0,'x','x','x']
+        else:
+            W_axes_to_sum = 0
+            W_dimshuffle_args = ['x',0]
+        if g is not None:
+            incoming.W = self.g * incoming.W_param / T.sqrt(T.sum(T.square(incoming.W_param),axis=W_axes_to_sum)).dimshuffle(*W_dimshuffle_args)
+        else:
+            incoming.W = incoming.W_param / T.sqrt(T.sum(T.square(incoming.W_param),axis=W_axes_to_sum,keepdims=True))        
+
+    def get_output_for(self, input, init=False, **kwargs):
+        if init:
+            m = T.mean(input, self.axes_to_sum)
+            input -= m.dimshuffle(*self.dimshuffle_args)
+            stdv = T.sqrt(T.mean(T.square(input),axis=self.axes_to_sum))
+            input /= stdv.dimshuffle(*self.dimshuffle_args)
+            self.init_updates = [(self.b, -m/stdv), (self.g, self.g/stdv)]
+        elif hasattr(self,'b'):
+            input += self.b.dimshuffle(*self.dimshuffle_args)
+            
+        return self.nonlinearity(input)
+        
+def stochastic_weight_norm(layer, weight, **kwargs):
+    nonlinearity = getattr(layer, 'nonlinearity', None)
+    if nonlinearity is not None:
+        layer.nonlinearity = lasagne.nonlinearities.identity
+    if hasattr(layer, 'b'):
+        del layer.params[layer.b]
+        layer.b = None
+        
+    layer_out = WeightNormLayer(layer, g = weight,
+                                nonlinearity=nonlinearity, **kwargs)     
+    return layer_out
+
+
+        
         
 
 if __name__ == '__main__':

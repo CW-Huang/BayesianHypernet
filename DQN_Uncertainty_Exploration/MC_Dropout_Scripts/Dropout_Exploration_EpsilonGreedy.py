@@ -179,13 +179,18 @@ for e in range(Experiments):
     Experiments_All_Rewards[:, e] = total_reward
     episode_length_over_time = stats.episode_lengths
 
-    np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Dropout_Epsilon_Greedy_CartPole' + '.npy', Experiments_All_Rewards)
+    #np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Dropout_Epsilon_Greedy_CartPole' + '.npy', Experiments_All_Rewards)
+    np.save('/home/ml/rislam4/Documents/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Dropout_Epsilon_Greedy_CartPole' + '.npy', Experiments_All_Rewards)
+
+
 
 env.close()
 
 
 Average_Cum_Rwd = np.mean(Experiments_All_Rewards, axis=1)
-np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Average_Dropout_Epsilon_Greedy_CartPole' + '.npy', Average_Cum_Rwd)
+#np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Average_Dropout_Epsilon_Greedy_CartPole' + '.npy', Average_Cum_Rwd)
+np.save('/home/ml/rislam4/Documents/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Average_Dropout_Epsilon_Greedy_CartPole' + '.npy', Average_Cum_Rwd)
+
 
 
 

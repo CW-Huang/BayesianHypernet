@@ -9,8 +9,7 @@ from bayes_hypernet_agents import AgentEpsGreedy
 from bayes_value_functions import ValueFunctionBayesHypernet
 from lib import plotting
 
-from BHNs import BHN_Q_Network
-from ops import load_mnist
+from BHNs import BHN_Q_Network         
 from utils import log_normal, log_laplace
 import numpy as np
 
@@ -131,7 +130,7 @@ Experiments_All_Rewards = np.zeros(shape=(max_n_ep, Experiments))
 lbda = 1
 perdatapoint = 0
 prior = log_normal
-coupling = 0
+coupling = 6
 
 
 

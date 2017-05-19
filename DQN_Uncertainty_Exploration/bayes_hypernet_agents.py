@@ -91,16 +91,8 @@ class AgentEpsGreedy:
 
             return np.argmax(mean_action_values)
 
-
-    def train(self, states, targets):
-        return self.value_func.train(states, targets)
-
     def eval_train(self, states, targets, dropout_probability):
         return self.value_func.eval_train(states, targets, dropout_probability)
-
-    # def eval_valid(self, states, targets, dropout_probability):
-    #     return self.value_func.eval_valid(states, targets, dropout_probability)
-
 
 
     def eval_valid(self, states, targets, dropout_probability):
@@ -116,14 +108,11 @@ class AgentEpsGreedy:
 
 
 
+    #good lr0 : 0.0001
+    def train(self, X,Y, lr0=0.001,lrdecay=1,bs=20,epochs=50):
 
-    def train(self, X,Y, lr0=0.1,lrdecay=1,bs=20,epochs=50):
-        
-    
         train_func = self.value_func.train_func
-        predict_func = self.value_func.predict
 
-        # print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
         N = X.shape[0]    
         
         for e in range(epochs):
@@ -138,8 +127,7 @@ class AgentEpsGreedy:
                 y = Y[i*bs:(i+1)*bs]
                 
                 loss = train_func(x,y,N,lr)
-                                
-            
+                
         return loss
 
 

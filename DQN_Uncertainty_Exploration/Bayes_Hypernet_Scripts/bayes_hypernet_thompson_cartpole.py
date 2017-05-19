@@ -131,7 +131,8 @@ Experiments_All_Rewards = np.zeros(shape=(max_n_ep, Experiments))
 lbda = 1
 perdatapoint = 0
 prior = log_normal
-coupling = 0
+coupling = 6
+
 
 
 
