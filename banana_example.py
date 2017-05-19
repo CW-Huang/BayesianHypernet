@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # Ryan Turner (turnerry@iro.umontreal.ca)
 
+# https://stats.stackexchange.com/questions/113851/bayesian-estimation-of-n-of-a-binomial-distribution
+
 import numpy as np
 from scipy.misc import logsumexp
 from scipy.special import expit as logistic
@@ -23,13 +25,19 @@ def loglik_primary_f(k, y, theta, lower_n):
 
     combiln = T.gammaln(n + 1) - (T.gammaln(k + 1) + T.gammaln(n - k + 1))
     # add y to stop theano from complaining
-    loglik = combiln + k * T.log(p) + (n - k) * T.log1p(-p) + 0.0 * T.sum(y)
+    #loglik = combiln + k * T.log(p) + (n - k) * T.log1p(-p) + 0.0 * T.sum(y)
+    loglik = combiln + k * T.log(p) + (n - k) * T.log(1.0 - p) + 0.0 * T.sum(y)
     return loglik
 
 
-def logprior_f(theta):
-    # Is this what corresponds to non-inform in this space??
-    logprior = T.constant(0.0)
+def logprior_f(theta, lower_n):
+    logit_p = theta[0]
+    logn = theta[1]
+
+    logprior_n = logn - T.log(lower_n + T.exp(logn))
+    logprior_p = T.log(T.nnet.nnet.sigmoid(logit_p)) + T.log(T.nnet.nnet.sigmoid(-logit_p))
+
+    logprior = logprior_n + logprior_p
     return logprior
 
 
@@ -51,10 +59,11 @@ def simple_test(X, X_valid, n_epochs, n_batch, init_lr,
     phi_shared = make_shared_dict(layers, '%d%s')
 
     ll_primary_f = lambda X, y, w: loglik_primary_f(X, y, w, max_x)
+    logprior_f_corrected = lambda theta: logprior_f(theta, max_x)
     hypernet_f = lambda z, prelim: ign.network_T_and_J_LU(z[None, :], phi_shared, force_diag=prelim)[0][0, :]
     log_det_dtheta_dz_f = lambda z, prelim: T.sum(ign.network_T_and_J_LU(z[None, :], phi_shared, force_diag=prelim)[1])
     params_to_opt = phi_shared.values()
-    R = ht.build_trainer(params_to_opt, N, ll_primary_f, logprior_f,
+    R = ht.build_trainer(params_to_opt, N, ll_primary_f, logprior_f_corrected,
                          hypernet_f, log_det_dtheta_dz_f=log_det_dtheta_dz_f)
     trainer, get_err, test_loglik, _, grad_f = R
 
@@ -100,18 +109,20 @@ if __name__ == '__main__':
     np.random.seed(5645)
 
     init_lr = 0.001
-    n_epochs = 1000
+    n_epochs = 100
     n_batch = 5
     N = 1000
     z_std = 1.0  # 1.0 is correct for the model, 0.0 is MAP
 
     X = np.array([[53, 57, 66, 67, 72]]).T
+    #X = np.random.binomial(100, 0.7, 500)
+    #X = X[:, None]
 
     R = simple_test(X, X, n_epochs, n_batch, init_lr, n_layers=5, z_std=z_std)
     phi, cost_hist, loglik_valid, grad_f = R
 
     phi_W = ign.LU_to_W_np(phi)
     theta = np.array([ign.ign_rnd(phi_W)[0][0, :] for _ in xrange(1000)])
-    plt.plot(np.max(X) + np.exp(theta[:, 1]), 1.0 - logistic(theta[:, 0]), '.')
+    plt.plot(np.max(X) + np.exp(theta[:, 1]), logistic(theta[:, 0]), '.')
     plt.xlim([np.max(X), 2000])
     plt.ylim([0, 1])
