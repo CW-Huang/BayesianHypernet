@@ -72,6 +72,7 @@ class MCdropoutCNN(object):
                     layer = lasagne.layers.spatial_dropout(layer)
                 else:
                     layer = lasagne.layers.dropout(layer)
+        layer = lasagne.layers.Pool2DLayer(layer, pool_size=2)
 
         # MLP layers
         layer = lasagne.layers.DenseLayer(layer, 128)

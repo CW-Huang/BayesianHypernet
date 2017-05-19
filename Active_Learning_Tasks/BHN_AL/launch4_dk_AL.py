@@ -108,14 +108,17 @@ job_prefix += exp_script
 
 
 grid = [] 
-grid += [["acq", ['bald', 'max_ent', 'var_ratio', 'random']]]
+grid += [["acq", ['bald']]]
 #grid += [["acq", ['var_ratio']]]
-grid += [["num_experiments", ['3']]]
-grid += [["arch", ['hyperCNN', 'CNN', 'CNN_spatial_dropout']]]
+grid += [["num_experiments", ['1']]]
+grid += [["arch", ['hyperCNN']]]
+grid += [["coupling", ['4', '8']]]
+grid += [["convex_combination", ['0', '1']]]
+grid += [["lr0", ['.01', '.002', '.001']]]
 grid += [["new_model", ['1']]]
 grid += [["params_reset", ['none', 'deterministic']]]
 grid += [["save", ['1']]]
-grid += [["test_eval", ['1']]]
+grid += [["test_eval", ['0']]]
 
 # TODO: savepath should also contain exp_script? 
 #   (actually, we should make a log of everything in a text file or something...)
