@@ -24,6 +24,7 @@ rectify = nonlinearities.rectify
 softmax = nonlinearities.softmax
 from lasagne.layers import get_output
 from lasagne.objectives import categorical_crossentropy as cc
+from lasagne.objectives import squared_error as se
 import numpy as np
 
 from helpers import flatten_list
@@ -1184,6 +1185,29 @@ class BHN_Q_Network(Base_BHN):
         
         self.p_net = p_net
         self.y = y
+    
+    def _get_elbo(self):
+        """
+        negative elbo, an upper bound on NLL
+        """
+
+        logdets = self.logdets
+        logqw = - logdets
+        """
+        originally...
+        logqw = - (0.5*(ep**2).sum(1)+0.5*T.log(2*np.pi)*num_params+logdets)
+            --> constants are neglected in this wrapper
+        """
+        logpw = self.prior(self.weights,0.,-T.log(self.lbda)).sum(1)
+        """
+        using normal prior centered at zero, with lbda being the inverse 
+        of the variance
+        """
+        kl = (logqw - logpw).mean()
+        
+        logpyx = - se(self.y,self.target_var).sum(1).mean()
+        self.loss = - (logpyx - kl/T.cast(self.dataset_size,floatX))
+        
         
     def _get_useful_funcs(self):
         self.predict_proba = theano.function([self.input_var],self.y)
