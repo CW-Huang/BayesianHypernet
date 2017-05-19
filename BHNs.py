@@ -1106,9 +1106,8 @@ class BHN_Q_Network(Base_BHN):
     #                  (200,  10)]
     
 
-    weight_shapes = [(4,   512),
-                     (512, 256),
-                     (256,   4)] # output two means and two log_variances
+    weight_shapes = [(512, 256),
+                     (256,  2)]
 
     num_params = sum(ws[1] for ws in weight_shapes)
     
@@ -1117,7 +1116,7 @@ class BHN_Q_Network(Base_BHN):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
-                 coupling=4):
+                 coupling=True):
         
         self.coupling = coupling
         super(BHN_Q_Network, self).__init__(lbda=lbda,
@@ -1139,14 +1138,14 @@ class BHN_Q_Network(Base_BHN):
         logdets_layers.append(IndexLayer(layer_temp,1))
         
         if self.coupling:
-            layer_temp = CoupledDenseLayer(h_net,200)
+            layer_temp = CoupledDenseLayer(h_net,256)
             h_net = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
             
             for c in range(self.coupling-1):
                 h_net = PermuteLayer(h_net,self.num_params)
                 
-                layer_temp = CoupledDenseLayer(h_net,200)
+                layer_temp = CoupledDenseLayer(h_net,256)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
         
@@ -1168,10 +1167,15 @@ class BHN_Q_Network(Base_BHN):
             weight = self.weights[:,t:t+num_param].reshape((self.wd1,ws[1]))
             inputs[w_layer] = weight
             p_net = stochasticDenseLayer2([p_net,w_layer],ws[1])
+            
+            #p_net = ConvexBiasLayer([p_net,w_layer],ws[1])
             print p_net.output_shape
             t += num_param
             
-        p_net.nonlinearity = nonlinearities.softmax # replace the nonlinearity
+
+
+        p_net.nonlinearity = nonlinearities.linear 
+        #p_net.nonlinearity = nonlinearities.softmax # replace the nonlinearity
                                                     # of the last layer
                                                     # with softmax for
                                                     # classification
@@ -1180,73 +1184,9 @@ class BHN_Q_Network(Base_BHN):
         
         self.p_net = p_net
         self.y = y
-    
-    def _get_primary_net(self):
-        t = np.cast['int32'](0)
-        p_net = lasagne.layers.InputLayer([None,1])
-        inputs = {p_net:self.input_var}
-        for ws in self.weight_shapes:
-            # using weightnorm reparameterization
-            # only need ws[1] parameters (for rescaling of the weight matrix)
-            num_param = ws[1]
-            w_layer = lasagne.layers.InputLayer((None,ws[1]))
-            weight = self.weights[:,t:t+num_param].reshape((self.wd1,ws[1]))
-            inputs[w_layer] = weight
-            p_net = stochasticDenseLayer2([p_net,w_layer],ws[1],
-                                          nonlinearity=nonlinearities.tanh)
-            #print p_net.output_shape
-            t += num_param
-            
-
-            
-        p_net.nonlinearity = nonlinearities.linear  # replace the nonlinearity
-                                                    # of the last layer
-                                                    # with linear for
-                                                    # regression
         
-        y = get_output(p_net,inputs)
-        
-        self.p_net = p_net
-        self.y = y
-        
-    def _get_elbo(self):
-        """
-        negative elbo, an upper bound on NLL
-        """
-
-        logdets = self.logdets
-        logqw = - logdets
-        """
-        originally...
-        logqw = - (0.5*(ep**2).sum(1)+0.5*T.log(2*np.pi)*num_params+logdets)
-            --> constants are neglected in this wrapper
-        """
-        logpw = self.prior(self.weights,0.,-T.log(self.lbda)).sum(1)
-        """
-        using normal prior centered at zero, with lbda being the inverse 
-        of the variance
-        """
-        kl = (logqw - logpw).mean()
-        num_outputs = self.weight_shapes[-1][1]
-        y_, lv = self.y[:,:1], self.y[:,1:]
-        
-        logpyx = log_normal(y_,self.target_var,lv).mean()
-        self.loss = - (logpyx - kl/T.cast(self.dataset_size,floatX))
-        
-    def _get_useful_funcs(self):
-        self.predict = theano.function([self.input_var],self.y[:,:1])
-        sp = T.matrix('sp')
-        predict_sp = self.y[:,:1] + sp * T.exp(0.5*self.y[:,1:])
-        self.predict_sp = theano.function([self.input_var,sp],predict_sp)
-        if self.perdatapoint:
-            self.sample_theta = theano.function([self.input_var], 
-                                                self.weights)
-        else:
-            self.sample_theta = theano.function([], 
-                                                self.weights)
-                                                
     def _get_useful_funcs(self):
         self.predict_proba = theano.function([self.input_var],self.y)
         #self.predict = theano.function([self.input_var],self.y.argmax(1))
-
         self.predict = theano.function([self.input_var],self.y)
+
