@@ -290,12 +290,14 @@ def active_learning(acquisition_iterations):
 	                       lr0,lrdecay,bs,epochs)
    
 
-        test_accuracy = test_model(model.predict_proba, test_x, test_y)   
-
-        print "                                                          Test Accuracy", test_accuracy
-
-        all_accuracy = np.append(all_accuracy, test_accuracy)
-
+        if test_eval:
+            test_accuracy = test_model(model.predict_proba, test_x, test_y)   
+            print "                                                          Test Accuracy", test_accuracy
+            all_accuracy = np.append(all_accuracy, test_accuracy)
+        else:
+            test_accuracy = test_model(model.predict_proba, valid_x, valid_y)   
+            print "                                                          Test Accuracy", test_accuracy
+            all_accuracy = np.append(all_accuracy, test_accuracy)
 
     return all_accuracy
 
@@ -342,6 +344,7 @@ if __name__ == '__main__':
     parser.add_argument('--pool_size',default=2000,type=int)
     parser.add_argument('--save_dir',default='./',type=str)      
     parser.add_argument('--size',default=10000,type=int)      
+    parser.add_argument('--test_eval',default=0,type=int)      
     args = parser.parse_args()
     print "\n\n\n-----------------------------------------------------------------------\n\n\n"
     print args
