@@ -140,7 +140,7 @@ def active_learning(acquisition_iterations):
    
     valid_accuracy = test_model(model.predict_proba, valid_x, valid_y)
     print "                                                          valid Accuracy", valid_accuracy
-    all_valid_accuracy = test_accuracy
+    all_valid_accuracy = valid_accuracy
 
     test_accuracy = test_model(model.predict_proba, test_x, test_y)
     print "                                                          Test Accuracy", test_accuracy
