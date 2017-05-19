@@ -37,7 +37,7 @@ def run_episode(env,
     total_reward = 0
     step_durations_s = np.zeros(shape=max_step, dtype=float)
     train_duration_s = np.zeros(shape=max_step-batch_size, dtype=float)
-    progress_msg = "Step {:5d}/{:5d}. Avg step duration: {:3.1f} ms. Avg train duration: {:3.1f} ms. Loss = {:2.10f}."
+    #progress_msg = "Step {:5d}/{:5d}. Avg step duration: {:3.1f} ms. Avg train duration: {:3.1f} ms. Loss = {:2.10f}."
     loss_v = 0
     w1_m = 0
     w2_m = 0
@@ -48,11 +48,11 @@ def run_episode(env,
     #each step within an episode
     for i in range(max_step):
         t = time.time()
-        if i > 0 and i % 200 == 0:
-            print(progress_msg.format(i, max_step,
-                                      np.mean(step_durations_s[0:i])*1000,
-                                      np.mean(train_duration_s[0:i-batch_size])*1000,
-                                      loss_v))
+        #if i > 0 and i % 200 == 0:
+            # print(progress_msg.format(i, max_step,
+            #                           np.mean(step_durations_s[0:i])*1000,
+            #                           np.mean(train_duration_s[0:i-batch_size])*1000,
+            #                           loss_v))
         if done:
             break
         
@@ -131,7 +131,7 @@ Experiments_All_Rewards = np.zeros(shape=(max_n_ep, Experiments))
 lbda = 1
 perdatapoint = 0
 prior = log_normal
-coupling = 6
+coupling = 1
 
 
 
@@ -146,7 +146,7 @@ for e in range(Experiments):
 
     value_function = BHN_Q_Network(lbda=lbda, perdatapoint=perdatapoint, prior=prior, coupling=coupling)
 
-    epsilon = 0.5
+    epsilon = 0.1
     #decay rate for the temperature parameter
     discount = 0.9
 
