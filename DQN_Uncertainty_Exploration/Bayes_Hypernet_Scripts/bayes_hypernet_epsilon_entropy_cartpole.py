@@ -6,13 +6,16 @@ import time
 from utils_dqn import *
 from ReplayMemory import ReplayMemory
 from bayes_hypernet_agents import AgentEpsGreedy
-from bayes_value_functions import ValueFunctionBayesHypernet
+
 from lib import plotting
 
 from BHNs import BHN_Q_Network
 from ops import load_mnist
 from utils import log_normal, log_laplace
 import numpy as np
+
+import theano
+floatX = theano.config.floatX
 
 discount = 0.9
 decay_eps = 0.9
@@ -22,6 +25,11 @@ max_n_ep = 1000    #originally defined! Don't change this.
 min_avg_Rwd = 200000000  # Minimum average reward to consider the problem as solved
 n_avg_ep = 100      # Number of consecutive episodes to calculate the average reward
 
+LR = .0001
+
+#save_dir = '/home/ml/rislam4/Documents/BH_2/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/'
+
+save_dir = './dk_results/'
 
 def run_episode(env,
                 agent,
@@ -35,9 +43,9 @@ def run_episode(env,
         state = state_normalizer.transform(state)[0]
     done = False
     total_reward = 0
-    step_durations_s = np.zeros(shape=max_step, dtype=float)
-    train_duration_s = np.zeros(shape=max_step-batch_size, dtype=float)
-    progress_msg = "Step {:5d}/{:5d}. Avg step duration: {:3.1f} ms. Avg train duration: {:3.1f} ms. Loss = {:2.10f}."
+    step_durations_s = np.zeros(shape=max_step, dtype=float).astype(floatX)
+    train_duration_s = np.zeros(shape=max_step-batch_size, dtype=float).astype(floatX)
+    #progress_msg = "Step {:5d}/{:5d}. Avg step duration: {:3.1f} ms. Avg train duration: {:3.1f} ms. Loss = {:2.10f}."
     loss_v = 0
     w1_m = 0
     w2_m = 0
@@ -48,11 +56,11 @@ def run_episode(env,
     #each step within an episode
     for i in range(max_step):
         t = time.time()
-        if i > 0 and i % 200 == 0:
-            print(progress_msg.format(i, max_step,
-                                      np.mean(step_durations_s[0:i])*1000,
-                                      np.mean(train_duration_s[0:i-batch_size])*1000,
-                                      loss_v))
+        #if i > 0 and i % 200 == 0:
+            # print(progress_msg.format(i, max_step,
+            #                           np.mean(step_durations_s[0:i])*1000,
+            #                           np.mean(train_duration_s[0:i-batch_size])*1000,
+            #                           loss_v))
         if done:
             break
         
@@ -94,7 +102,7 @@ def run_episode(env,
             t_train = time.time()
 
             #training the agent based on the target function
-            loss_v = agent.train(states_b, targets)
+            loss_v = agent.train(states_b, targets, lr0=LR)
 
             train_duration_s[i - batch_size] = time.time() - t_train
 
@@ -128,13 +136,10 @@ Experiments = 10
 Experiments_All_Rewards = np.zeros(shape=(max_n_ep, Experiments))
 
 
-
 lbda = 1
 perdatapoint = 0
 prior = log_normal
-coupling = 6
-
-
+coupling = 5
 
 
 
@@ -146,9 +151,10 @@ for e in range(Experiments):
     print ("Experiment", e)
 
 
+
     value_function = BHN_Q_Network(lbda=lbda, perdatapoint=perdatapoint, prior=prior, coupling=coupling)
 
-    epsilon = 0.5
+    epsilon = 0.1
     #decay rate for the temperature parameter
     discount = 0.9
 
@@ -200,13 +206,14 @@ for e in range(Experiments):
     Experiments_All_Rewards[:, e] = total_reward
     episode_length_over_time = stats.episode_lengths
 
-    np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/Results/'  + 'BH_Epsilon_Entropy_CartPole' + '.npy', Experiments_All_Rewards)
+
+    np.save(save_dir + 'BH_Epsilon_Entropy_CartPole' + '.npy', Experiments_All_Rewards)
 
 env.close()
 
 
 Average_Cum_Rwd = np.mean(Experiments_All_Rewards, axis=1)
-np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/Results/'  + 'Average_BH_Epsilon_Entropy_CartPole' + '.npy', Average_Cum_Rwd)
+np.save(save_dir + 'Average_BH_Epsilon_Entropy_CartPole' + '.npy', Average_Cum_Rwd)
 
 
 
