@@ -96,11 +96,14 @@ job_prefix = ""
 if subprocess.check_output("hostname").startswith("hades"):
     #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
     job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
+    exp_script = ' $HOME/projects/BayesianHypernets/BayesianHypernet/dk_anomaly_detection.py '
 elif subprocess.check_output("hostname").startswith("helios"):
     job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=12:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
+    exp_script = ' $HOME/BayesianHypernet/dk_anomaly_detection.py '
 else: # TODO: SLURM
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
     job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
+    exp_script = ' $HOME/projects/BayesianHypernets/BayesianHypernet/dk_anomaly_detection.py '
 
 
 # --------------------------------------------------
@@ -111,7 +114,6 @@ else: # TODO: SLURM
 
 
 
-exp_script = ' $HOME/projects/BayesianHypernets/BayesianHypernet/dk_anomaly_detection.py '
 job_prefix += exp_script
 
 
@@ -122,7 +124,9 @@ grid += [["lr0", ['.001', '.0001']]]
 grid += [["nonlinearity", ['gelu']]]
 grid += [["arch", ['Dan', 'Dan2']]]
 grid += [["save", ['1']]]
-grid += [["convex_combination", ['0', '1']]]
+#grid += [["convex_combination", ['0', '1']]]
+grid += [["convex_combination", ['0']]]
+grid += [["coupledWN", ['1']]]
 
 # TODO: savepath should also contain exp_script? 
 #   (actually, we should make a log of everything in a text file or something...)
