@@ -439,7 +439,7 @@ if 1:
     # they are listed in alphabetic order
     import scipy.stats
     def bald(samples):
-        return scipy.stats.entropy(samples.mean(0).T) - scipy.stats.entropy(samples.transpose(2,0,1)).mean(0)
+        return - (scipy.stats.entropy(samples.mean(0).T) - scipy.stats.entropy(samples.transpose(2,0,1)).mean(0))
     score_fns.append(bald)
     def max_ent(samples):
         return scipy.stats.entropy(samples.mean(0).T)
@@ -450,7 +450,7 @@ if 1:
         score_fns.append(min_margin)
     def mean_std(samples):
         stds = np.maximum(((samples**2).mean(0) - samples.mean(0)**2),0)**.5
-        return stds.mean(-1)
+        return - stds.mean(-1)
     score_fns.append(mean_std)
     def var_ratio(samples):
         return samples.mean(0).max(-1)
