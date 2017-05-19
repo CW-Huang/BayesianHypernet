@@ -53,6 +53,21 @@ def prelu_np(X, log_alpha):
     return act, d_log_act
 
 
+def LU_to_W_np(layers_LU):
+    n_layers, rem = divmod(len(layers_LU) + 1, 4)
+    assert(rem == 0)
+    assert(n_layers > 0)
+    assert((n_layers - 1, aL_PARAM) not in layers_LU)
+
+    layers = layers_LU.copy()
+    for nn in xrange(n_layers):
+        LL, UL = layers[(nn, LL_PARAM)], layers[(nn, UL_PARAM)]
+        layers[(nn, WL_PARAM)] = np.dot(LL, UL)
+        del layers[(nn, LL_PARAM)]
+        del layers[(nn, UL_PARAM)]
+    return layers
+
+
 def network_np(x, layers):
     assert(x.ndim == 2)
     n_layers = get_n_layers(layers)
