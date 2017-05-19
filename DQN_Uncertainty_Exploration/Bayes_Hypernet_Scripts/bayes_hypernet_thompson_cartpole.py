@@ -14,6 +14,9 @@ from ops import load_mnist
 from utils import log_normal, log_laplace
 import numpy as np
 
+import theano
+floatX = theano.config.floatX
+
 discount = 0.9
 decay_eps = 0.9
 batch_size = 64
@@ -23,6 +26,8 @@ min_avg_Rwd = 200000000  # Minimum average reward to consider the problem as sol
 n_avg_ep = 100      # Number of consecutive episodes to calculate the average reward
 
 LR = .0001
+
+SAVE_DIR = './dk_results/'
 
 def run_episode(env,
                 agent,
@@ -36,8 +41,8 @@ def run_episode(env,
         state = state_normalizer.transform(state)[0]
     done = False
     total_reward = 0
-    step_durations_s = np.zeros(shape=max_step, dtype=float)
-    train_duration_s = np.zeros(shape=max_step-batch_size, dtype=float)
+    step_durations_s = np.zeros(shape=max_step, dtype=float).astype(floatX)
+    train_duration_s = np.zeros(shape=max_step-batch_size, dtype=float).astype(floatX)
     #progress_msg = "Step {:5d}/{:5d}. Avg step duration: {:3.1f} ms. Avg train duration: {:3.1f} ms. Loss = {:2.10f}."
     loss_v = 0
     w1_m = 0
@@ -199,13 +204,13 @@ for e in range(Experiments):
     Experiments_All_Rewards[:, e] = total_reward
     episode_length_over_time = stats.episode_lengths
 
-    np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/Results/'  + 'BH_Thompson_CartPole' + '.npy', Experiments_All_Rewards)
+    np.save(save_dir + 'BH_Thompson_CartPole' + '.npy', Experiments_All_Rewards)
 
 env.close()
 
 
 Average_Cum_Rwd = np.mean(Experiments_All_Rewards, axis=1)
-np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/Results/'  + 'Average_BH_Thompson_CartPole' + '.npy', Average_Cum_Rwd)
+np.save(save_dir + 'Average_BH_Thompson_CartPole' + '.npy', Average_Cum_Rwd)
 
 
 
