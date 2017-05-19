@@ -64,6 +64,8 @@ def softmax(x,axis=1):
 # inds : the indices of the examples you wish to evaluate
 #   these should probably be ALL of the inds, OR be randomly sampled
 def MCpred(X, predict_probs_fn=None, num_samples=100, inds=None, returns='preds', num_classes=10):
+    if inds is None:
+        inds = range(len(X))
     rval = np.empty((num_samples, len(inds), num_classes))
     for ind in range(num_samples):
         rval[ind] = predict_probs_fn(X[inds])
