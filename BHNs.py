@@ -1342,7 +1342,7 @@ class BHN_Q_Network(Base_BHN):
                                                     # with softmax for
                                                     # classification
         
-        y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
+        y = get_output(p_net,inputs) # stability
         
         self.p_net = p_net
         self.y = y
