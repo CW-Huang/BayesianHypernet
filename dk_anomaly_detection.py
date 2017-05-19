@@ -30,9 +30,11 @@ from helpers import flatten_list, gelu, plot_dict
 
 
 # TODO: 
-#   AD in script (debug)
-#       look into numerical precision issues!!
+#   look into numerical precision issues!!
 #   init
+
+
+# THIS SHOULD TAKE ~20 mins in total
 
 NUM_CLASSES = 10
 
@@ -468,7 +470,7 @@ if 1:
     # predictions on clean data
 
     from utils import MCpred
-    clean_samples = MCpred(Xt, predict_probs_fn=probs, num_samples=100, returns='samples')
+    clean_samples = MCpred(X=Xt, predict_probs_fn=probs, num_samples=100, returns='samples')
     clean_probs = clean_samples.mean(0)
     clean_preds = clean_probs.argmax(-1)
 
@@ -511,8 +513,8 @@ if 1:
         for nood, ood in enumerate(oods):
             print "OOD detection", nscore, nood
             clean_scores = score_fn(clean_samples)
-            ood_samples = MCpred(ood, num_samples=100, returns='samples')
-            ood_scores = score_fn(ood_scores)
+            ood_samples = MCpred(X=ood, predict_probs_fn=probs, num_samples=100, returns='samples')
+            ood_scores = score_fn(ood_samples)
             ood_results[nscore][nood] = get_results(clean_scores, ood_scores)
     if save:
         if test_eval:
