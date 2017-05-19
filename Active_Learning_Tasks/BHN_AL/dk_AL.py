@@ -252,8 +252,8 @@ def active_learning(acquisition_iterations):
             x_pool_index = a_1d.argsort()[-Queries:][::-1]
             
         elif acq == 'random':
-            x_pool_index = np.asarray(random.sample(range(0, 38000), Queries))
-            #x_pool_index = np.random.choice(range(pool_size), Queries, replace=False)
+            #x_pool_index = np.asarray(random.sample(range(0, 38000), Queries))
+            x_pool_index = np.random.choice(range(pool_size), Queries, replace=False)
 
 
         # END ACQUISITION
