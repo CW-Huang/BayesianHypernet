@@ -34,7 +34,7 @@ from helpers import flatten_list, gelu, plot_dict
 #   init
 
 
-# THIS SHOULD TAKE ~20 mins in total
+# THIS SHOULD TAKE ~20 mins in total (OR LESS! I was running on CPU!)
 
 NUM_CLASSES = 10
 
