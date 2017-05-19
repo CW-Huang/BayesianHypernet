@@ -9,7 +9,7 @@ Created on Sun May 14 17:58:58 2017
 # TODO: we should have a function for the core hypernet architecture (agnostic of whether we do WN/CNN/full Hnet)
 
 from modules import LinearFlowLayer, IndexLayer, PermuteLayer, SplitLayer, ReverseLayer
-from modules import CoupledDenseLayer, ConvexBiasLayer, \
+from modules import CoupledDenseLayer, ConvexBiasLayer, CoupledWNDenseLayer, \
                     stochasticDenseLayer2, stochasticConv2DLayer, \
                     stochastic_weight_norm
 from utils import log_normal
@@ -1083,9 +1083,9 @@ class HyperCNN(Base_BHN):
             self.weight_shapes = [(32,1,kernel_width,kernel_width),        # -> (None, 16, 14, 14)
                                   (32,32,kernel_width,kernel_width),       # -> (None, 16,  7,  7)
                                   (32,32,kernel_width,kernel_width)]       # -> (None, 16,  4,  4)
-            self.args = [[32,kernel_width,stride,pad, rectify],
-                         [32,kernel_width,stride,pad, rectify],
-                         [32,kernel_width,stride,pad, rectify]]
+            self.args = [[32,kernel_width,stride,pad, rectify, pool],
+                         [32,kernel_width,stride,pad, rectify, pool],
+                         [32,kernel_width,stride,pad, rectify, pool]]
                                   
 
         self.n_kernels = np.array(self.weight_shapes)[:,1].sum()
