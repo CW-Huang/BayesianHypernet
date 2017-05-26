@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import copy
 import gym
 from gym import wrappers
@@ -28,6 +30,14 @@ LR = .0001
 #save_dir = '/home/ml/rislam4/Documents/BH_2/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/'
 
 save_dir = './dk_results/'
+
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--seed', type=int, default=1337)
+locals().update(parser.parse_args().__dict__)
+#np.random.seed(seed)  # for reproducibility
+
+seed = np.random.choice(1000)
 
 def run_episode(env,
                 agent,
@@ -137,7 +147,7 @@ Experiments_All_Rewards = np.zeros(shape=(max_n_ep, Experiments))
 lbda = 1
 perdatapoint = 0
 prior = log_normal
-coupling = 5
+coupling = 4
 
 
 
@@ -204,12 +214,12 @@ for e in range(Experiments):
     Experiments_All_Rewards[:, e] = total_reward
     episode_length_over_time = stats.episode_lengths
 
-    np.save(save_dir + 'BH_Thompson_CartPole' + '.npy', Experiments_All_Rewards)
+    np.save(save_dir + 'BH_Thompson_CartPole__' + str(seed) +  '.npy', Experiments_All_Rewards)
 
 env.close()
 
 
 Average_Cum_Rwd = np.mean(Experiments_All_Rewards, axis=1)
-np.save(save_dir + 'Average_BH_Thompson_CartPole' + '.npy', Average_Cum_Rwd)
+np.save(save_dir + 'Average_BH_Thompson_CartPole__' + str(seed) + '.npy', Average_Cum_Rwd)
 
 
