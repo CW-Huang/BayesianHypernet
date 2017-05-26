@@ -119,7 +119,7 @@ grid += [["coupling", ['4']]]
 grid += [["convex_combination", ['0']]]
 grid += [["lr0", ['.001']]]
 grid += [["new_model", ['1']]]
-grid += [["params_reset", ['none']]]
+grid += [["params_reset", ['random', 'deterministic', 'pretrained']]]
 grid += [["save", ['1']]]
 grid += [["test_eval", ['1']]]
 

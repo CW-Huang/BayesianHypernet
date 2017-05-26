@@ -10,6 +10,49 @@ def gelu_fast(x):
 gelu = gelu_fast
 
 
+  
+######################
+class SaveLoadMIXIN(object):
+    """
+    These could use set/get _all_param_values, if we're willing to use self.layer instead of self.params...
+    (just based on https://github.com/Lasagne/Lasagne/blob/06e4ad666873bf9e5a0f914386a7f0bd80bb341a/lasagne/layers/helper.py)
+    """
+    def save(self, save_path):
+        np.save(save_path, [p.get_value() for p in self.params])
+
+    def load(self, save_path):
+        # LOAD lasagne.layers.set_all_param_values([h_layer, layer], np.load(save_path + '_params_best.npy'))
+        values = np.load(save_path)
+
+        if len(self.params) != len(values):
+            raise ValueError("mismatch: got %d values to set %d parameters" %
+                             (len(values), len(self.params)))
+
+        for p, v in zip(self.params, values):
+            if p.get_value().shape != v.shape:
+                raise ValueError("mismatch: parameter has shape %r but value to "
+                                 "set has shape %r" %
+                                 (p.get_value().shape, v.shape))
+            else:
+                p.set_value(v)
+
+    # instead of saving/loading to disk, it may be faster to keep the reset params as attributes
+    def add_reset(self, name):
+        """
+        store current params in self.reset_dict using name as a key
+        """
+        if not 'reset_dict' in self.__dict__.keys():
+            self.reset_dict = {}
+        current_params = [p.get_value() for p in self.params]#lasagne.layers.get_all_param_values(self.layer)
+        updates = {p:p0 for p, p0 in zip(self.params,current_params)}
+        reset_fn = theano.function([],None, updates=updates)
+        # 
+        self.reset_dict[name] = reset_fn
+
+    def call_reset(self, name):
+        self.reset_dict[name]()
+         
+  
 ######################
 
 def flatten_list(plist):

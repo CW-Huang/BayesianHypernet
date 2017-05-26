@@ -30,6 +30,7 @@ from lasagne.objectives import squared_error as se
 import numpy as np
 
 from helpers import flatten_list
+from helpers import SaveLoadMIXIN
 
 
 
@@ -91,6 +92,7 @@ class Base_BHN(object):
         updates = {p:p0 for p, p0 in zip(params,params0)}
         self.reset = theano.function([],None,
                                       updates=updates)
+        self.add_reset('init')
     
     def _get_theano_variables(self):
         self.input_var = T.matrix('input_var')

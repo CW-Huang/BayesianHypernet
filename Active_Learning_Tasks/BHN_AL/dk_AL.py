@@ -23,8 +23,24 @@ floatX = theano.config.floatX
 from modules import *
 
 
-# TODO: fixme... learning rates!!
-# TODO: VALID AND TEST
+# TODO: clean-up args, etc.
+# TODO: unify models
+# TODO: don't use functions (?)
+
+# TODO: implement "save" feature!
+
+
+def train_epoch(train_func,predict_func,X,Y,Xt,Yt,
+                lr0=0.1,lrdecay=1,bs=20):
+    N = X.shape[0]    
+    for i in range( N/bs + int(N%bs > 0) ):
+        x = X[i*bs:(i+1)*bs]
+        y = Y[i*bs:(i+1)*bs]
+        loss = train_func(x,y,N,lr0)
+    tr_acc = (predict_func(X)==Y.argmax(1)).mean()
+    print '\ttrain acc: {}'.format(tr_acc)
+    return tr_acc
+
 
 def train_model(train_func,predict_func,X,Y,Xt,Yt,
                 lr0=0.1,lrdecay=1,bs=20,epochs=50):
@@ -92,14 +108,10 @@ def active_learning(acquisition_iterations):
     train_x = train_x.reshape(50000,1,28,28)
     valid_x = valid_x.reshape(10000,1,28,28)
     test_x = test_x.reshape(10000,1,28,28)
-        
     train_x, train_y, pool_x, pool_y = split_train_pool_data(train_x, train_y)
-
     train_y_multiclass = train_y.argmax(1)
-
-
     train_x, train_y = get_initial_training_data(train_x, train_y_multiclass)
-
+    train_y = train_y.astype('float32')
     print "Initial Training Data", train_x.shape
 
     # select model
@@ -130,13 +142,42 @@ def active_learning(acquisition_iterations):
     else:
         raise Exception('no model named `{}`'.format(model))
         
+    if save:
+        model.save(save_path + '_params_init.npy')
 
-    
-    train_y = train_y.astype('float32')
-    recs = train_model(model.train_func,model.predict,
+    # TODO: pretraining
+    if params_reset == 'pretrained': # train the model to 100% train accuracy on the initial train set 
+        # TODO: we could also try training to 100% every time...
+        # TODO: and the last time, we should train until overfitting
+        # TODO: we also need to consider cross-validating the prior (do we even USE a prior for the dropout net?? we're supposed to!!!)
+        # TODO: ...and we could also use the validation set for early-stopping after every acquisition
+        tr_acc = 0.
+        epochs = 0
+        print "pretraining..."
+        while tr_acc < 1.:
+            epochs += 1
+            print "                     epoch", epochs
+            tr_acc = train_epoch(model.train_func,model.predict,
                        train_x[:size],train_y[:size],
                        valid_x,valid_y,
-                       lr0,lrdecay,bs,epochs)
+                       lr0,lrdecay,bs)
+        
+        model.add_reset('pretrained')
+        if save:
+            model.save(save_path + '_params_pretrained.npy')
+        print "pretraining completed"
+
+    else:
+        recs = train_model(model.train_func,model.predict,
+                           train_x[:size],train_y[:size],
+                           valid_x,valid_y,
+                           lr0,lrdecay,bs,epochs)
+    
+    
+            
+
+
+
    
     valid_accuracy = test_model(model.predict_proba, valid_x, valid_y)
     print "                                                          valid Accuracy", valid_accuracy
@@ -286,16 +327,36 @@ def active_learning(acquisition_iterations):
 
 
         if params_reset == 'random':# don't warm start (TODO!)
-            model = HyperCNN(lbda=lbda,
-                              perdatapoint=perdatapoint,
-                              prior=prior,
-                              kernel_width=4,
-                              pad='valid',
-                              stride=1,
-                              coupling=coupling,
-                              extra_linear=extra_linear)
+            if arch == 'hyperCNN':
+                model = HyperCNN(lbda=lbda,
+                                 perdatapoint=perdatapoint,
+                                 prior=prior,
+                                 coupling=coupling,
+                                 kernel_width=4,
+                                 pad='valid',
+                                 stride=1,
+                                 extra_linear=extra_linear)
+                                 #dataset=dataset)
+            elif arch == 'CNN':
+                model = MCdropoutCNN(kernel_width=4,
+                                 pad='valid',
+                                 stride=1)
+            elif arch == 'CNN_spatial_dropout':
+                model = MCdropoutCNN(dropout='spatial',
+                                 kernel_width=4,
+                                 pad='valid',
+                                 stride=1)
+            elif arch == 'CNN_dropout':
+                model = MCdropoutCNN(dropout=1,
+                                 kernel_width=4,
+                                 pad='valid',
+                                 stride=1)
+            else:
+                raise Exception('no model named `{}`'.format(model))
         elif params_reset == 'deterministic':
-            model.reset()
+            model.call_reset('init')
+        elif params_reset == 'pretrained':
+            model.call_reset('pretrained')
     
         recs = train_model(model.train_func,model.predict,
 	                       train_x[:size],train_y[:size],
@@ -361,12 +422,12 @@ if __name__ == '__main__':
     parser.add_argument('--coupling',default=4,type=int)  
     parser.add_argument('--epochs',default=50,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)  
-    parser.add_argument('--lr0',default=0.0001,type=float)  
+    parser.add_argument('--lr0',default=0.001,type=float)  
     parser.add_argument('--lbda',default=1,type=float)  
     parser.add_argument('--new_model',default=1,type=int)  
     parser.add_argument('--nonlinearity',default='rectify',type=str)  
     parser.add_argument('--num_experiments',default=3,type=int)  
-    parser.add_argument('--params_reset',default='none', type=str, choices=['deterministic', 'random', 'none'] ) # TODO
+    parser.add_argument('--params_reset',default='none', type=str, choices=['deterministic', 'none', 'pretrained', 'random'] )
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
     parser.add_argument('--pool_size',default=2000,type=int)

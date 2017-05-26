@@ -24,8 +24,12 @@ floatX = theano.config.floatX
 
 # DK
 from BHNs import HyperCNN
+
+
+from helpers import SaveLoadMIXIN
+
     
-class MCdropoutCNN(object):
+class MCdropoutCNN(SaveLoadMIXIN):
                      
     def __init__(self, dropout=None, 
             opt='adam',
@@ -95,10 +99,11 @@ class MCdropoutCNN(object):
                                                              self.target_var)
         self.loss = losses.mean() + self.dataset_size * 0.
         self.params = lasagne.layers.get_all_params(self.layer)
-        # reset!
+        # reset! DEPRECATED... use add_reset, call_reset instead...
         params0 = lasagne.layers.get_all_param_values(self.layer)
         updates = {p:p0 for p, p0 in zip(self.params,params0)}
         self.reset = theano.function([],None, updates=updates)
+        model.add_reset('init')
 
         if opt == 'adam':
             self.updates = lasagne.updates.adam(self.loss,self.params,
@@ -123,6 +128,7 @@ class MCdropoutCNN(object):
         self.predict = theano.function([self.input_var],self.y_det.argmax(1))
         
     
+
 
 
 
