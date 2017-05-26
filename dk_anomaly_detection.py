@@ -15,7 +15,6 @@ from ops import load_mnist
 import theano
 import theano.tensor as T
 from theano.tensor.shared_randomstreams import RandomStreams
-srng = RandomStreams(seed=427)
 floatX = theano.config.floatX
 
 import lasagne
@@ -52,6 +51,7 @@ if 1:#def main():
     np = numpy
     
     parser = argparse.ArgumentParser()
+    parser.add_argument('--anomaly',type=int, default=1)
     parser.add_argument('--arch',type=str, default='Dan', choices=['CW', 'Dan', 'Dan2'])
     parser.add_argument('--bs',default=128,type=int)  
     parser.add_argument('--convex_combination', type=int, default=0) 
@@ -112,12 +112,18 @@ if 1:#def main():
     clip_grad = 100
     max_norm = 100
 
+    if convex_combination:
+        assert model in ['hnet', 'hnetWN']
+
     # SET RANDOM SEED (TODO: rng vs. random.seed)
+    # TODO: save randomly selected seed!
     if seed is not None:
         np.random.seed(seed)  # for reproducibility
         rng = numpy.random.RandomState(seed)
+        srng = RandomStreams(seed)
     else:
         rng = numpy.random.RandomState(np.random.randint(2**32 - 1))
+        srng = RandomStreams(np.random.randint(2**32 - 1))
     # --------------------------------------------
 
 
@@ -325,7 +331,7 @@ if save:
 # --------------------------------------------
 # --------------------------------------------
 # Anomaly Detection Metrics
-if 1:
+if anomaly:
     print "                                                                           RUNNING ANOMALY DETECTION EVALUATIONS!"
 
         
@@ -349,9 +355,9 @@ if 1:
     # from https://github.com/hendrycks/error-detection/blob/master/Vision/MNIST_Abnormality_Module.ipynb
     print "load notMNIST, CIFAR-10, and Omniglot"
     try:
-        notmnist_dataset = np.load('not_mnist.npy')
-        cifar_batch = np.load('CIFAR10-bw.npy')
-        omni_images = np.load('omniglot.npy')
+        notmnist_dataset = np.load('./data/not_mnist.npy')
+        cifar_batch = np.load('./data/CIFAR10-bw.npy')
+        omni_images = np.load('./data/omniglot.npy')
         print "loaded saved npy files"
     except:
         import pickle
@@ -362,7 +368,7 @@ if 1:
             notmnist_dataset = save['test_dataset'].reshape((-1, 28 * 28))
             del save
 
-        np.save('not_mnist.npy', notmnist_dataset)
+        np.save('./data/not_mnist.npy', notmnist_dataset)
 
         from helpers import load_data10
         _, _, X_test, _ = load_data10()
@@ -374,7 +380,7 @@ if 1:
         except:
             pass
 
-        np.save('CIFAR10-bw.npy', cifar_batch)
+        np.save('./data/CIFAR10-bw.npy', cifar_batch)
 
         import scipy.io as sio
         import scipy.misc as scimisc
@@ -391,7 +397,7 @@ if 1:
                             squished_set.append(scimisc.imresize(1 - example[0], (28,28)).reshape(1, 28*28))
 
         omni_images = np.concatenate(squished_set, axis=0)
-        np.save('omniglot.npy', omni_images)
+        np.save('./data/omniglot.npy', omni_images)
 
     print "done loading notMNIST, CIFAR-10, and Omniglot"
     ################################################################
