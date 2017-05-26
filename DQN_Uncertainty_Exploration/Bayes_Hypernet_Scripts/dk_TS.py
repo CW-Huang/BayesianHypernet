@@ -27,6 +27,8 @@ min_avg_Rwd = 200000000  # Minimum average reward to consider the problem as sol
 n_avg_ep = 100      # Number of consecutive episodes to calculate the average reward
 
 LR = .0001
+WN = 1
+
 #save_dir = '/home/ml/rislam4/Documents/BH_2/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/'
 
 save_dir = './dk_results/'
@@ -37,7 +39,7 @@ parser.add_argument('--seed', type=int, default=1337)
 locals().update(parser.parse_args().__dict__)
 #np.random.seed(seed)  # for reproducibility
 
-seed = np.random.choice(1000)
+seed = np.random.choice(1000000000)
 
 def run_episode(env,
                 agent,
@@ -93,17 +95,23 @@ def run_episode(env,
             states_n_b = np.array(states_n_b)
             done_b = np.array(done_b).astype(int)
 
+            if 0:
+                all_states = np.vstack((states_b, states_n_b))
+                all_preds = agent.predict_q_values(all_states)
+                targets = all_preds[:batch_size]
+                q_n_b = all_preds[batch_size:]
 
             #agent arrives at next state s'
             #compute action values on the next state Q(s', a)
+            #target function for the agent - predict based on the trained Q Network
             q_n_b = agent.predict_q_values(states_n_b)  # Action values on the arriving state
-
+            targets = agent.predict_q_values(states_b)
+            #import ipdb; ipdb.set_trace()
 
             #target - Q-learning here - taking max_a over Q(s', a)
             targets_b = rewards_b + (1. - done_b) * discount * np.amax(q_n_b, axis=1)
 
-            #target function for the agent - predict based on the trained Q Network
-            targets = agent.predict_q_values(states_b)
+
             for j, action in enumerate(actions_b):
                 targets[j, action] = targets_b[j]
 
@@ -159,8 +167,12 @@ for e in range(Experiments):
     print ("Experiment", e)
 
 
+    weight_shapes = [(512, 256), (256, 2)]
+    coupling_dim = 256
 
-    value_function = BHN_Q_Network(lbda=lbda, perdatapoint=perdatapoint, prior=prior, coupling=coupling)
+    value_function = BHN_Q_Network(lbda=lbda, perdatapoint=perdatapoint, prior=prior, coupling=coupling, wn=WN, 
+            weight_shapes=weight_shapes,
+            coupling_dim=coupling_dim)
 
     epsilon = 0.1
     #decay rate for the temperature parameter

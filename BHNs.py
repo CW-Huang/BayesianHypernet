@@ -1227,8 +1227,10 @@ class BHN_Q_Network(Base_BHN):
     #                  (200,  10)]
     
 
-    weight_shapes = [(512, 256),
-                     (256,  2)]
+    weight_shapes = [(128, 32),
+            (32, 2)         ]
+
+    coupling_dim = 64
 
     num_params = sum(ws[1] for ws in weight_shapes)
     
@@ -1237,14 +1239,23 @@ class BHN_Q_Network(Base_BHN):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
+                 wn=0,
+                 weight_shapes=None,
+                 coupling_dim=None,
                  coupling=True):
         
+        self.wn = wn
         self.coupling = coupling
         super(BHN_Q_Network, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
                                                 srng=srng,
                                                 prior=prior)
         
+        if weight_shapes is not None:
+            self.weight_shapes = weight_shapes
+        
+        if coupling_dim is not None:
+            self.coupling_dim = coupling_dim
     
     def _get_hyper_net(self):
         # inition random noise
@@ -1259,14 +1270,20 @@ class BHN_Q_Network(Base_BHN):
         logdets_layers.append(IndexLayer(layer_temp,1))
         
         if self.coupling:
-            layer_temp = CoupledDenseLayer(h_net,256)
+            if self.wn:
+                layer_temp = CoupledWNDenseLayer(h_net,self.coupling_dim)
+            else:
+                layer_temp = CoupledDenseLayer(h_net,self.coupling_dim)
             h_net = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
             
             for c in range(self.coupling-1):
                 h_net = PermuteLayer(h_net,self.num_params)
                 
-                layer_temp = CoupledDenseLayer(h_net,256)
+                if self.wn:
+                    layer_temp = CoupledWNDenseLayer(h_net,self.coupling_dim)
+                else:
+                    layer_temp = CoupledDenseLayer(h_net,self.coupling_dim)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
         
