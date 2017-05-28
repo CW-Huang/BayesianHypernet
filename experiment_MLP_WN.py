@@ -57,7 +57,7 @@ class MCdropout_MLP(object):
         
         losses = lasagne.objectives.categorical_crossentropy(self.y,
                                                              self.target_var)
-        self.loss = losses.mean() + self.dataset_size * 0.
+        self.loss = losses.mean()
         self.params = lasagne.layers.get_all_params(self.layer)
         self.updates = lasagne.updates.adam(self.loss,self.params,
                                             self.learning_rate)
@@ -177,7 +177,7 @@ if __name__ == '__main__':
     parser.add_argument('--bs',default=20,type=int)  
     parser.add_argument('--epochs',default=5,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='BHN_MLPWN',type=str)
+    parser.add_argument('--model',default='MCdropout_MLP',type=str)
     parser.add_argument('--anneal',default=0,type=int)
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
@@ -197,10 +197,18 @@ if __name__ == '__main__':
         pr = 0
     if args.prior == 'log_laplace':
         pr = 1
-        
+    
+    
+    if args.model == 'BHN_MLPWN':
+        md = 0
+    if args.model == 'MCdropout_MLP':
+        md = 1
+    
+    
     path = 'models'
-    name = './{}/mnistWN_nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}'.format(
+    name = './{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}'.format(
         path,
+        md,
         args.n_hiddens,
         args.n_units,
         args.coupling,
