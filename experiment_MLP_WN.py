@@ -181,8 +181,8 @@ if __name__ == '__main__':
     parser.add_argument('--anneal',default=0,type=int)
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
-    parser.add_argument('--totrain',default=0,type=int)
-    parser.add_argument('--loadbest',default=1,type=int)
+    parser.add_argument('--totrain',default=1,type=int)
+    parser.add_argument('--loadbest',default=0,type=int)
     parser.add_argument('--seed',default=427,type=int)
     
     args = parser.parse_args()
@@ -266,6 +266,7 @@ if __name__ == '__main__':
                            train_x[:size],train_y[:size],
                            valid_x,valid_y,
                            lr0,lrdecay,bs,epochs,anneal,name)
+        np.save(name+'_recs.npy',recs)
     else:
         print 'no training'
     
