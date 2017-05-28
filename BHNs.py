@@ -33,7 +33,7 @@ from helpers import flatten_list
 from helpers import SaveLoadMIXIN
 
 
-
+lrdefault = 1e-3
 class Base_BHN(object):
     """
     def _get_theano_variables(self):
@@ -92,13 +92,14 @@ class Base_BHN(object):
         updates = {p:p0 for p, p0 in zip(params,params0)}
         self.reset = theano.function([],None,
                                       updates=updates)
-        self.add_reset('init')
+        #self.add_reset('init')
     
     def _get_theano_variables(self):
         self.input_var = T.matrix('input_var')
         self.target_var = T.matrix('target_var')
         self.dataset_size = T.scalar('dataset_size')
-        self.learning_rate = T.scalar('learning_rate') 
+        self.learning_rate = T.scalar('learning_rate')
+        self.weight = T.scalar('weight')
         
     def _get_hyper_net(self):
         """
@@ -147,7 +148,8 @@ class Base_BHN(object):
         """
         self.kl = (self.logqw - self.logpw).mean()
         self.logpyx = - cc(self.y,self.target_var).mean()
-        self.loss = - (self.logpyx - self.kl/T.cast(self.dataset_size,floatX))
+        self.loss = - (self.logpyx - \
+                       self.weight * self.kl/T.cast(self.dataset_size,floatX))
 
         # DK - extra monitoring
         params = self.params
@@ -174,12 +176,14 @@ class Base_BHN(object):
                                                 learning_rate=self.learning_rate)
                                     
     def _get_train_func(self):
-        train = theano.function([self.input_var,
-                                 self.target_var,
-                                 self.dataset_size,
-                                 self.learning_rate],
+        inputs = [self.input_var,
+                  self.target_var,
+                  self.dataset_size,
+                  self.learning_rate,
+                  self.weight]
+        train = theano.function(inputs,
                                 self.loss,updates=self.updates)
-        self.train_func = train
+        self.train_func_ = train
         # DK - putting this here, because is doesn't get overwritten by subclasses
         self.monitor_func = theano.function([self.input_var,
                                  self.target_var,
@@ -187,9 +191,33 @@ class Base_BHN(object):
                                  self.learning_rate],
                                 self.monitored,
                                 on_unused_input='warn')
+    
+    def train_func(self,x,y,n,lr=lrdefault,w=1.0):
+        return self.train_func_(x,y,n,lr,w)
         
     def _get_useful_funcs(self):
         pass
+    
+    
+    def save(self,save_path):
+        np.save(save_path, [p.get_value() for p in self.params])
+
+    def load(self,save_path):
+        values = np.load(save_path)
+
+        if len(self.params) != len(values):
+            raise ValueError("mismatch: got %d values to set %d parameters" %
+                             (len(values), len(self.params)))
+
+        for p, v in zip(self.params, values):
+            if p.get_value().shape != v.shape:
+                raise ValueError("mismatch: parameter has shape %r but value to "
+                                 "set has shape %r" %
+                                 (p.get_value().shape, v.shape))
+            else:
+                p.set_value(v)
+
+    
 
     
     
@@ -199,25 +227,32 @@ class MLPWeightNorm_BHN(Base_BHN):
     Hypernet with dense coupling layer outputing posterior of rescaling 
     parameters of weightnorm MLP
     """
-    # 784 -> 20 -> 10
-    weight_shapes = [(784, 200),
-                     (200,  10)]
-    
-    num_params = sum(ws[1] for ws in weight_shapes)
+
     
     def __init__(self,
                  lbda=1,
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
-                 coupling=True):
+                 coupling=True,
+                 n_hiddens=1,
+                 n_units=200):
+        
+        self.n_hiddens = n_hiddens
+        self.n_units = n_units
+        self.weight_shapes = list()        
+        self.weight_shapes.append((784,n_units))
+        for i in range(1,n_hiddens):
+            self.weight_shapes.append((n_units,n_units))
+        self.weight_shapes.append((n_units,10))
+        self.num_params = sum(ws[1] for ws in self.weight_shapes)
         
         self.coupling = coupling
         super(MLPWeightNorm_BHN, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
                                                 srng=srng,
                                                 prior=prior)
-        
+    
     
     def _get_hyper_net(self):
         # inition random noise
