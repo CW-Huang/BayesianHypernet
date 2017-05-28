@@ -199,7 +199,7 @@ if __name__ == '__main__':
         pr = 1
         
     path = 'models'
-    name = './{}/mnistWN_nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}seed{}'.format(
+    name = './{}/mnistWN_nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}'.format(
         path,
         args.n_hiddens,
         args.n_units,
@@ -209,6 +209,7 @@ if __name__ == '__main__':
         args.lr0,
         args.lrdecay,
         args.anneal,
+        args.size,
         args.seed
     )
 
