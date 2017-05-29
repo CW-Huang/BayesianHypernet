@@ -76,11 +76,13 @@ class MCdropout_MLP(object):
     def train_func(self,x,y,n,lr=lrdefault,w=1.0):
         return self.train_func_(x,y,lr)
 
-    def save(self,save_path):
-        np.save(save_path, [p.get_value() for p in self.params])
+    def save(self,save_path,notes=[]):
+        np.save(save_path, [p.get_value() for p in self.params]+notes)
 
     def load(self,save_path):
         values = np.load(save_path)
+        notes = values[-1]
+        values = values[:-1]
 
         if len(self.params) != len(values):
             raise ValueError("mismatch: got %d values to set %d parameters" %
@@ -94,17 +96,25 @@ class MCdropout_MLP(object):
             else:
                 p.set_value(v)
 
+        return notes
+
+    
 
 def train_model(train_func,predict_func,X,Y,Xt,Yt,
-                lr0=0.1,lrdecay=1,bs=20,epochs=50,anneal=0,name='0'):
+                lr0=0.1,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
+                e0=0,rec=0):
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
-    records=[0]
+    rec_name = name+'_recs'
     save_path = name + '.params'
+    recs = list()
     
     t = 0
     for e in range(epochs):
+        
+        if e <= e0:
+            continue
         
         if lrdecay:
             lr = lr0 * 10**(-e/float(epochs-1))
@@ -133,16 +143,20 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
         va_acc = evaluate_model(model.predict_proba,Xt,Yt,20)
         print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
         
-        if va_acc > np.max(records):
+        recs.append(va_acc)
+        
+        if va_acc > rec:
             print '.... save best model .... '
-            model.save(save_path)
-        
+            model.save(save_path,[e])
+            rec = va_acc
+    
+            with open(rec_name,'a') as rec_file:
+                for r in recs:
+                    rec_file.write(str(r)+'\n')
+            
+            recs = list()
+            
         print '\n\n'
-        records.append(va_acc)
-        
-        
-        
-    return records
 
 
 
@@ -170,10 +184,10 @@ if __name__ == '__main__':
     
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)      
-    parser.add_argument('--lr0',default=0.1,type=float)  
+    parser.add_argument('--lr0',default=0.001,type=float)  
     parser.add_argument('--coupling',default=0,type=int) 
     parser.add_argument('--lbda',default=1,type=float)  
-    parser.add_argument('--size',default=10000,type=int)      
+    parser.add_argument('--size',default=1000,type=int)      
     parser.add_argument('--bs',default=20,type=int)  
     parser.add_argument('--epochs',default=5,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
@@ -182,7 +196,6 @@ if __name__ == '__main__':
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
     parser.add_argument('--totrain',default=1,type=int)
-    parser.add_argument('--loadbest',default=0,type=int)
     parser.add_argument('--seed',default=427,type=int)
     
     args = parser.parse_args()
@@ -264,19 +277,28 @@ if __name__ == '__main__':
     else:
         raise Exception('no model named `{}`'.format(args.model))
 
-    if args.loadbest:
+    rec_name = name+'_recs'
+    save_path = name + '.params.npy'
+    if os.path.isfile(save_path):
         print 'load best model'
-        save_path = name + '.params.npy'
-        model.load(save_path)
+        e0 = model.load(save_path)
+        recs = open(rec_name,'r').read().split('\n')[:e0]
+        rec = max([float(r) for r in recs])
+        
+    else:
+        e0 = 0
+        rec = 0
+
 
     if args.totrain:
-        recs = train_model(model.train_func,model.predict,
-                           train_x[:size],train_y[:size],
-                           valid_x,valid_y,
-                           lr0,lrdecay,bs,epochs,anneal,name)
-        np.save(name+'_recs.npy',recs)
+        print '\nstart training from epoch {}'.format(e0)
+        train_model(model.train_func,model.predict,
+                    train_x[:size],train_y[:size],
+                    valid_x,valid_y,
+                    lr0,lrdecay,bs,epochs,anneal,name,
+                    e0,rec)
     else:
-        print 'no training'
+        print '\nno training'
     
     tr_acc = evaluate_model(model.predict_proba,
                             train_x[:size],train_y[:size])
