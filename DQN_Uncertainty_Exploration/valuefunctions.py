@@ -7,6 +7,7 @@ class ValueFunctionDQN_TEST_TRAIN_DROPOUT:
     def __init__(self, state_dim=2, n_actions=3, batch_size=64, train_size=44, valid_size=20):
         self.graph = tf.Graph()
         with self.graph.as_default():
+
             # Inputs, weights, biases and targets of the ANN
             self.x = tf.placeholder(tf.float32, shape=(None, state_dim))                    # Single sample
             self.train_data = tf.placeholder(tf.float32, shape=(batch_size, state_dim))     # Training batch of samples
@@ -20,17 +21,17 @@ class ValueFunctionDQN_TEST_TRAIN_DROPOUT:
             self.dropout_keep_prob = tf.placeholder(tf.float32)
 
             #self.l1_weights = tf.Variable(tf.truncated_normal([state_dim, 512], stddev=0.1), trainable=True, name="w1")
-            self.l1_weights = tf.get_variable(name="w1", shape=[state_dim, 512],
+            self.l1_weights = tf.get_variable(name="w1", shape=[state_dim, 128],
                                               initializer=tf.contrib.layers.xavier_initializer())
-            self.l1_biases = tf.Variable(tf.zeros([512]), trainable=True, name="b1")
+            self.l1_biases = tf.Variable(tf.zeros([128]), trainable=True, name="b1")
 
             #self.l2_weights = tf.Variable(tf.truncated_normal([512, 256], stddev=0.1), trainable=True, name="w2")
-            self.l2_weights = tf.get_variable(name="w2", shape=[512, 256],
+            self.l2_weights = tf.get_variable(name="w2", shape=[128, 64],
                                               initializer=tf.contrib.layers.xavier_initializer())
-            self.l2_biases = tf.Variable(tf.zeros([256]), trainable=True, name="b2")
+            self.l2_biases = tf.Variable(tf.zeros([64]), trainable=True, name="b2")
 
             #self.l3_weights = tf.Variable(tf.truncated_normal([256, n_actions], stddev=0.1), trainable=True, name="w3")
-            self.l3_weights = tf.get_variable(name="w3", shape=[256, n_actions],
+            self.l3_weights = tf.get_variable(name="w3", shape=[64, n_actions],
                                               initializer=tf.contrib.layers.xavier_initializer())
             self.l3_biases = tf.Variable(tf.zeros([n_actions]), trainable=True, name="b3")
 
