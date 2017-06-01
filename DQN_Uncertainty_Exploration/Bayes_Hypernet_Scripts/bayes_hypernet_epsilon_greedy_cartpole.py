@@ -28,8 +28,11 @@ n_avg_ep = 100      # Number of consecutive episodes to calculate the average re
 LR = .0001
 
 
-#save_dir = '/home/ml/rislam4/Documents/BH_2/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/'
-save_dir = './dk_results/'
+#save_dir = '/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BH_2/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/Results/'
+
+save_dir = '/home/ml/rislam4/Documents/BH_2/BayesianHypernet/DQN_Uncertainty_Exploration/Bayes_Hypernet_Scripts/Results/'
+
+
 
 def run_episode(env,
                 agent,
@@ -56,15 +59,9 @@ def run_episode(env,
     #each step within an episode
     for i in range(max_step):
         t = time.time()
-        #if i > 0 and i % 200 == 0:
-            # print(progress_msg.format(i, max_step,
-            #                           np.mean(step_durations_s[0:i])*1000,
-            #                           np.mean(train_duration_s[0:i-batch_size])*1000,
-            #                           loss_v))
         if done:
             break
         
-
         action = agent.act_hypernet_EpsilonGreedy(state)
 
         #take a, get s' and reward
@@ -122,6 +119,8 @@ def run_episode(env,
 
 env = gym.make("CartPole-v0")
 
+#env = gym.make("MountainCar-v0")
+
 n_actions = env.action_space.n
 state_dim = env.observation_space.high.shape[0]
 
@@ -139,7 +138,7 @@ Experiments_All_Rewards = np.zeros(shape=(max_n_ep, Experiments))
 lbda = 1
 perdatapoint = 0
 prior = log_normal
-coupling = 5
+coupling = 4
 
 
 
