@@ -37,6 +37,10 @@ from helpers import flatten_list, gelu, plot_dict
 
 NUM_CLASSES = 10
 
+ooc = True # out-of-class detection
+if ooc:
+    exclude = 3
+
 
 if 1:#def main():
     """
@@ -131,6 +135,15 @@ if 1:#def main():
     filename = '/data/lisa/data/mnist.pkl.gz'
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
     
+    if ooc:
+        
+        def split_by_exclude(X,Y,ex_class):
+            ind = Y.argmax(1) == ex_class
+            return X[(1 - ind).astype(bool)], Y[(1 - ind).astype(bool)], X[ind]
+        
+        train_x, train_y, train_x2 = split_by_exclude(train_x,train_y,exclude)
+        valid_x, valid_y, valid_x2 = split_by_exclude(valid_x,valid_y,exclude)
+        
     
     input_var = T.matrix('input_var')
     target_var = T.matrix('target_var')
@@ -355,10 +368,13 @@ if anomaly:
     # from https://github.com/hendrycks/error-detection/blob/master/Vision/MNIST_Abnormality_Module.ipynb
     print "load notMNIST, CIFAR-10, and Omniglot"
     try:
-        notmnist_dataset = np.load('./data/not_mnist.npy')
-        cifar_batch = np.load('./data/CIFAR10-bw.npy')
-        omni_images = np.load('./data/omniglot.npy')
-        print "loaded saved npy files"
+        if ooc:
+            pass
+        else:
+            notmnist_dataset = np.load('./data/not_mnist.npy')
+            cifar_batch = np.load('./data/CIFAR10-bw.npy')
+            omni_images = np.load('./data/omniglot.npy')
+            print "loaded saved npy files"
     except:
         import pickle
         pickle_file = './data/notMNIST.pickle'
@@ -485,10 +501,13 @@ if anomaly:
 
     oods = []
     oods.append( noised(Xt, noise_level, 'uniform'))
-    oods.append( omni_images )
-    oods.append( cifar_batch )
     oods.append( noised(Xt, noise_level) )
-    oods.append( notmnist_dataset )
+    if ooc:
+        oods.append( train_x2 )
+    else:
+        oods.append( omni_images )
+        oods.append( cifar_batch )
+        oods.append( notmnist_dataset )
 
     # RESULTS ARE IN THE SAME ORDER AS IN THE TABLES IN DAN's paper
 
