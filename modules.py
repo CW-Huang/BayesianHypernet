@@ -32,11 +32,12 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
 
         self.num_units = num_units
 
-        num_inputs = int(np.prod(self.input_shape[1]/2))
+        num_inputs1 = int(self.input_shape[1]/2)
+        num_inputs2 = self.input_shape[1] - num_inputs1
 
-        self.W1 = self.add_param(W, (num_inputs, num_units), name="cpds_W1")
-        self.W21 = self.add_param(W, (num_units, num_inputs), name="cpds_W21")
-        self.W22 = self.add_param(W, (num_units, num_inputs), name="cdds_W22")
+        self.W1 = self.add_param(W, (num_inputs1, num_units), name="cpds_W1")
+        self.W21 = self.add_param(W, (num_units, num_inputs2), name="cpds_W21")
+        self.W22 = self.add_param(W, (num_units, num_inputs2), name="cdds_W22")
         if b is None:
             self.b1 = None
             self.b21 = None
@@ -44,9 +45,9 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
         else:
             self.b1 = self.add_param(b, (num_units,), name="cpds_b1",
                                      regularizable=False)
-            self.b21 = self.add_param(b, (num_inputs,), name="cpds_b21",
+            self.b21 = self.add_param(b, (num_inputs2,), name="cpds_b21",
                                       regularizable=False)
-            self.b22 = self.add_param(b, (num_inputs,), name="cpds_b22",
+            self.b22 = self.add_param(b, (num_inputs2,), name="cpds_b22",
                                       regularizable=False)
             
     def get_output_shape_for(self, input_shape):
@@ -89,15 +90,17 @@ class CoupledWNDenseLayer(lasagne.layers.base.Layer):
                              else nonlinearity)
 
         self.num_units = num_units
+        
+        num_inputs1 = int(self.input_shape[1]/2)
+        num_inputs2 = self.input_shape[1] - num_inputs1
 
-        num_inputs = int(np.prod(self.input_shape[1]/2))
 
-        self.W1 = self.add_param(W, (num_inputs, num_units), name="cpds_W1")
-        self.W21 = self.add_param(W, (num_units, num_inputs), name="cpds_W21")
-        self.W22 = self.add_param(W, (num_units, num_inputs), name="cdds_W22")
+        self.W1 = self.add_param(W, (num_inputs1, num_units), name="cpds_W1")
+        self.W21 = self.add_param(W, (num_units, num_inputs2), name="cpds_W21")
+        self.W22 = self.add_param(W, (num_units, num_inputs2), name="cdds_W22")
         self.r1 = self.add_param(r, (num_units,), name='cpds_r1')
-        self.r21 = self.add_param(r, (num_inputs,), name='cpds_r21')
-        self.r22 = self.add_param(r, (num_inputs,), name='cpds_r22')
+        self.r21 = self.add_param(r, (num_inputs2,), name='cpds_r21')
+        self.r22 = self.add_param(r, (num_inputs2,), name='cpds_r22')
         if b is None:
             self.b1 = None
             self.b21 = None
@@ -105,9 +108,9 @@ class CoupledWNDenseLayer(lasagne.layers.base.Layer):
         else:
             self.b1 = self.add_param(b, (num_units,), name="cpds_b1",
                                      regularizable=False)
-            self.b21 = self.add_param(b, (num_inputs,), name="cpds_b21",
+            self.b21 = self.add_param(b, (num_inputs2,), name="cpds_b21",
                                       regularizable=False)
-            self.b22 = self.add_param(b, (num_inputs,), name="cpds_b22",
+            self.b22 = self.add_param(b, (num_inputs2,), name="cpds_b22",
                                       regularizable=False)
             
     def get_output_shape_for(self, input_shape):

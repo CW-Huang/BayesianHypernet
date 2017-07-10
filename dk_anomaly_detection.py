@@ -65,6 +65,7 @@ if 1:#def main():
     parser.add_argument('--model', default='mlp', type=str, choices=['mlp', 'hnet', 'hnetWN', 'dropout', 'weight_uncertainty'])
     parser.add_argument('--nonlinearity',default='rectify', type=str)
     parser.add_argument('--perdatapoint',action='store_true')    
+    parser.add_argument('--num_cpunits',default=256,type=int)  
     parser.add_argument('--num_examples',default=1000,type=int)  
     parser.add_argument('--num_samples',default=10,type=int)  
     parser.add_argument('--size',default=50000,type=int)  
@@ -144,10 +145,15 @@ if 1:#def main():
         
         def split_by_exclude(X,Y,ex_class):
             ind = Y.argmax(1) == ex_class
-            return X[(1 - ind).astype(bool)], Y[(1 - ind).astype(bool)], X[ind]
+            
+            newX = X[(1-ind).astype(bool)]
+            newY = Y[(1-ind).astype(bool)]
+            newY = newY[:,(1-(np.arange(10)==ex_class)).astype(bool)]
+            return newX, newY, X[ind]
         
         train_x, train_y, train_x2 = split_by_exclude(train_x,train_y,exclude)
         valid_x, valid_y, valid_x2 = split_by_exclude(valid_x,valid_y,exclude)
+        test_x, test_y, test_x2 = split_by_exclude(test_x,test_y,exclude)
         
     
     input_var = T.matrix('input_var')
@@ -156,12 +162,13 @@ if 1:#def main():
     lr = T.scalar('lr') 
     
     # 784 -> 20 -> 10
+    classes = 10-ooc
     if arch == 'CW':
-        weight_shapes = [(784, 200), (200,  10)]
+        weight_shapes = [(784, 200), (200,  classes)]
     elif arch == 'Dan':
-        weight_shapes = [(784, 256), (256, 256), (256,256), (256,  10)]
+        weight_shapes = [(784, 256), (256, 256), (256,256), (256,  classes)]
     elif arch == 'Dan2':
-        weight_shapes = [(784, 512), (512, 512), (512,512), (512,  10)]
+        weight_shapes = [(784, 512), (512, 512), (512,512), (512,  classes)]
     
     if model == 'weight_uncertainty': 
         num_params = sum(np.prod(ws) for ws in weight_shapes)
@@ -186,9 +193,9 @@ if 1:#def main():
         for c in range(coupling):
             h_layer = ReverseLayer(h_layer,num_params)
             if model == 'hnetWN':
-                layer_temp = CoupledWNDenseLayer(h_layer,10)
+                layer_temp = CoupledWNDenseLayer(h_layer,num_cpunits)
             elif model == 'hnet':
-                layer_temp = CoupledDenseLayer(h_layer,10)
+                layer_temp = CoupledDenseLayer(h_layer,num_cpunits)
             h_layer = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
         
@@ -272,7 +279,7 @@ if 1:#def main():
     # TODO: don't redefine :P 
     def MCpred(X, inds=None, num_samples=10, returns='preds'):
         from utils import MCpred
-        return MCpred(X, predict_probs_fn=predict_probs, num_samples=num_samples, inds=inds, returns=returns)
+        return MCpred(X, predict_probs_fn=predict_probs, num_samples=num_samples, inds=inds, returns=returns, num_classes=classes)
 
 
 
