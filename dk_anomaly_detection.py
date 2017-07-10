@@ -536,7 +536,9 @@ if anomaly:
             np.save(save_path + '_test_err_results.npy', err_results)
         else:
             np.save(save_path + '_val_err_results.npy', err_results)
-            
+    
+    # print results
+    print err_results
 
     ##########################
     # OOD-detection
@@ -555,7 +557,9 @@ if anomaly:
         else:
             np.save(save_path + '_val_ood_results.npy', ood_results)
 
-
+    # print results
+    print ood_results
+    
     print "                                                                                        DONE,   total time=", time.time() - t0
             
 
