@@ -37,9 +37,6 @@ from helpers import flatten_list, gelu, plot_dict
 
 NUM_CLASSES = 10
 
-ooc = True # out-of-class detection
-if ooc:
-    exclude = 3
 
 
 if 1:#def main():
@@ -80,6 +77,10 @@ if 1:#def main():
     parser.add_argument('--seed', type=int, default=1337)
     parser.add_argument('--verbose', type=int, default=1)
 
+    parser.add_argument('--ooc', type=int, default=1)
+    parser.add_argument('--exclude', type=int, default=3)
+
+
 
     # --------------------------------------------
     # PARSE ARGS and SET-UP SAVING and RANDOM SEED
@@ -115,6 +116,10 @@ if 1:#def main():
     size = max(10,min(50000,args.size))
     clip_grad = 100
     max_norm = 100
+
+    ooc = args.ooc
+    if ooc:
+        exclude = args.exclude
 
     if convex_combination:
         assert model in ['hnet', 'hnetWN']
