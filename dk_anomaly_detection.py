@@ -49,7 +49,6 @@ if 1:#def main():
     import sys
     import os
     import numpy 
-    np = numpy
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--anomaly',type=int, default=1)
@@ -507,7 +506,7 @@ if anomaly:
     # predictions on clean data
 
     from utils import MCpred
-    clean_samples = MCpred(X=Xt, predict_probs_fn=probs, num_samples=100, returns='samples')
+    clean_samples = MCpred(X=Xt, predict_probs_fn=probs, num_samples=100, returns='samples',num_classes=classes)
     clean_probs = clean_samples.mean(0)
     clean_preds = clean_probs.argmax(-1)
 
@@ -555,7 +554,7 @@ if anomaly:
         for nood, ood in enumerate(oods):
             print "OOD detection", nscore, nood
             clean_scores = score_fn(clean_samples)
-            ood_samples = MCpred(X=ood, predict_probs_fn=probs, num_samples=100, returns='samples')
+            ood_samples = MCpred(X=ood, predict_probs_fn=probs, num_samples=100, returns='samples',num_classes=classes)
             ood_scores = score_fn(ood_samples)
             ood_results[nscore][nood] = get_results(clean_scores, ood_scores)
     if save:
