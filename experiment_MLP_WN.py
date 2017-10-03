@@ -184,19 +184,22 @@ if __name__ == '__main__':
     
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)      
-    parser.add_argument('--lr0',default=0.001,type=float)  
+    parser.add_argument('--lr0',default=0.0001,type=float)  
     parser.add_argument('--coupling',default=0,type=int) 
     parser.add_argument('--lbda',default=1,type=float)  
-    parser.add_argument('--size',default=1000,type=int)      
-    parser.add_argument('--bs',default=20,type=int)  
-    parser.add_argument('--epochs',default=5,type=int)
+    parser.add_argument('--size',default=2000,type=int)      
+    parser.add_argument('--bs',default=32,type=int)  
+    parser.add_argument('--epochs',default=10,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='MCdropout_MLP',type=str)
+    parser.add_argument('--model',default='BHN_MLPWN',type=str)
     parser.add_argument('--anneal',default=0,type=int)
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
     parser.add_argument('--totrain',default=1,type=int)
     parser.add_argument('--seed',default=427,type=int)
+    parser.add_argument('--override',default=1,type=int)
+    parser.add_argument('--reinit',default=1,type=int)
+    
     
     args = parser.parse_args()
     print args
@@ -219,7 +222,7 @@ if __name__ == '__main__':
     
     
     path = 'models'
-    name = './{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}'.format(
+    name = './{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}'.format(
         path,
         md,
         args.n_hiddens,
@@ -231,7 +234,8 @@ if __name__ == '__main__':
         args.lrdecay,
         args.anneal,
         args.size,
-        args.seed
+        args.seed,
+        args.reinit
     )
 
     coupling = args.coupling
@@ -263,6 +267,11 @@ if __name__ == '__main__':
 
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
     
+    if args.reinit:
+        init_batch = train_x[:size][-64:].reshape(64,784)
+    else:
+        init_batch = None
+        
     if args.model == 'BHN_MLPWN':
         model = MLPWeightNorm_BHN(lbda=lbda,
                                   perdatapoint=perdatapoint,
@@ -270,7 +279,8 @@ if __name__ == '__main__':
                                   prior=prior,
                                   coupling=coupling,
                                   n_hiddens=n_hiddens,
-                                  n_units=n_units)
+                                  n_units=n_units,
+                                  init_batch=init_batch)
     elif args.model == 'MCdropout_MLP':
         model = MCdropout_MLP(n_hiddens=n_hiddens,
                               n_units=n_units)
@@ -279,7 +289,7 @@ if __name__ == '__main__':
 
     rec_name = name+'_recs'
     save_path = name + '.params.npy'
-    if os.path.isfile(save_path):
+    if os.path.isfile(save_path) and not args.override:
         print 'load best model'
         e0 = model.load(save_path)
         recs = open(rec_name,'r').read().split('\n')[:e0]

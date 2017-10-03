@@ -54,7 +54,8 @@ class Base_BHN(object):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  opt='adam',
-                 prior = log_normal):
+                 prior = log_normal,
+                 init_batch = None):
         
         self.lbda = lbda
         self.perdatapoint = perdatapoint
@@ -93,6 +94,11 @@ class Base_BHN(object):
         self.reset = theano.function([],None,
                                       updates=updates)
         #self.add_reset('init')
+        
+        
+        if init_batch is not None:
+            print('\tre-init primary net')
+            self._init_pnet(init_batch)
     
     def _get_theano_variables(self):
         self.input_var = T.matrix('input_var')
@@ -221,6 +227,45 @@ class Base_BHN(object):
 
         return notes
 
+    def _init_pnet(self,init_batch):
+        init_output = init_batch.copy()
+        all_layers = lasagne.layers.get_all_layers(self.p_net)
+        
+        def stdize(layer,input):
+            m = T.mean(input, layer.axes_to_sum)
+            input -= m.dimshuffle(*layer.dimshuffle_args)
+            stdv = T.sqrt(T.mean(T.square(input),axis=layer.axes_to_sum))
+            input /= stdv.dimshuffle(*layer.dimshuffle_args)
+            return -m/stdv, 1./stdv, input
+            
+        bs = list()
+        gs = list()
+        for l in all_layers[1:]:
+            if isinstance(l,WeightNormLayer):
+                b,g,init_output = stdize(l,init_output)
+                bs.append(b)
+                gs.append(g)
+                if l.nonlinearity:
+                    init_output = l.nonlinearity(init_output)
+            else:
+                init_output = l.get_output_for(init_output)
+        
+        new_gs = list()
+        counter = 0
+        for l in all_layers[1:]:
+            if isinstance(l,WeightNormLayer):
+                new_b = bs[counter].eval()
+                new_g = gs[counter].eval()
+                l.b.set_value(new_b)
+                new_gs.append(new_g.reshape(-1))
+                
+                counter += 1
+        
+        gs_ = lasagne.layers.get_all_layers(self.h_net)[1].b
+        new_gs = np.concatenate(new_gs)
+        old_gs = gs_.get_value()
+        gs_.set_value(new_gs*old_gs)
+
     
     
 
@@ -238,22 +283,26 @@ class MLPWeightNorm_BHN(Base_BHN):
                  prior = log_normal,
                  coupling=True,
                  n_hiddens=1,
-                 n_units=200):
+                 n_units=200,
+                 n_classes=10,
+                 **kargs):
         
         self.n_hiddens = n_hiddens
         self.n_units = n_units
+        self.n_classes = n_classes
         self.weight_shapes = list()        
         self.weight_shapes.append((784,n_units))
         for i in range(1,n_hiddens):
             self.weight_shapes.append((n_units,n_units))
-        self.weight_shapes.append((n_units,10))
+        self.weight_shapes.append((n_units,n_classes))
         self.num_params = sum(ws[1] for ws in self.weight_shapes)
         
         self.coupling = coupling
         super(MLPWeightNorm_BHN, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
                                                 srng=srng,
-                                                prior=prior)
+                                                prior=prior,
+                                                **kargs)
     
     
     def _get_hyper_net(self):
@@ -345,13 +394,15 @@ class Conv2D_BHN(Base_BHN):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
-                 coupling = 1):
+                 coupling = 1,
+                 **kargs):
         
         self.coupling = coupling
         super(Conv2D_BHN, self).__init__(lbda=lbda,
                                          perdatapoint=perdatapoint,
                                          srng=srng,
-                                         prior=prior)
+                                         prior=prior,
+                                         **kargs)
     
     def _get_theano_variables(self):
         # redefine a 4-d tensor for convnet
@@ -464,13 +515,15 @@ class Conv2D_shared_BHN(Base_BHN):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
-                 coupling = 1):
+                 coupling = 1,
+                 **kargs):
         
         self.coupling = coupling
         super(Conv2D_shared_BHN, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
                                                 srng=srng,
-                                                prior=prior)
+                                                prior=prior,
+                                                **kargs)
     
     def _get_theano_variables(self):
         # redefine a 4-d tensor for convnet
@@ -597,13 +650,15 @@ class Conv2D_BHN_AL(Base_BHN):
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
-                 coupling=True):
+                 coupling=True,
+                 **kargs):
         
         self.coupling = coupling
         super(Conv2D_BHN_AL, self).__init__(lbda=lbda,
                                          perdatapoint=perdatapoint,
                                          srng=srng,
-                                         prior=prior)
+                                         prior=prior,
+                                         **kargs)
     
     def _get_theano_variables(self):
         # redefine a 4-d tensor for convnet
@@ -696,7 +751,8 @@ class HyperCNN_CW(Base_BHN):
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
                  coupling=4,
-                 dataset='mnist'):
+                 dataset='mnist',
+                 **kargs):
         
         self.dataset = dataset
         
@@ -742,7 +798,8 @@ class HyperCNN_CW(Base_BHN):
         super(HyperCNN_CW, self).__init__(lbda=lbda,
                                           perdatapoint=perdatapoint,
                                           srng=srng,
-                                          prior=prior)
+                                          prior=prior,
+                                          **kargs)
     
     def _get_theano_variables(self):
         # redefine a 4-d tensor for convnet
@@ -902,7 +959,8 @@ class HyperWN_CNN(Base_BHN):
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
                  coupling=4,
-                 dataset='mnist'):
+                 dataset='mnist',
+                 **kargs):
         
         self.dataset = dataset
         
@@ -948,7 +1006,8 @@ class HyperWN_CNN(Base_BHN):
         super(HyperWN_CNN, self).__init__(lbda=lbda,
                                           perdatapoint=perdatapoint,
                                           srng=srng,
-                                          prior=prior)
+                                          prior=prior,
+                                          **kargs)
     
     def _get_theano_variables(self):
         # redefine a 4-d tensor for convnet
@@ -1094,7 +1153,8 @@ class HyperCNN(Base_BHN):
                  pool=None,
                  kernel_width=None,
                  dataset='mnist',
-                 extra_linear=0):
+                 extra_linear=0,
+                 **kargs):
         
         self.dataset = dataset
         
@@ -1149,7 +1209,8 @@ class HyperCNN(Base_BHN):
                                          perdatapoint=perdatapoint,
                                          srng=srng,
                                          opt=opt,
-                                         prior=prior)
+                                         prior=prior,
+                                         **kargs)
     
     def _get_theano_variables(self):
         # redefine a 4-d tensor for convnet
@@ -1279,14 +1340,16 @@ class BHN_Q_Network(Base_BHN):
                  wn=0,
                  weight_shapes=None,
                  coupling_dim=None,
-                 coupling=True):
+                 coupling=True,
+                 **kargs):
         
         self.wn = wn
         self.coupling = coupling
         super(BHN_Q_Network, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
                                                 srng=srng,
-                                                prior=prior)
+                                                prior=prior,
+                                                **kargs)
         
         if weight_shapes is not None:
             self.weight_shapes = weight_shapes
@@ -1388,4 +1451,33 @@ class BHN_Q_Network(Base_BHN):
         self.predict_proba = theano.function([self.input_var],self.y)
         #self.predict = theano.function([self.input_var],self.y.argmax(1))
         self.predict = theano.function([self.input_var],self.y)
+
+
+
+
+
+if __name__ == '__main__':
+    
+    
+    init_batch = np.random.rand(3,784).astype('float32') 
+    model = MLPWeightNorm_BHN(lbda=1.,
+                              perdatapoint=0,
+                              prior=log_normal,
+                              coupling=2,
+                              n_hiddens=2,
+                              n_units=32,
+                              init_batch=init_batch)
+    
+    print model.predict_proba(init_batch)
+    
+    
+    
+    
+    
+    
+    
+
+
+
+
 
