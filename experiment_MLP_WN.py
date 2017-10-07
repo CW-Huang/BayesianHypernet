@@ -268,7 +268,8 @@ if __name__ == '__main__':
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
     
     if args.reinit:
-        init_batch = train_x[:size][-64:].reshape(64,784)
+        init_batch_size = min(64, size)
+        init_batch = train_x[:size][-init_batch_size:].reshape(init_batch_size,784)
     else:
         init_batch = None
         
