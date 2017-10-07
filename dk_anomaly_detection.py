@@ -139,7 +139,7 @@ if 1:#def main():
     # load dataset
     filename = '/data/lisa/data/mnist.pkl.gz'
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
-    
+
     if ooc:
         
         def split_by_exclude(X,Y,ex_class):
