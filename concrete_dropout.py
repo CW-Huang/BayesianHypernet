@@ -1,19 +1,34 @@
 
+import numpy
+np = numpy
 import  scipy.special 
-import theano.tensor as T
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
-# TODO
-rng = RandomStreams(seed=1)
 
-# adapted from: https://github.com/yaringal/ConcreteDropout/blob/master/concrete-dropout.ipynb
-def concrete_dropout(p, x, eps=1e-7, rng=rng):
-    '''
-    p - dropout probability for x 
-    x - activations
-    '''
+import theano
+import theano.tensor as T
+floatX = theano.config.floatX
+#from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+#rng = RandomStreams(seed=1)
+# TODO: seed properly...
+from theano.tensor.shared_randomstreams import RandomStreams
+srng = RandomStreams(seed=427)
+
+import lasagne
+
+from lasagne.objectives import categorical_crossentropy as cc
+from helpers import flatten_list
+
+from BHNs import Base_BHN
+from modules import LinearFlowLayer, IndexLayer, CoupledDenseLayer, PermuteLayer
+from utils import log_normal
+
+from capy_utils import randn, tsrf
+
+
+# TODO: get rid of this function and below
+def concrete_dropout(p, x, eps=1e-7, rng=srng):
     eps = np.float32(eps)
     temp = 0.1
-    unif_noise = rng.uniform(shape=x.shape)
+    unif_noise = rng.uniform(size=x.shape)
 
     # TODO: case where the drop_prob is different for different units
     smooth_dropout_mask = (
@@ -28,6 +43,56 @@ def concrete_dropout(p, x, eps=1e-7, rng=rng):
     x *= (1. - smooth_dropout_mask)
     x /= retain_prob
     return x
+    # TODO
+    #return ConcreteDropoutLayer (layer, p)
+
+# TODO: shapes
+pp = T.nnet.sigmoid(theano.shared(randn(1,3).astype('float32')*.4, broadcastable=(1,0)))
+xx = tsrf(2,3)
+print pp.eval()
+print xx.eval()
+print concrete_dropout(pp, xx).eval()
+
+
+class ConcreteDropoutLayer(lasagne.layers.base.Layer):
+    def __init__(self, incoming, 
+                    drop_probs=None, temp=0.1, eps=1e-7, srng=srng,
+                    **kwargs):
+        super(ConcreteDropoutLayer, self).__init__(incoming, **kwargs)
+        self.__dict__.update(locals())
+        self.eps = np.float32(self.eps)
+        self.temp = np.float32(self.temp)
+
+        if drop_probs is None:
+            assert False # TODO
+
+    def get_output_shape_for(self,input_shape):
+        return input_shape
+
+    # adapted from: https://github.com/yaringal/ConcreteDropout/blob/master/concrete-dropout.ipynb
+    def get_output_for(self, inputs):
+        x = inputs
+        eps = self.eps
+        temp = self.temp
+        rng = self.srng
+        unif_noise = rng.uniform(size=x.shape)
+        p = self.drop_probs
+
+        # TODO: case where the drop_prob is different for different units
+        smooth_dropout_mask = (
+            T.log(p + eps)
+            - T.log(1. - p + eps)
+            + T.log(unif_noise + eps)
+            - T.log(1. - unif_noise + eps)
+        )
+        smooth_dropout_mask = T.nnet.sigmoid(smooth_dropout_mask / temp)
+
+        retain_prob = 1. - p
+        x *= (1. - smooth_dropout_mask)
+        x /= retain_prob
+        return x
+
+
 
 
 class MLPConcreteDropout_BHN(Base_BHN):
@@ -60,20 +125,22 @@ class MLPConcreteDropout_BHN(Base_BHN):
         self.num_params = sum(ws[1] for ws in self.weight_shapes)
         
         self.coupling = coupling
+        #
+        self.alpha = alpha
+        self.beta = beta
+        self.denom = scipy.special.beta(alpha,beta)
+        #
         super(MLPConcreteDropout_BHN, self).__init__(lbda=-1,# TODO: shouldn't be used!
                                                 perdatapoint=perdatapoint,
                                                 srng=srng,
                                                 prior=prior,
                                                 **kargs)
-        self.alpha = alpha
-        self.beta = beta
-        self.denom = scipy.special.beta(alpha,beta)
     
     
     def _get_hyper_net(self):
         # inition random noise
         ep = self.srng.normal(size=(self.wd1,
-                                    self.num_params),dtype=floatX)
+                                    self.num_params),dtype=floatX) # why doesn't that work?
         logdets_layers = []
         h_net = lasagne.layers.InputLayer([None,self.num_params])
         
@@ -97,12 +164,12 @@ class MLPConcreteDropout_BHN(Base_BHN):
         self.h_net = h_net
         self.logits = lasagne.layers.get_output(h_net,ep)
         self.drop_probs = T.nnet.sigmoid(self.logits)
-        self.logdets = sum([get_output(ld,ep) for ld in logdets_layers])
+        self.logdets = sum([lasagne.layers.get_output(ld,ep) for ld in logdets_layers])
         # TODO: test this!
-        self.logdets += T.log(T.grad(T.sum(self.drop_probs)), self.logits)).sum()
-        self.logqw = - logdets
+        self.logdets += T.log(T.grad(T.sum(self.drop_probs), self.logits)).sum()
+        self.logqw = - self.logdets
         # TODO: we should multiply this by #units if we don't output them independently...
-        self.logpw = (self.alpha-1)*T.log(self.drop_probs).sum() + (self.beta-1)*T.log(1 - self.drop_probs).sum() )# - np.log(self.denom) #<--- this term is constant
+        self.logpw = (self.alpha-1)*T.log(self.drop_probs).sum() + (self.beta-1)*T.log(1 - self.drop_probs).sum() # - np.log(self.denom) #<--- this term is constant
         # we'll compute the whole KL term right here...
         self.kl = (self.logqw - self.logpw).mean()
     
@@ -117,16 +184,16 @@ class MLPConcreteDropout_BHN(Base_BHN):
             num_param = ws[1]
             drop_prob = self.drop_probs[:,t:t+num_param].reshape((self.wd1,ws[1]))
             p_net = lasagne.layers.DenseLayer(p_net,ws[1])
-            p_net = concrete_dropout(drop_prob, p_net)
-            print p_net.output_shape
+            p_net = ConcreteDropoutLayer(p_net, drop_prob, srng=self.srng)
+            #print p_net.output_shape
             t += num_param
             
-        p_net.nonlinearity = nonlinearities.softmax # replace the nonlinearity
+        p_net.nonlinearity = lasagne.nonlinearities.softmax # replace the nonlinearity
                                                     # of the last layer
                                                     # with softmax for
                                                     # classification
         
-        y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
+        y = T.clip(lasagne.layers.get_output(p_net,inputs), 0.001, 0.999) # stability
         
         self.p_net = p_net
         self.y = y
@@ -156,3 +223,24 @@ class MLPConcreteDropout_BHN(Base_BHN):
         self.logpyx = - cc(self.y,self.target_var).mean()
         self.loss = - (self.logpyx - \
                        self.weight * self.kl/T.cast(self.dataset_size,floatX))
+
+    def _init_pnet(self,init_batch):
+        pass
+
+
+if __name__ == '__main__':
+    
+    
+    # TODO: get rid of the last layer of concrete dropout (for the output layer)
+    init_batch = np.random.rand(3,784).astype('float32') 
+    model = MLPConcreteDropout_BHN(
+                              perdatapoint=0,
+                              prior=log_normal,
+                              coupling=2,
+                              n_hiddens=2,
+                              n_units=32,
+                              init_batch=init_batch)
+    
+    print model.predict_proba(init_batch)
+    
+    
