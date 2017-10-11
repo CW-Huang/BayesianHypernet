@@ -19,6 +19,8 @@ from lasagne.random import set_rng
 from theano.tensor.shared_randomstreams import RandomStreams
 
 
+# TODO: add LCS, add IAF, launch
+
 lrdefault = 1e-3    
     
 class MCdropout_MLP(object):
@@ -100,15 +102,16 @@ class MCdropout_MLP(object):
 
     
 
-def train_model(train_func,predict_func,X,Y,Xt,Yt,
+def train_model(train_func,predict_func,X,Y,Xv,Yv,
                 lr0=0.1,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
                 e0=0,rec=0):
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
-    rec_name = name+'_recs'
+    va_rec_name = name+'_recs'
     save_path = name + '.params'
-    recs = list()
+    va_recs = list()
+    tr_recs = list()
     
     t = 0
     for e in range(epochs):
@@ -135,28 +138,29 @@ def train_model(train_func,predict_func,X,Y,Xt,Yt,
             if t%100==0:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
                 tr_acc = (predict_func(X)==Y.argmax(1)).mean()
-                te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()
+                va_acc = (predict_func(Xv)==Yv.argmax(1)).mean()
                 print '\ttrain acc: {}'.format(tr_acc)
-                print '\ttest acc: {}'.format(te_acc)
+                print '\tvalid acc: {}'.format(va_acc)
             t+=1
         
-        va_acc = evaluate_model(model.predict_proba,Xt,Yt,20)
+        va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=20)
         print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
         
-        recs.append(va_acc)
+        va_recs.append(va_acc)
         
         if va_acc > rec:
             print '.... save best model .... '
             model.save(save_path,[e])
             rec = va_acc
     
-            with open(rec_name,'a') as rec_file:
-                for r in recs:
+            with open(va_rec_name,'a') as rec_file:
+                for r in va_recs:
                     rec_file.write(str(r)+'\n')
             
-            recs = list()
+            va_recs = list()
             
         print '\n\n'
+    
 
 
 
@@ -199,6 +203,8 @@ if __name__ == '__main__':
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
+    parser.add_argument('--flow',default='RealNVP',type=str, choices=['RealNVP', 'IAF'])
+    parser.add_argument('--save_dir',default='./models',type=str)
     
     
     args = parser.parse_args()
@@ -221,8 +227,8 @@ if __name__ == '__main__':
         md = 1
     
     
-    path = 'models'
-    name = './{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}'.format(
+    path = args.save_dir
+    name = '{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}flow{}'.format(
         path,
         md,
         args.n_hiddens,
@@ -235,7 +241,8 @@ if __name__ == '__main__':
         args.anneal,
         args.size,
         args.seed,
-        args.reinit
+        args.reinit,
+        args.flow
     )
 
     coupling = args.coupling
@@ -281,6 +288,7 @@ if __name__ == '__main__':
                                   coupling=coupling,
                                   n_hiddens=n_hiddens,
                                   n_units=n_units,
+                                  flow=args.flow,
                                   init_batch=init_batch)
     elif args.model == 'MCdropout_MLP':
         model = MCdropout_MLP(n_hiddens=n_hiddens,
@@ -288,13 +296,15 @@ if __name__ == '__main__':
     else:
         raise Exception('no model named `{}`'.format(args.model))
 
-    rec_name = name+'_recs'
+    va_rec_name = name+'_recs'
+    tr_rec_name = name+'_recs_train' # TODO (we're already saving the valid_recs!)
     save_path = name + '.params.npy'
     if os.path.isfile(save_path) and not args.override:
         print 'load best model'
         e0 = model.load(save_path)
-        recs = open(rec_name,'r').read().split('\n')[:e0]
-        rec = max([float(r) for r in recs])
+        va_recs = open(va_rec_name,'r').read().split('\n')[:e0]
+        #tr_recs = open(tr_rec_name,'r').read().split('\n')[:e0]
+        rec = max([float(r) for r in va_recs])
         
     else:
         e0 = 0

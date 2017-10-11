@@ -252,6 +252,7 @@ class IAFDenseLayer(lasagne.layers.base.Layer):
         return input_shape
 
     def get_output_for(self, input, cond_bias=None, **kwargs):
+        z = input
         zs = list()
         zs.append(input)
         ss = T.zeros((input.shape[0],)) # logdet jacobian

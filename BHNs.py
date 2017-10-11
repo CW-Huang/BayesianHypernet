@@ -50,6 +50,8 @@ class Base_BHN(object):
     clip_grad = 5
     
     def __init__(self,
+                flow='RealNVP',
+                #flow_depth=4, # TODO: for now, we just keep using the "coupling" argument!
                  lbda=1.,
                  perdatapoint=False,
                  srng = RandomStreams(seed=427),
@@ -57,12 +59,7 @@ class Base_BHN(object):
                  prior = log_normal,
                  init_batch = None):
         
-        self.lbda = lbda
-        self.perdatapoint = perdatapoint
-        self.srng = srng
-        self.prior = prior
         self.__dict__.update(locals())
-        
         
         self._get_theano_variables()
         
@@ -105,6 +102,7 @@ class Base_BHN(object):
         self.target_var = T.matrix('target_var')
         self.dataset_size = T.scalar('dataset_size')
         self.learning_rate = T.scalar('learning_rate')
+        # TODO: fix name
         self.weight = T.scalar('weight')
         
     def _get_hyper_net(self):
@@ -297,7 +295,7 @@ class MLPWeightNorm_BHN(Base_BHN):
         self.weight_shapes.append((n_units,n_classes))
         self.num_params = sum(ws[1] for ws in self.weight_shapes)
         
-        self.coupling = coupling
+        self.coupling=coupling
         super(MLPWeightNorm_BHN, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
                                                 srng=srng,
@@ -317,17 +315,22 @@ class MLPWeightNorm_BHN(Base_BHN):
         h_net = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
-        if self.coupling:
-            layer_temp = CoupledDenseLayer(h_net,200)
-            h_net = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
-            
-            for c in range(self.coupling-1):
-                h_net = PermuteLayer(h_net,self.num_params)
-                
+        if self.flow == 'RealNVP':
+            if self.coupling:
                 layer_temp = CoupledDenseLayer(h_net,200)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+                for c in range(self.coupling-1):
+                    h_net = PermuteLayer(h_net,self.num_params)
+                    layer_temp = CoupledDenseLayer(h_net,200)
+                    h_net = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        elif self.flow == 'IAF':
+            layer_temp = IAFDenseLayer(h_net,200,1,L=self.coupling,cond_bias=False)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
         
         self.h_net = h_net
         self.weights = lasagne.layers.get_output(h_net,ep)
@@ -424,18 +427,25 @@ class Conv2D_BHN(Base_BHN):
         h_net = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
-        if self.coupling:
-            # add more to introduce more correlation if needed
-            layer_temp = CoupledDenseLayer(h_net,200)
-            h_net = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
-            
-            for c in range(self.coupling-1):
-                h_net = PermuteLayer(h_net,self.num_params)
-                
+        if self.flow == 'RealNVP':
+            if self.coupling:
+                # add more to introduce more correlation if needed
                 layer_temp = CoupledDenseLayer(h_net,200)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+                
+                for c in range(self.coupling-1):
+                    h_net = PermuteLayer(h_net,self.num_params)
+                    
+                    layer_temp = CoupledDenseLayer(h_net,200)
+                    h_net = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        elif self.flow == 'IAF':
+            layer_temp = IAFDenseLayer(h_net,200,1,L=self.coupling,cond_bias=False)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
         
         
         self.h_net = h_net
@@ -554,17 +564,24 @@ class Conv2D_shared_BHN(Base_BHN):
         h_net1 = lasagne.layers.ReshapeLayer(h_net1,
                                              (self.n_kernels,) + \
                                              (np.prod(self.kernel_shape),))
-        if self.coupling:
-            layer_temp = CoupledDenseLayer(h_net1,100)
-            h_net1 = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
-            
-            for c in range(self.coupling-1):
-                h_net1 = PermuteLayer(h_net1,self.num_params)
-                
+        if self.flow == 'RealNVP':
+            if self.coupling:
                 layer_temp = CoupledDenseLayer(h_net1,100)
                 h_net1 = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+                
+                for c in range(self.coupling-1):
+                    h_net1 = PermuteLayer(h_net1,self.num_params)
+                    
+                    layer_temp = CoupledDenseLayer(h_net1,100)
+                    h_net1 = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        elif self.flow == 'IAF':
+            layer_temp = IAFDenseLayer(h_net1,200,1,L=self.coupling,cond_bias=False)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
         
         self.kernel_weights = lasagne.layers.get_output(h_net1,ep)
         h_net1 = lasagne.layers.ReshapeLayer(h_net1,
@@ -680,17 +697,24 @@ class Conv2D_BHN_AL(Base_BHN):
         h_net = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
-        if self.coupling:
-            layer_temp = CoupledDenseLayer(h_net,200)
-            h_net = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
-            
-            for c in range(self.coupling-1):
-                h_net = PermuteLayer(h_net,self.num_params)
-                
+        if self.flow == 'RealNVP':
+            if self.coupling:
                 layer_temp = CoupledDenseLayer(h_net,200)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+                
+                for c in range(self.coupling-1):
+                    h_net = PermuteLayer(h_net,self.num_params)
+                    
+                    layer_temp = CoupledDenseLayer(h_net,200)
+                    h_net = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        elif self.flow == 'IAF':
+            layer_temp = IAFDenseLayer(h_net,200,1,L=self.coupling,cond_bias=False)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
         
         self.h_net = h_net
         self.weights = lasagne.layers.get_output(h_net,ep)
@@ -832,17 +856,24 @@ class HyperCNN_CW(Base_BHN):
                                              (self.n_kernels,) + \
                                              (np.prod(self.kernel_shape),))
 
-        if self.coupling:
-            layer_temp = CoupledDenseLayer(h_net1,self.kernel_size )
-            h_net1 = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
-
-            for c in range(self.coupling-1):
-                h_net1 = ReverseLayer(h_net1,np.prod(self.kernel_shape))
-                
+        if self.flow == 'RealNVP':
+            if self.coupling:
                 layer_temp = CoupledDenseLayer(h_net1,self.kernel_size )
                 h_net1 = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+
+                for c in range(self.coupling-1):
+                    h_net1 = ReverseLayer(h_net1,np.prod(self.kernel_shape))
+                    
+                    layer_temp = CoupledDenseLayer(h_net1,self.kernel_size )
+                    h_net1 = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        elif self.flow == 'IAF':
+            layer_temp = IAFDenseLayer(h_net1,200,1,L=self.coupling,cond_bias=False)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
 
         h_net1 = lasagne.layers.ReshapeLayer(h_net1,
                                              (1, self.n_kernels *
@@ -861,17 +892,24 @@ class HyperCNN_CW(Base_BHN):
         
 
         # MLP coupling
-        if self.coupling:
-            layer_temp = CoupledDenseLayer(h_net2,self.num_mlp_params )
-            h_net2 = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
-            
-            for c in range(self.coupling-1):
-                h_net2 = ReverseLayer(h_net2,self.num_mlp_params)
-                
+        if self.flow == 'RealNVP':
+            if self.coupling:
                 layer_temp = CoupledDenseLayer(h_net2,self.num_mlp_params )
                 h_net2 = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+                
+                for c in range(self.coupling-1):
+                    h_net2 = ReverseLayer(h_net2,self.num_mlp_params)
+                    
+                    layer_temp = CoupledDenseLayer(h_net2,self.num_mlp_params )
+                    h_net2 = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        elif self.flow == 'IAF':
+            layer_temp = IAFDenseLayer(h_net2,200,1,L=self.coupling,cond_bias=False)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
 
         
         h_net = lasagne.layers.ConcatLayer([h_net1,h_net2],1)
@@ -1030,17 +1068,24 @@ class HyperWN_CNN(Base_BHN):
         h_net = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
-        if self.coupling:
-            layer_temp = CoupledWNDenseLayer(h_net,200)
-            h_net = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
-            
-            for c in range(self.coupling-1):
-                h_net = PermuteLayer(h_net,self.num_params)
-                
+        if self.flow == 'RealNVP':
+            if self.coupling:
                 layer_temp = CoupledWNDenseLayer(h_net,200)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+                
+                for c in range(self.coupling-1):
+                    h_net = PermuteLayer(h_net,self.num_params)
+                    
+                    layer_temp = CoupledWNDenseLayer(h_net,200)
+                    h_net = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        elif self.flow == 'IAF':
+            layer_temp = IAFDenseLayer(h_net,200,1,L=self.coupling,cond_bias=False)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
         
         self.h_net = h_net
         self.weights = lasagne.layers.get_output(h_net,ep)
@@ -1233,17 +1278,24 @@ class HyperCNN(Base_BHN):
         h_net = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
-        if self.coupling:
-            layer_temp = CoupledWNDenseLayer(h_net,200)
-            h_net = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
-            
-            for c in range(self.coupling-1):
-                h_net = PermuteLayer(h_net,self.num_params)
-                
+        if self.flow == 'RealNVP':
+            if self.coupling:
                 layer_temp = CoupledWNDenseLayer(h_net,200)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+                
+                for c in range(self.coupling-1):
+                    h_net = PermuteLayer(h_net,self.num_params)
+                    
+                    layer_temp = CoupledWNDenseLayer(h_net,200)
+                    h_net = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        elif self.flow == 'IAF':
+            layer_temp = IAFDenseLayer(h_net,200,1,L=self.coupling,cond_bias=False)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
         
         if self.extra_linear:
             layer_temp = ConvexBiasLayer(h_net)
@@ -1369,23 +1421,31 @@ class BHN_Q_Network(Base_BHN):
         h_net = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
         
-        if self.coupling:
-            if self.wn:
-                layer_temp = CoupledWNDenseLayer(h_net,self.coupling_dim)
-            else:
-                layer_temp = CoupledDenseLayer(h_net,self.coupling_dim)
-            h_net = IndexLayer(layer_temp,0)
-            logdets_layers.append(IndexLayer(layer_temp,1))
-            
-            for c in range(self.coupling-1):
-                h_net = PermuteLayer(h_net,self.num_params)
-                
+        # This one (only) allows us to NOT use WN layer (but there's no real reason to do that FWICT)
+        if self.flow == 'RealNVP':
+            if self.coupling:
                 if self.wn:
                     layer_temp = CoupledWNDenseLayer(h_net,self.coupling_dim)
                 else:
                     layer_temp = CoupledDenseLayer(h_net,self.coupling_dim)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
+                
+                for c in range(self.coupling-1):
+                    h_net = PermuteLayer(h_net,self.num_params)
+                    
+                    if self.wn:
+                        layer_temp = CoupledWNDenseLayer(h_net,self.coupling_dim)
+                    else:
+                        layer_temp = CoupledDenseLayer(h_net,self.coupling_dim)
+                    h_net = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        elif self.flow == 'IAF':
+            layer_temp = IAFDenseLayer(h_net,200,1,L=self.coupling,cond_bias=False)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
         
         self.h_net = h_net
         self.weights = lasagne.layers.get_output(h_net,ep)
