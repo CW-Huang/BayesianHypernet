@@ -57,6 +57,7 @@ class Base_BHN(object):
                  srng = RandomStreams(seed=427),
                  opt='adam',
                  prior = log_normal,
+                 output_type = 'categorical',
                  init_batch = None):
         
         self.__dict__.update(locals())
@@ -151,7 +152,21 @@ class Base_BHN(object):
         of the variance
         """
         self.kl = (self.logqw - self.logpw).mean()
-        self.logpyx = - cc(self.y,self.target_var).mean()
+        if self.output_type == 'categorical':
+            # MOVED FROM _get_primary_net (TODO: check it didn't break shit)
+            p_net.nonlinearity = nonlinearities.softmax
+            y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
+            self.p_net = p_net
+            self.y = y
+            self.logpyx = - cc(self.y,self.target_var).mean()
+        elif self.output_type == 'real':
+            p_net.nonlinearity = nonlinearities.linear
+            y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
+            self.p_net = p_net
+            self.y = y
+            self.logpyx = - se(self.y,self.target_var).mean()
+        else:
+            assert False
         self.loss = - (self.logpyx - \
                        self.weight * self.kl/T.cast(self.dataset_size,floatX))
 
