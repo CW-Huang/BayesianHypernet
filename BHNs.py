@@ -153,17 +153,8 @@ class Base_BHN(object):
         """
         self.kl = (self.logqw - self.logpw).mean()
         if self.output_type == 'categorical':
-            # MOVED FROM _get_primary_net (TODO: check it didn't break shit)
-            p_net.nonlinearity = nonlinearities.softmax
-            y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
-            self.p_net = p_net
-            self.y = y
             self.logpyx = - cc(self.y,self.target_var).mean()
         elif self.output_type == 'real':
-            p_net.nonlinearity = nonlinearities.linear
-            y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
-            self.p_net = p_net
-            self.y = y
             self.logpyx = - se(self.y,self.target_var).mean()
         else:
             assert False
@@ -300,9 +291,8 @@ class MLPWeightNorm_BHN(Base_BHN):
                  n_classes=10,
                  **kargs):
         
-        self.n_hiddens = n_hiddens
-        self.n_units = n_units
-        self.n_classes = n_classes
+        self.__dict__.update(locals())
+
         self.weight_shapes = list()        
         self.weight_shapes.append((784,n_units))
         for i in range(1,n_hiddens):
@@ -310,7 +300,6 @@ class MLPWeightNorm_BHN(Base_BHN):
         self.weight_shapes.append((n_units,n_classes))
         self.num_params = sum(ws[1] for ws in self.weight_shapes)
         
-        self.coupling=coupling
         super(MLPWeightNorm_BHN, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
                                                 srng=srng,
@@ -365,15 +354,18 @@ class MLPWeightNorm_BHN(Base_BHN):
             print p_net.output_shape
             t += num_param
             
-        p_net.nonlinearity = nonlinearities.softmax # replace the nonlinearity
-                                                    # of the last layer
-                                                    # with softmax for
-                                                    # classification
-        
-        y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
-        
-        self.p_net = p_net
-        self.y = y
+        if self.output_type == 'categorical':
+            p_net.nonlinearity = nonlinearities.softmax
+            y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
+            self.p_net = p_net
+            self.y = y
+        elif self.output_type == 'real':
+            p_net.nonlinearity = nonlinearities.linear
+            y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
+            self.p_net = p_net
+            self.y = y
+        else:
+            assert False
         
     def _get_useful_funcs(self):
         self.predict_proba = theano.function([self.input_var],self.y)
