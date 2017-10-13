@@ -7,6 +7,7 @@ Created on Sun May 14 19:49:51 2017
 """
 
 from BHNs import MLPWeightNorm_BHN
+from concrete_dropout import MLPConcreteDropout_BHN
 from ops import load_mnist
 from utils import log_normal, log_laplace
 import numpy as np
@@ -19,20 +20,20 @@ from lasagne.random import set_rng
 from theano.tensor.shared_randomstreams import RandomStreams
 
 
-# TODO: add LCS, add IAF, launch
+# TODO: add all LCS
 
 lrdefault = 1e-3    
     
 class MCdropout_MLP(object):
 
-    def __init__(self,n_hiddens,n_units):
+    def __init__(self,n_hiddens,n_units, n_inputs=784):
         
-        layer = lasagne.layers.InputLayer([None,784])
+        layer = lasagne.layers.InputLayer([None,n_inputs])
         
         self.n_hiddens = n_hiddens
         self.n_units = n_units
         self.weight_shapes = list()        
-        self.weight_shapes.append((784,n_units))
+        self.weight_shapes.append((n_inputs,n_units))
         for i in range(1,n_hiddens):
             self.weight_shapes.append((n_units,n_units))
         self.weight_shapes.append((n_units,10))
@@ -195,7 +196,7 @@ if __name__ == '__main__':
     parser.add_argument('--bs',default=32,type=int)  
     parser.add_argument('--epochs',default=10,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='BHN_MLPWN',type=str)
+    parser.add_argument('--model',default='BHN_MLPWN',type=str, choices=['BHN_MLPWN', 'BHN_MLPCD', 'MCdropout_MLP']) # TODO: concrete dropout
     parser.add_argument('--anneal',default=0,type=int)
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
@@ -204,6 +205,8 @@ if __name__ == '__main__':
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
     parser.add_argument('--flow',default='RealNVP',type=str, choices=['RealNVP', 'IAF'])
+    parser.add_argument('--alpha',default=2, type=float)
+    parser.add_argument('--beta',default=1, type=float)
     parser.add_argument('--save_dir',default='./models',type=str)
     
     
@@ -221,6 +224,8 @@ if __name__ == '__main__':
         pr = 1
     
     
+    if args.model == 'BHN_MLPCD':
+        md = 2
     if args.model == 'BHN_MLPWN':
         md = 0
     if args.model == 'MCdropout_MLP':
@@ -228,7 +233,10 @@ if __name__ == '__main__':
     
     
     path = args.save_dir
-    name = '{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}flow{}'.format(
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    name = '{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}alpha{}beta{}flow{}'.format(
         path,
         md,
         args.n_hiddens,
@@ -242,6 +250,8 @@ if __name__ == '__main__':
         args.size,
         args.seed,
         args.reinit,
+        args.alpha,
+        args.beta,
         args.flow
     )
 
@@ -282,6 +292,18 @@ if __name__ == '__main__':
         
     if args.model == 'BHN_MLPWN':
         model = MLPWeightNorm_BHN(lbda=lbda,
+                                  perdatapoint=perdatapoint,
+                                  srng = RandomStreams(seed=args.seed+2000),
+                                  prior=prior,
+                                  coupling=coupling,
+                                  n_hiddens=n_hiddens,
+                                  n_units=n_units,
+                                  flow=args.flow,
+                                  init_batch=init_batch)
+    elif args.model == 'BHN_MLPCD':
+        model = MLPConcreteDropout_BHN(lbda=lbda,
+                                  alpha=args.alpha,
+                                  beta=args.beta,
                                   perdatapoint=perdatapoint,
                                   srng = RandomStreams(seed=args.seed+2000),
                                   prior=prior,

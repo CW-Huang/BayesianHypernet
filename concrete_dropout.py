@@ -54,6 +54,22 @@ print xx.eval()
 print concrete_dropout(pp, xx).eval()
 
 
+
+
+
+
+
+
+
+
+# TODO: for the original concrete dropout, we need to have a prior on the WEIGHTS not drop_probs!
+
+
+
+
+
+
+
 class ConcreteDropoutLayer(lasagne.layers.base.Layer):
     def __init__(self, incoming, 
                     drop_probs=None, temp=0.1, eps=1e-7, srng=srng,
@@ -74,20 +90,18 @@ class ConcreteDropoutLayer(lasagne.layers.base.Layer):
         x = inputs
         eps = self.eps
         temp = self.temp
-        rng = self.srng
-        unif_noise = rng.uniform(size=x.shape)
-        p = self.drop_probs
+        unif_noise = self.srng.uniform(size=x.shape)
 
-        # TODO: case where the drop_prob is different for different units
+        # TODO: case where the drop_prob is different for different units (I think I did it now? test it!)
         smooth_dropout_mask = (
-            T.log(p + eps)
-            - T.log(1. - p + eps)
+            T.log(self.drop_probs + eps)
+            - T.log(1. - self.drop_probs + eps)
             + T.log(unif_noise + eps)
             - T.log(1. - unif_noise + eps)
         )
         smooth_dropout_mask = T.nnet.sigmoid(smooth_dropout_mask / temp)
 
-        retain_prob = 1. - p
+        retain_prob = 1. - self.drop_probs
         x *= (1. - smooth_dropout_mask)
         x /= retain_prob
         return x
@@ -95,6 +109,8 @@ class ConcreteDropoutLayer(lasagne.layers.base.Layer):
 
 
 
+# N.B.: ws[1] --> ws[0] (i.e. we drop out INPUTS to units (starting in input space))
+# TODO: we should maybe still have a prior on the magnitudes of the weights?
 class MLPConcreteDropout_BHN(Base_BHN):
     """
     Hypernet with dense coupling layer outputing posterior of dropout params 
@@ -103,6 +119,7 @@ class MLPConcreteDropout_BHN(Base_BHN):
 
     
     def __init__(self,
+            lbda=1, # TODO: add a prior for the weights
                  alpha=2, # alpha > beta ==> we prefer units to have high dropout probability (simplicity prior)
                  beta=1,
                  perdatapoint=False,
@@ -122,7 +139,7 @@ class MLPConcreteDropout_BHN(Base_BHN):
         for i in range(1,n_hiddens):
             self.weight_shapes.append((n_units,n_units))
         self.weight_shapes.append((n_units,n_classes))
-        self.num_params = sum(ws[1] for ws in self.weight_shapes)
+        self.num_params = sum(ws[0] for ws in self.weight_shapes)
         
         self.coupling = coupling
         #
@@ -179,12 +196,13 @@ class MLPConcreteDropout_BHN(Base_BHN):
         p_net = lasagne.layers.InputLayer([None,784])
         inputs = {p_net:self.input_var}
         for ws in self.weight_shapes:
-            # only need ws[1] parameters 
+            # only need ws[0] parameters 
             # just like we would rescale the incoming weights for every activation, we now drop the activations for that activation
-            num_param = ws[1]
-            drop_prob = self.drop_probs[:,t:t+num_param].reshape((self.wd1,ws[1]))
-            p_net = lasagne.layers.DenseLayer(p_net,ws[1])
+            num_param = ws[0]
+            drop_prob = self.drop_probs[:,t:t+num_param].reshape((self.wd1,num_param))
             p_net = ConcreteDropoutLayer(p_net, drop_prob, srng=self.srng)
+            #
+            p_net = lasagne.layers.DenseLayer(p_net,ws[1])
             #print p_net.output_shape
             t += num_param
             

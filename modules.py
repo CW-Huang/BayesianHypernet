@@ -26,6 +26,7 @@ delta = 0.001
 
 
 
+# TODO: separate primary/hnet layers!
     
 
 
