@@ -8,7 +8,7 @@ import subprocess
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
-parser.add_argument('--hours_per_job', type=int, default=1, help="expected run time, in hours")
+parser.add_argument('--hours_per_job', type=int, default=3, help="expected run time, in hours")
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
 
@@ -117,9 +117,9 @@ job_prefix += exp_script
 
 
 grid = [] 
-#grid += [["coupling", ['4', '8', '12', '16']]]
-#grid += [["lr0", ['.001', '.0001']]]
-#grid += [["reinit", ['0', '1']]]
+grid += [["coupling", ['4', '8', '12', '16']]]
+grid += [["lr0", ['.001', '.0001']]]
+grid += [["reinit", ['0', '1']]]
 #grid += [["seed", ['1', '2']]]
 
 # not really a grid...
