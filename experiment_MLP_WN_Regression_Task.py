@@ -111,8 +111,6 @@ def evaluate_model(predict,X,Y,n_mc=100,max_n=100):
             x = X[j*max_n:(j+1)*max_n]
             MCt[i,j*max_n:(j+1)*max_n] = predict(x)
 
-
-    print ("MC Samples", MCt)
     Y_pred = MCt.mean(0)
     Y_true = Y
     RMSE = rmse(Y_pred, Y_true)
@@ -203,7 +201,7 @@ if __name__ == '__main__':
     parser.add_argument('--bs',default=32,type=int)  
     parser.add_argument('--epochs',default=1000,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='BHN',type=str, help='BHN, MCDropout, Backprop')
+    parser.add_argument('--model',default='BHN',type=str, choices=['BHN', 'MCDropout', 'Backprop'])
     parser.add_argument('--anneal',default=0,type=int)
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=50,type=int)
@@ -211,7 +209,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=0,type=int)
-    parser.add_argument('--data_name',default='boston',type=str)
+    parser.add_argument('--data_name',default='boston',type=str, choices=['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year'])
     parser.add_argument('--flow',default='IAF',type=str, choices=['RealNVP', 'IAF'])
     parser.add_argument('--save_dir',default='./models',type=str)
     parser.add_argument('--save_results',default='./results/',type=str)
@@ -322,7 +320,7 @@ if __name__ == '__main__':
     	data = np.loadtxt('./regression_datasets/yach_data.txt')
 
     elif dataset_name == "year":
-    	raise Exception('dataset too big!!! TO DO')
+    	raise Exception('Need to process data - convert .txt to .csv')
 
     else:
     	raise Exception('Need a valid dataset')
