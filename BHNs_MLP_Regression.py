@@ -382,9 +382,11 @@ class MLPWeightNorm_BHN(Base_BHN):
 
 class MCdropout_MLP(object):
 
-    def __init__(self,n_hiddens,n_units):
+    def __init__(self,n_hiddens,n_units, input_dim=1,):
+
+        self.input_dim = input_dim
         
-        layer = lasagne.layers.InputLayer([None,8])
+        layer = lasagne.layers.InputLayer([None,self.input_dim])
         
         self.n_hiddens = n_hiddens
         self.n_units = n_units
@@ -440,8 +442,7 @@ class MCdropout_MLP(object):
         
         print '\tgetting useful_funcs'
         self.predict_proba = theano.function([self.input_var],self.y)
-        self.predict = theano.function([self.input_var],self.y_det)
-
+        self.predict = theano.function([self.input_var],self.y_stochastic)
         self.predict_stochastic = theano.function([self.input_var], self.y_stochastic)
         
     def train_func(self,x,y,n,lr=lrdefault,w=1.0):
@@ -470,5 +471,93 @@ class MCdropout_MLP(object):
         return notes
 
     
+
+
+
+
+
+
+class Backprop_MLP(object):
+
+    def __init__(self,n_hiddens,n_units, input_dim=1):
+
+        self.input_dim = input_dim
+        
+        layer = lasagne.layers.InputLayer([None,self.input_dim])
+        
+        self.n_hiddens = n_hiddens
+        self.n_units = n_units
+        self.weight_shapes = list()        
+        self.weight_shapes.append((13,n_units))
+        for i in range(1,n_hiddens):
+            self.weight_shapes.append((n_units,n_units))
+        self.weight_shapes.append((n_units,1))
+        self.num_params = sum(ws[1] for ws in self.weight_shapes)
+        
+        
+        for j,ws in enumerate(self.weight_shapes):
+            layer = lasagne.layers.DenseLayer(
+                layer,ws[1],
+                nonlinearity=lasagne.nonlinearities.rectify
+            )
+            if j!=len(self.weight_shapes)-1:
+                layer = lasagne.layers.dropout(layer, p=0)
+        
+        ### Regression : linear
+        layer.nonlinearity = lasagne.nonlinearities.linear
+
+        self.input_var = T.matrix('input_var')
+        self.target_var = T.matrix('target_var')
+        self.learning_rate = T.scalar('leanring_rate')
+        
+        self.layer = layer
+        self.y = lasagne.layers.get_output(layer,self.input_var)
+        self.y_det = lasagne.layers.get_output(layer,self.input_var,
+                                               deterministic=True)
+        
+        losses = lasagne.objectives.squared_error(self.y, self.target_var)
+
+        self.loss = losses.mean()
+        self.params = lasagne.layers.get_all_params(self.layer)
+        self.updates = lasagne.updates.adam(self.loss,self.params,
+                                            self.learning_rate)
+
+        print '\tgetting train_func'
+        self.train_func_ = theano.function([self.input_var,
+                                            self.target_var,
+                                            self.learning_rate],
+                                           self.loss,
+                                           updates=self.updates)
+        
+        print '\tgetting useful_funcs'
+        self.predict_proba = theano.function([self.input_var],self.y)
+        self.predict = theano.function([self.input_var],self.y)
+
+        
+    def train_func(self,x,y,n,lr=lrdefault,w=1.0):
+        return self.train_func_(x,y,lr)
+
+    def save(self,save_path,notes=[]):
+        np.save(save_path, [p.get_value() for p in self.params]+notes)
+
+    def load(self,save_path):
+        values = np.load(save_path)
+        notes = values[-1]
+        values = values[:-1]
+
+        if len(self.params) != len(values):
+            raise ValueError("mismatch: got %d values to set %d parameters" %
+                             (len(values), len(self.params)))
+
+        for p, v in zip(self.params, values):
+            if p.get_value().shape != v.shape:
+                raise ValueError("mismatch: parameter has shape %r but value to "
+                                 "set has shape %r" %
+                                 (p.get_value().shape, v.shape))
+            else:
+                p.set_value(v)
+
+        return notes
+
 
 

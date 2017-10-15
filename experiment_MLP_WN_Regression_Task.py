@@ -9,7 +9,7 @@ import pandas as pd
 """@author: Riashat Islam
 """
 
-from BHNs_MLP_Regression import MLPWeightNorm_BHN, MCdropout_MLP
+from BHNs_MLP_Regression import MLPWeightNorm_BHN, MCdropout_MLP, Backprop_MLP
 from ops import load_mnist
 from utils import log_normal, log_laplace
 import numpy as np
@@ -20,6 +20,7 @@ import theano.tensor as T
 import os
 from lasagne.random import set_rng
 from theano.tensor.shared_randomstreams import RandomStreams
+import matplotlib.pyplot as plt
 
 lrdefault = 1e-3    
     
@@ -71,9 +72,9 @@ def train_model(train_func,predict_func,X,Y,Xv,Yv,
             t+=1
 
 
-        tr_rmse = evaluate_model(model.predict, X, Y, n_mc=20)   
+        tr_rmse = evaluate_model(model.predict, X, Y, n_mc=50)   
         print '\n\ntr rmse at epochs {}: {}'.format(e,tr_rmse)    
-        va_rmse = evaluate_model(model.predict,Xv,Yv,n_mc=20)
+        va_rmse = evaluate_model(model.predict,Xv,Yv,n_mc=50)
         print '\n\nva rmse at epochs {}: {}'.format(e,va_rmse)    
         
         va_recs.append(va_rmse)
@@ -100,7 +101,7 @@ def train_model(train_func,predict_func,X,Y,Xv,Yv,
     
 
 
-def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100):
+def evaluate_model(predict,X,Y,n_mc=100,max_n=100):
     MCt = np.zeros((n_mc,X.shape[0],1))
     
     N = X.shape[0]
@@ -108,8 +109,10 @@ def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100):
     for i in range(n_mc):
         for j in range(num_batches):
             x = X[j*max_n:(j+1)*max_n]
-            MCt[i,j*max_n:(j+1)*max_n] = predict_proba(x)
+            MCt[i,j*max_n:(j+1)*max_n] = predict(x)
 
+
+    print ("MC Samples", MCt)
     Y_pred = MCt.mean(0)
     Y_true = Y
     RMSE = rmse(Y_pred, Y_true)
@@ -151,6 +154,37 @@ def get_dataset(data):
 
 
 
+def plot_rmse(stats1, stats2, save_results, data_name, smoothing_window=1, noshow=False):
+
+    fig = plt.figure(figsize=(16, 8))
+    ax = plt.subplot()
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontname('Arial')
+        label.set_fontsize(22)
+    plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    ax.xaxis.get_offset_text().set_fontsize(20)
+    axis_font = {'fontname':'Arial', 'size':'28'}
+
+    rewards_smoothed_1 = pd.Series(stats1).rolling(smoothing_window, min_periods=smoothing_window).mean()
+    rewards_smoothed_2 = pd.Series(stats2).rolling(smoothing_window, min_periods=smoothing_window).mean()
+
+    cum_rwd_1, = plt.plot(rewards_smoothed_1, color = "#1f77b4", linewidth=2.5, label="Training RMSE")    
+    cum_rwd_2, = plt.plot(rewards_smoothed_2, color = "#ff7f0e", linewidth=2.5, label="Validation RMSE" )  
+
+
+    plt.legend(handles=[cum_rwd_1, cum_rwd_2],  loc='lower right', prop={'size' : 16})
+    plt.xlabel("Number of Epochs",**axis_font)
+    plt.ylabel("Accuracy", **axis_font)
+    plt.title("Training and Validation RMSE", **axis_font)
+    plt.show()
+
+    fig.savefig(save_results + data_name + '_train_valid_rmse.png')
+    
+    return fig
+
+
+
+
 
 
 
@@ -169,10 +203,10 @@ if __name__ == '__main__':
     parser.add_argument('--bs',default=32,type=int)  
     parser.add_argument('--epochs',default=1000,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='BHN_MLPWN',type=str)
+    parser.add_argument('--model',default='BHN',type=str, help='BHN, MCDropout, Backprop')
     parser.add_argument('--anneal',default=0,type=int)
-    parser.add_argument('--n_hiddens',default=2,type=int)
-    parser.add_argument('--n_units',default=100,type=int)
+    parser.add_argument('--n_hiddens',default=1,type=int)
+    parser.add_argument('--n_units',default=50,type=int)
     parser.add_argument('--totrain',default=1,type=int)
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
@@ -194,10 +228,12 @@ if __name__ == '__main__':
         pr = 0
     if args.prior == 'log_laplace':
         pr = 1    
-    if args.model == 'BHN_MLPWN':
+    if args.model == 'BHN':
         md = 0
-    if args.model == 'MCdropout_MLP':
+    if args.model == 'MCDropout':
         md = 1
+    if args.model == 'Backprop':
+        md = 2
     
     
     path = args.save_dir
@@ -291,6 +327,10 @@ if __name__ == '__main__':
     else:
     	raise Exception('Need a valid dataset')
 
+
+    #normalize entire dataset
+    #data = (data - data.mean()) / data.var()
+
     train_x, train_y, valid_x, valid_y, test_x , test_y = get_dataset(data)
 
     train_y = train_y.reshape((train_y.shape[0],1))
@@ -300,15 +340,27 @@ if __name__ == '__main__':
     input_dim = train_x.shape[1]
     
 
+    ###normalizing dataset
+    train_x = (train_x - train_x.mean()) / train_x.var()
+    train_y = (train_y - train_y.mean()) / train_y.var()
+
+    valid_x = (valid_x - valid_x.mean()) / valid_x.var()
+    valid_y = (valid_y - valid_y.mean()) / valid_y.var()
+
+
+    ## DO NOT normalize test data and test labels
+    # test_x = (test_x - test_x.mean()) / test_x.var()
+    # test_y = (test_y - test_y.mean()) / test_y.var()
+
+
     if args.reinit:
         init_batch_size = 64
         init_batch = train_x[:size][-init_batch_size:]
 
-
     else:
         init_batch = None
         
-    if args.model == 'BHN_MLPWN':
+    if args.model == 'BHN':
         model = MLPWeightNorm_BHN(lbda=lbda,
                                   perdatapoint=perdatapoint,
                                   srng = RandomStreams(seed=args.seed+2000),
@@ -319,11 +371,21 @@ if __name__ == '__main__':
                                   input_dim=input_dim,
                                   flow=args.flow,
                                   init_batch=init_batch)
-    elif args.model == 'MCdropout_MLP':
+    elif args.model == 'MCDropout':
         model = MCdropout_MLP(n_hiddens=n_hiddens,
-                              n_units=n_units)
+                              n_units=n_units,
+                              input_dim=input_dim)
+
+
+    elif args.model =='Backprop':
+        model = Backprop_MLP(n_hiddens=n_hiddens,
+                              n_units=n_units,
+                              input_dim=input_dim)
+
     else:
         raise Exception('no model named `{}`'.format(args.model))
+
+
 
     va_rec_name = name+'_recs'
     tr_rec_name = name+'_recs_train' # TODO (we're already saving the valid_recs!)
@@ -358,22 +420,32 @@ if __name__ == '__main__':
                             valid_x,valid_y)
     print 'valid acc: {}'.format(va_rmse)
     
-    te_rmse = evaluate_model(model.predict_proba,
-                            test_x,test_y)
-    print 'test acc: {}'.format(te_rmse)
+    ##### for test accuracy
+    # te_rmse = evaluate_model(model.predict_proba,
+    #                         test_x,test_y)
+    # print 'test acc: {}'.format(te_rmse)
 
 
-    np.save(args.save_results + args.data_name + "_trainining_rmse.npy", tr_rmse)
-    np.save(args.save_results + args.data_name + "_validation_rmse.npy", va_rmse)
-    np.save(args.save_results + args.data_name + "_test_rmse.npy", te_rmse)
+    if args.model == 'BHN':
+        np.save(args.save_results + args.data_name +  '_model_' + args.model + '_coupling_' + str(args.coupling) + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_all_training_rmse.npy", all_trainining_rmse)
+        np.save(args.save_results + args.data_name +  '_model_' + args.model + '_coupling_' + str(args.coupling) + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_all_validation_rmse.npy", all_validation_rmse)
+
+        np.save(args.save_results + args.data_name +  '_model_' + args.model + '_coupling_' + str(args.coupling) + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_training_rmse.npy", tr_rmse)
+        np.save(args.save_results + args.data_name +  '_model_' + args.model + '_coupling_' + str(args.coupling) + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_validation_rmse.npy", va_rmse)
 
 
-    np.save(args.save_results + args.data_name + "_all_training_rmse.npy", all_trainining_rmse)
-    np.save(args.save_results + args.data_name +  "_all_validation_rmse.npy", all_validation_rmse)
+    else:
+        np.save(args.save_results  + args.data_name +  '_model_' + args.model  + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_all_training_rmse.npy", all_trainining_rmse)
+        np.save(args.save_results  + args.data_name +  '_model_' + args.model  + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_all_validation_rmse.npy", all_validation_rmse)
+
+        np.save(args.save_results  + args.data_name +  '_model_' + args.model  + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_training_rmse.npy", tr_rmse)
+        np.save(args.save_results  + args.data_name +  '_model_' + args.model  + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_validation_rmse.npy", va_rmse)
 
 
+    # print ("TEST ACCURACY", te_rmse)
+    # for plotting
+    # plot_rmse(all_trainining_rmse, all_validation_rmse, args.save_results, args.data_name)
 	
-
 
 
 
