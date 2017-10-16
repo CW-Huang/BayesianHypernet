@@ -10,15 +10,15 @@ from keras.layers.core import Lambda
 
 
 # formerly env.mc_dropout_act
-def mc_greedy(model, input_tm, num_mc_samples=50):
+def mc_greedy(model, input_tm, n_mc_samples=50):
     """
     Sample and average several q-values, return the greedy action
     """
-    #num_mc_samples = 50
+    #n_mc_samples = 50
     q_value = model.predict(input_tm.astype("float32"))
-    all_q_values = np.zeros(shape=(num_mc_samples, q_value.shape[1]))
+    all_q_values = np.zeros(shape=(n_mc_samples, q_value.shape[1]))
 
-    for m in range(num_mc_samples):
+    for m in range(n_mc_samples):
         q_value = model.predict(input_tm.astype("float32"))
         all_q_values[m, :] = q_value
 
@@ -124,13 +124,13 @@ class ExperienceReplay(object):
     def get_batch(self, model, batch_size=10):
         len_memory = len(self.memory)
         try:
-            num_actions = model.output_shape[-1]
+            n_actions = model.output_shape[-1]
         except:
-            num_actions = 3
-        #print "num_actions", num_actions
+            n_actions = 3
+        #print "n_actions", num_actions
         env_dim = self.memory[0][0][0].shape[1]
         inputs = np.zeros((min(len_memory, batch_size), env_dim))
-        targets = np.zeros((inputs.shape[0], num_actions))
+        targets = np.zeros((inputs.shape[0], n_actions))
         for i, idx in enumerate(np.random.randint(0, len_memory,
                                                   size=inputs.shape[0])):
             state_t, action_t, reward_t, state_tp1 = self.memory[idx][0]
@@ -152,7 +152,7 @@ class ExperienceReplay(object):
 if __name__ == "__main__":
     # parameters
     epsilon = .1  # exploration
-    num_actions = 3  # [move_left, stay, move_right]
+    n_actions = 3  # [move_left, stay, move_right]
     epoch = 1000
     max_memory = 500
     hidden_size = 100
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
     model.add(Dense(hidden_size, activation='relu'))
     model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
-    model.add(Dense(num_actions))
+    model.add(Dense(n_actions))
     model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
     model.compile(sgd(lr=.2), "mse")
 
@@ -191,7 +191,7 @@ if __name__ == "__main__":
             input_tm1 = input_t
             # get next action
             if np.random.rand() <= epsilon:
-                action = np.random.randint(0, num_actions, size=1)
+                action = np.random.randint(0, n_actions, size=1)
             else:
                 action = env.mc_dropout_act(model, input_tm1)
 

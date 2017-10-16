@@ -54,7 +54,6 @@ class DropoutLayer(Layer):
 
             return input * self.mask
 
-dropout = DropoutLayer  # shortcut
 
 
 # TODO:
@@ -68,12 +67,12 @@ lrdefault = 1e-3
     
 class MCdropout_MLP(object):
 
-    def __init__(self,n_hiddens,n_units, output_type='categorical', n_inputs=784, n_outputs=3):
+    def __init__(self,n_hiddens,n_units, output_type='categorical', n_inputs=784, n_outputs=3, drop_prob=.5):
+        self.__dict__.update(locals())
         
         layer = lasagne.layers.InputLayer([None,n_inputs])
         
-        self.n_hiddens = n_hiddens
-        self.n_units = n_units
+
         self.weight_shapes = list()        
         self.weight_shapes.append((n_inputs,n_units))
         for i in range(1,n_hiddens):
@@ -89,7 +88,7 @@ class MCdropout_MLP(object):
             )
             self.layers.append(layer)
             if j!=len(self.weight_shapes)-1:
-                layer = dropout(layer)
+                layer = DropoutLayer(layer, p=self.drop_prob)
                 self.layers.append(layer)
         
         if output_type == 'categorical':
@@ -145,7 +144,7 @@ class MCdropout_MLP(object):
         
     def sample_qyx(self):
         """ return a function that will make predictions with a fixed random mask"""
-        masks = [np.random.binomial(1,.5, mask_size).astype('float32') for mask_size in self.mask_sizes]
+        masks = [np.random.binomial(1,1-self.drop_prob, mask_size).astype('float32') for mask_size in self.mask_sizes]
         return lambda x : self.predict_fixed_mask(x, *masks)
 
     def train_func(self,x,y,n,lr=lrdefault,w=1.0):

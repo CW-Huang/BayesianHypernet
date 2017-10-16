@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import json
 
 from theano.tensor.shared_randomstreams import RandomStreams
@@ -8,13 +10,13 @@ from keras.optimizers import sgd
 from keras import backend as K
 from keras.layers.core import Lambda
 
-from mc_dropout_qlearn import Catch, ExperienceReplay
 
 from BHNs import MLPWeightNorm_BHN
 from concrete_dropout import MLPConcreteDropout_BHN
 #from utils import log_normal, log_laplace
 
-from dropout import MCdropout_MLP
+from catch.mc_dropout_qlearn import Catch, ExperienceReplay
+from catch.dropout import MCdropout_MLP
 
 # ---------------------------------------------------------------
 import argparse
@@ -24,9 +26,11 @@ import numpy
 np = numpy
 
 parser = argparse.ArgumentParser()
+#parser.add_argument('--drop_prob', type=float, default=.5)
 parser.add_argument('--exploration', type=str, default='RLSVI', choices=['epsilon_greedy', 'RLSVI', 'TS'])
-parser.add_argument('--lr', type=float, default=.1)
+parser.add_argument('--lr', type=float, default=.01)
 parser.add_argument('--model', type=str, default='BHN_WN', choices=['MCdropout', 'MLE', 'BHN_WN'])
+parser.add_argument('--n_epochs', type=int, default=10000)
 #
 #parser.add_argument('--optimizer', type=str, default='sgd', choices=['adam', 'momentum', 'sgd'])
 parser.add_argument('--save_dir', type=str, default=None, help="save_dir must be set in order to save results!")
@@ -82,53 +86,45 @@ else:
 epsilon = .1  # exploration
 
 grid_size = 10
-num_actions = 3  # [move_left, stay, move_right]
+n_actions = 3  # [move_left, stay, move_right]
 
-epoch = 1000
-max_memory = 500
+max_memory = 1000
 
-batch_size = 50
+batch_size = 32
 
-hidden_size = 100
-num_layers = 3
+hidden_size = 200
+n_layers = 2
 init_batch=None
 
 
-# TODO: optimizer
+# select model
 if model == 'BHN_WN':
-    framework = 'lasagne'
     model = MLPWeightNorm_BHN(lbda=1,
                               n_inputs=grid_size**2,
-                              n_classes=num_actions,
-                              srng = RandomStreams(seed=args.seed+2000),
+                              n_classes=n_actions,
+                              srng = RandomStreams(seed=seed),
                               coupling=4,
-                              n_hiddens=num_layers,
+                              n_hiddens=n_layers,
                               n_units=hidden_size,
                               flow='IAF',
                               output_type='real',
                               init_batch=init_batch)
 elif model == 'MCdropout':
-    framework = 'lasagne'
-    model = MCdropout_MLP(
+    model = MCdropout_MLP(drop_prob=.5,
                               n_inputs=grid_size**2,
-                              n_outputs=num_actions,
-                              n_hiddens=num_layers,
+                              n_outputs=n_actions,
+                              n_hiddens=n_layers,
                               n_units=hidden_size,
                               output_type='real')
-# TODO:
 elif model == 'MLE':
-    framework = 'keras'
-    model = Sequential()
-    model.add(Dense(hidden_size, input_shape=(grid_size**2,), activation='relu'))
-    model.add(Dense(hidden_size, activation='relu'))
-    model.add(Dense(num_actions))
-    model.compile(sgd(lr=lr), "mse")
+    model = MCdropout_MLP(drop_prob=0,
+                              n_inputs=grid_size**2,
+                              n_outputs=n_actions,
+                              n_hiddens=n_layers,
+                              n_units=hidden_size,
+                              output_type='real')
 else:
     assert False
-
-
-# TODO: If you want to continue training from a previous model, just uncomment the line bellow
-# model.load_weights("model.h5")
 
 # Define environment/game
 env = Catch(grid_size)
@@ -137,29 +133,35 @@ env = Catch(grid_size)
 exp_replay = ExperienceReplay(max_memory=max_memory)
 
 # Train
-win_cnt = 0
-for e in range(epoch):
+win_counts = []
+win_count = 0
+num_consecutive_wins = 0
+best = 0
+for e in range(n_epochs):
     loss = 0.
     env.reset()
     game_over = False
+
     # get initial input
     input_t = env.observe().astype("float32")
 
+    # exploration policy
     if exploration == 'epsilon_greedy':
         def policy(state):
             if np.random.rand() <= epsilon:
-                return  np.random.randint(0, num_actions, size=1)
+                return  np.random.randint(0, n_actions, size=1)
             else:
-                return  mc_greedy(model, state, num_mc_samples=20) # TODO: hardcoded
+                return  mc_greedy(model, state, n_mc_samples=20) # TODO: hardcoded
     elif exploration == 'RLSVI':
         # sample a q-network for the entire episode
         policy = lambda x: model.sample_qyx()(x).argmax()
     elif exploration == 'TS':
         # sample a q-network for each action
-        policy = lambda state: mc_greedy(model, state, num_mc_samples=1)
+        policy = lambda state: mc_greedy(model, state, n_mc_samples=1)
     else:
         assert False
 
+    # play one episode
     while not game_over:
         input_tm1 = (input_t).astype("float32")
         
@@ -169,7 +171,16 @@ for e in range(epoch):
         # apply action, get rewards and new state
         input_t, reward, game_over = env.act(action)
         if reward == 1:
-            win_cnt += 1
+            win_count += 1
+            num_consecutive_wins += 1
+        else:
+            num_consecutive_wins = 0
+
+        # save best
+        if num_consecutive_wins > best:
+            best = num_consecutive_wins
+            np.save(os.path.join(save_dir, 'win_counts.npy'), win_counts)
+            model.save(os.path.join(save_dir, '.params'))
 
         # store experience
         exp_replay.remember([input_tm1, action, reward, input_t], game_over)
@@ -178,19 +189,14 @@ for e in range(epoch):
         inputs, targets = exp_replay.get_batch(model, batch_size=batch_size)
 
         loss += model.train_func(inputs.astype("float32"), targets.astype('float32'),batch_size, lr)
-    print("Epoch {:03d}/999 | Loss {:.4f} | Win count {}".format(e, loss, win_cnt))
+
+    win_counts.append(win_count)
+    print("n_epochs {:03d}/{} | Loss {:.4f} | Win count {}".format(e, n_epochs, loss, win_count))
 
 
-assert False # TODO
+np.save(os.path.join(save_dir, 'win_counts_final.npy'), win_counts)
+model.save(os.path.join(save_dir, '.params_final'))
 
-
-if framework == 'keras':
-    # Save trained model weights and architecture, this will be used by the visualization code
-    model.save_weights("model.h5", overwrite=True)
-elif framework == 'lasagne':
-    pass # TODO: saving!
-with open("model.json", "w") as outfile:
-    json.dump(model.to_json(), outfile)
 
 
 
