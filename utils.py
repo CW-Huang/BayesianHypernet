@@ -39,8 +39,9 @@ def weighted_sum(weights):
 def log_stdnormal(x):
     return c - 0.5 * x**2 
 
-
 def log_normal(x,mean,log_var,eps=0.0):
+    if type(x) == list:
+        x = T.concatenate([w.flatten() for w in x])
     return c - log_var/2. - (x - mean)**2 / (2. * T.exp(log_var) + eps)
 
 

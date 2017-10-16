@@ -88,6 +88,7 @@ class Base_BHN(object):
         
         params0 = lasagne.layers.get_all_param_values([self.h_net,self.p_net])
         params = lasagne.layers.get_all_params([self.h_net,self.p_net])
+        # TODO: below
         updates = {p:p0 for p, p0 in zip(params,params0)}
         self.reset = theano.function([],None,
                                       updates=updates)
@@ -382,7 +383,9 @@ class MLPWeightNorm_BHN(Base_BHN):
 
 class MCdropout_MLP(object):
 
-    def __init__(self,n_hiddens,n_units, input_dim=1,):
+    def __init__(self,n_hiddens,n_units, input_dim=1, 
+            drop_prob=.0005, prior=log_normal, lbda=1.):
+        self.__dict__.update(locals())
 
         self.input_dim = input_dim
         
@@ -404,7 +407,7 @@ class MCdropout_MLP(object):
                 nonlinearity=lasagne.nonlinearities.rectify
             )
             if j!=len(self.weight_shapes)-1:
-                layer = lasagne.layers.dropout(layer, p=0.005)
+                layer = lasagne.layers.dropout(layer, p=drop_prob)
         
         ### Classification : softmax
         #layer.nonlinearity = lasagne.nonlinearities.softmax
@@ -429,6 +432,12 @@ class MCdropout_MLP(object):
         losses = lasagne.objectives.squared_error(self.y_stochastic, self.target_var)
 
         self.loss = losses.mean()
+        # add regularization
+        self.weights = lasagne.layers.get_all_params(layer, regularizable=True)
+        self.logpw = self.prior(self.weights,0.,-T.log(self.lbda)).sum()
+        self.dataset_size = T.scalar('dataset_size')
+        self.loss -= self.logpw / self.dataset_size
+
         self.params = lasagne.layers.get_all_params(self.layer)
         self.updates = lasagne.updates.adam(self.loss,self.params,
                                             self.learning_rate)
@@ -436,7 +445,8 @@ class MCdropout_MLP(object):
         print '\tgetting train_func'
         self.train_func_ = theano.function([self.input_var,
                                             self.target_var,
-                                            self.learning_rate],
+                                            self.learning_rate,
+                                            self.dataset_size],
                                            self.loss,
                                            updates=self.updates)
         
@@ -446,7 +456,7 @@ class MCdropout_MLP(object):
         self.predict_stochastic = theano.function([self.input_var], self.y_stochastic)
         
     def train_func(self,x,y,n,lr=lrdefault,w=1.0):
-        return self.train_func_(x,y,lr)
+        return self.train_func_(x,y,lr, n)
 
     def save(self,save_path,notes=[]):
         np.save(save_path, [p.get_value() for p in self.params]+notes)
@@ -479,7 +489,9 @@ class MCdropout_MLP(object):
 
 class Backprop_MLP(object):
 
-    def __init__(self,n_hiddens,n_units, input_dim=1):
+    def __init__(self,n_hiddens,n_units, input_dim=1,
+                 prior=log_normal, lbda=1.):
+        self.__dict__.update(locals())
 
         self.input_dim = input_dim
         
@@ -517,7 +529,14 @@ class Backprop_MLP(object):
         
         losses = lasagne.objectives.squared_error(self.y, self.target_var)
 
+
         self.loss = losses.mean()
+        # add regularization
+        self.weights = lasagne.layers.get_all_params(layer, regularizable=True)
+        self.logpw = self.prior(self.weights,0.,-T.log(self.lbda)).sum()
+        self.dataset_size = T.scalar('dataset_size')
+        self.loss -= self.logpw / self.dataset_size
+
         self.params = lasagne.layers.get_all_params(self.layer)
         self.updates = lasagne.updates.adam(self.loss,self.params,
                                             self.learning_rate)
@@ -525,7 +544,8 @@ class Backprop_MLP(object):
         print '\tgetting train_func'
         self.train_func_ = theano.function([self.input_var,
                                             self.target_var,
-                                            self.learning_rate],
+                                            self.learning_rate,
+                                            self.dataset_size],
                                            self.loss,
                                            updates=self.updates)
         
@@ -535,7 +555,7 @@ class Backprop_MLP(object):
 
         
     def train_func(self,x,y,n,lr=lrdefault,w=1.0):
-        return self.train_func_(x,y,lr)
+        return self.train_func_(x,y,lr, n)
 
     def save(self,save_path,notes=[]):
         np.save(save_path, [p.get_value() for p in self.params]+notes)
