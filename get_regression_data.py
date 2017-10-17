@@ -47,7 +47,11 @@ def get_dataset(data, test_inds=None):
 	return X_train, y_train, X_valid, y_valid, X_test, y_test
 
 
+# TODO: proper path!
 def get_regression_dataset(dataset_name, test_inds=None):
+    if dataset_name == "airfoil":
+    	data = np.loadtxt('./regression_datasets/airfoil_train.txt')
+
     if dataset_name == "boston":
     	#(506, 14)
     	data = np.loadtxt('./regression_datasets/boston_housing.txt')
