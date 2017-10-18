@@ -83,7 +83,7 @@ def simple_test(X, y, X_valid, y_valid,
 
     num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
 
-    WL_init = 5 * 1e-2  # 10.0 ** (-2.0 / n_layers)
+    WL_init = 1e-2  # 10.0 ** (-2.0 / n_layers)
     layers = ign.init_ign_LU(n_layers, num_params, WL_val=WL_init)
     phi_shared = make_shared_dict(layers, '%d%s')
 
@@ -100,6 +100,8 @@ def simple_test(X, y, X_valid, y_valid,
 
     batch_order = np.arange(int(N / n_batch))
 
+    burn_in = 100
+
     cost_hist = np.zeros(n_epochs)
     loglik_valid = np.zeros(n_epochs)
     for epoch in xrange(n_epochs):
@@ -110,11 +112,12 @@ def simple_test(X, y, X_valid, y_valid,
             x_batch = X[ii * n_batch:(ii + 1) * n_batch]
             y_batch = y[ii * n_batch:(ii + 1) * n_batch]
             z_noise = z_std * np.random.randn(num_params)
-            if epoch <= 1000:
+            if epoch <= burn_in:
                 current_lr = init_lr
                 prelim = False
             else:
-                current_lr = init_lr * 0.01
+                decay_fac = 1.0 - (float(epoch - burn_in) / (n_epochs - burn_in))
+                current_lr = init_lr * decay_fac
                 prelim = False
             batch_cost = trainer(x_batch, y_batch, z_noise, current_lr, prelim)
             cost += batch_cost
@@ -189,9 +192,9 @@ if __name__ == '__main__':
     np.random.seed(5645)
 
     init_lr = 0.0005
-    n_epochs = 500
+    n_epochs = 1000
     n_batch = 32
-    N = 500
+    N = 1000
     z_std = 1.0  # 1.0 is correct for the model, 0.0 is MAP
 
     primary_layers = 1
@@ -205,19 +208,19 @@ if __name__ == '__main__':
     X, y = dm_example(N)
     X_valid, y_valid = dm_example(N)
 
-    phi_trad, cost_hist_trad, loglik_valid_trad, primary_out_trad = \
-        traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_shapes)
-
     phi, cost_hist, loglik_valid, primary_out, grad_f = \
         simple_test(X, y, X_valid, y_valid,
                     n_epochs, n_batch, init_lr, weight_shapes,
                     n_layers=3, z_std=z_std)
 
+    phi_trad, cost_hist_trad, loglik_valid_trad, primary_out_trad = \
+        traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_shapes)
+
     n_samples = 500
     n_grid = 1000
     num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
 
-    x_grid = np.linspace(-0.5, 1.0, n_grid)
+    x_grid = np.linspace(-0.5, 1.5, n_grid)
     mu_trad, prec_trad = primary_out_trad(x_grid[:, None])
     std_dev_trad = np.sqrt(1.0 / prec_trad)
 
@@ -247,6 +250,8 @@ if __name__ == '__main__':
     ax2.plot(x_grid, mu_trad + 2 * std_dev_trad, 'k--', zorder=2)
     ax2.grid()
     ax2.set_title('traditional')
+    plt.xlim([-0.2, 1.3])
+    plt.ylim([-0.5, 1.2])
 
     plt.figure()
     plt.plot(loglik_valid, label='hypernet')
