@@ -3,6 +3,7 @@
 
 import lasagne
 import theano
+import pymc3 as pm
 
 import numpy as np
 from scipy.misc import logsumexp
@@ -53,6 +54,65 @@ def primary_net_f(X, theta, weight_shapes):
     return yp, y_prec
 
 
+def primary_net_pm(X_train, Y_train, weight_shapes):
+    N, D = X_train.get_value().shape
+    assert(Y_train.get_value().shape == (N,))
+    n_layers, rem = divmod(len(weight_shapes) - 1, 2)
+    assert(rem == 0)
+
+    yp = X_train
+    var_names_order = [None] * len(weight_shapes)
+    with pm.Model() as neural_network:
+        for nn in xrange(n_layers):
+            var_name = 'W_' + str(nn)
+            W0_s = weight_shapes[2 * nn]
+            assert(len(W0_s) == 2)
+            var_names_order[2 * nn] = var_name
+            W = pm.Normal(var_name, 0, sd=1, shape=W0_s)
+
+            var_name = 'b_' + str(nn)
+            b0_s = weight_shapes[2 * nn + 1]
+            assert(len(b0_s) == 1)
+            var_names_order[2 * nn + 1] = var_name
+            b = pm.Normal(var_name, 0, sd=1, shape=b0_s)
+
+            act = T.dot(yp, W) + b[None, :]  # TODO padleft, use pm. not T.
+
+            # Linear at final layer
+            yp = act if nn == n_layers - 1 else T.maximum(0.0, act)
+        assert(weight_shapes[-1] == ())
+        var_name = 'log_prec'
+        var_names_order[-1] = var_name
+        log_prec = pm.Normal(var_name, 0, sd=1)
+
+        y_prec = T.exp(log_prec)
+        pm.Normal('out', mu=yp, tau=y_prec, observed=Y_train)
+    return neural_network, var_names_order
+
+
+def hmc_net(X_train, Y_train, hypernet_f, weight_shapes,
+            restarts=100, n_iter=500):
+    num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
+
+    ann_input = theano.shared(X_train)
+    ann_output = theano.shared(Y_train[:, 0])
+    ann_model, var_names = primary_net_pm(ann_input, ann_output, weight_shapes)
+    tr = [None] * restarts
+    for rr in xrange(restarts):
+        z_noise = np.random.randn(num_params)
+        theta = hypernet_f(z_noise, False)
+        start = dict(zip(var_names, unpack(theta, weight_shapes)))
+
+        # Use deault step => use NUTS
+        # TODO decide fairest way to deal with tuning period
+        with ann_model:
+            tr[rr] = pm.sampling.sample(draws=n_iter, start=start, n_init=2000,
+                                        progressbar=True, tune=10)
+
+        # TODO now evaluate posterior predictive
+    return tr
+
+
 def loglik_primary_f(X, y, theta, weight_shapes):
     yp, y_prec = primary_net_f(X, theta, weight_shapes)
     err = yp - y
@@ -88,7 +148,7 @@ def simple_test(X, y, X_valid, y_valid,
     phi_shared = make_shared_dict(layers, '%d%s')
 
     ll_primary_f = lambda X, y, w: loglik_primary_f(X, y, w, weight_shapes)
-    hypernet_f = lambda z, prelim: ign.network_T_and_J_LU(z[None, :], phi_shared, force_diag=prelim)[0][0, :]
+    hypernet_f = lambda z, prelim=False: ign.network_T_and_J_LU(z[None, :], phi_shared, force_diag=prelim)[0][0, :]
     # TODO verify this length of size 1
     log_det_dtheta_dz_f = lambda z, prelim: T.sum(ign.network_T_and_J_LU(z[None, :], phi_shared, force_diag=prelim)[1])
     primary_f = lambda X, w: primary_net_f(X, w, weight_shapes)
@@ -96,7 +156,7 @@ def simple_test(X, y, X_valid, y_valid,
     R = ht.build_trainer(params_to_opt, N, ll_primary_f, logprior_f,
                          hypernet_f, primary_f=primary_f,
                          log_det_dtheta_dz_f=log_det_dtheta_dz_f)
-    trainer, get_err, test_loglik, primary_out, grad_f = R
+    trainer, get_err, test_loglik, primary_out, grad_f, theta_f = R
 
     batch_order = np.arange(int(N / n_batch))
 
@@ -134,7 +194,7 @@ def simple_test(X, y, X_valid, y_valid,
         print 'valid %f' % loglik_valid[epoch]
 
     phi = make_unshared_dict(phi_shared)
-    return phi, cost_hist, loglik_valid, primary_out, grad_f
+    return phi, cost_hist, loglik_valid, primary_out, grad_f, theta_f
 
 
 def traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_shapes):
@@ -192,7 +252,7 @@ if __name__ == '__main__':
     np.random.seed(5645)
 
     init_lr = 0.0005
-    n_epochs = 1000
+    n_epochs = 10  # 1000  # TODO revert
     n_batch = 32
     N = 1000
     z_std = 1.0  # 1.0 is correct for the model, 0.0 is MAP
@@ -208,13 +268,15 @@ if __name__ == '__main__':
     X, y = dm_example(N)
     X_valid, y_valid = dm_example(N)
 
-    phi, cost_hist, loglik_valid, primary_out, grad_f = \
+    phi, cost_hist, loglik_valid, primary_out, grad_f, hypernet_f = \
         simple_test(X, y, X_valid, y_valid,
                     n_epochs, n_batch, init_lr, weight_shapes,
                     n_layers=3, z_std=z_std)
 
     phi_trad, cost_hist_trad, loglik_valid_trad, primary_out_trad = \
         traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_shapes)
+
+    tr = hmc_net(X, y, hypernet_f, weight_shapes)
 
     n_samples = 500
     n_grid = 1000
@@ -236,7 +298,7 @@ if __name__ == '__main__':
         y_grid[ss, :] = mu[:, 0] + std_dev * np.random.randn()
 
     _, (ax1, ax2) = plt.subplots(1, 2, sharex=True, sharey=True)
-    ax1.plot(X[:100,:], y[:100], 'rx', zorder=0)
+    ax1.plot(X[:100, :], y[:100], 'rx', zorder=0)
     ax1.plot(x_grid, mu_grid[:5, :].T, zorder=1, alpha=0.7)
     ax1.plot(x_grid, np.mean(mu_grid, axis=0), 'k', zorder=2)
     ax1.plot(x_grid, np.percentile(y_grid, 2.5, axis=0), 'k--', zorder=2)
@@ -244,7 +306,7 @@ if __name__ == '__main__':
     ax1.grid()
     ax1.set_title('hypernet')
 
-    ax2.plot(X[:100,:], y[:100], 'rx', zorder=0)
+    ax2.plot(X[:100, :], y[:100], 'rx', zorder=0)
     ax2.plot(x_grid, mu_trad, 'k', zorder=2)
     ax2.plot(x_grid, mu_trad - 2 * std_dev_trad, 'k--', zorder=2)
     ax2.plot(x_grid, mu_trad + 2 * std_dev_trad, 'k--', zorder=2)

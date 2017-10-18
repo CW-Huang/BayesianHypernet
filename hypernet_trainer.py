@@ -72,6 +72,8 @@ def build_trainer(phi_shared, N, loglik_primary_f, logprior_f, hypernet_f,
     get_err = theano.function([X, y, z_noise, prelim], err)
 
     theta = hypernet_f(z_noise, prelim=prelim)
+    theta_f = theano.function([z_noise, prelim], theta)
+
     test_loglik = loglik_primary_f(X, y, theta)
     test_f = theano.function([X, y, z_noise, prelim], test_loglik)
 
@@ -81,7 +83,7 @@ def build_trainer(phi_shared, N, loglik_primary_f, logprior_f, hypernet_f,
         primary_out = theano.function([X, z_noise, prelim], yp)
 
     grad_f = theano.function([X, y, z_noise, prelim], grads)
-    return trainer, get_err, test_f, primary_out, grad_f
+    return trainer, get_err, test_f, primary_out, grad_f, theta_f
 
 # ============================================================================
 # Example with learning Gaussian for linear predictor
