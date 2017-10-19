@@ -3,6 +3,8 @@
 from collections import OrderedDict
 import numpy as np
 import pymc3 as pm
+from scipy.misc import logsumexp
+from scipy.stats import norm
 import theano
 import theano.tensor as T
 
@@ -142,14 +144,16 @@ def hmc_net(X_train, Y_train, X_test, initializer_f, weight_shapes,
 # Post-process pymc3 traces
 
 
-def hmc_pred(tr_list, X_test, n_layers, chk=False):
+def hmc_pred(tr_list, X_test, n_layers, y_test=None, chk=False):
     n_samples = len(tr_list)
     assert(n_samples >= 1)
     n_iter = len(tr_list[0])
     n_grid, _ = X_test.shape
+    assert(y_test is None or y_test.shape == (n_grid,))
 
     mu_test = np.zeros((n_samples, n_iter, n_grid))
     y_samples = np.zeros((n_samples, n_iter, n_grid))
+    loglik = np.nan + np.zeros((n_samples, n_iter, n_grid))
     for ss, tr in enumerate(tr_list):
         assert(len(tr) == n_iter)
 
@@ -160,6 +164,9 @@ def hmc_pred(tr_list, X_test, n_layers, chk=False):
             mu_test[ss, ii, :] = mu_test_[:, 0]
             std_dev = np.sqrt(1.0 / y_prec)
             y_samples[ss, ii, :] = mu_test[ss, ii, :] + std_dev * noise
+            if y_test is not None:
+                loglik[ss, ii, :] = \
+                    norm.logpdf(y_test, loc=mu_test[ss, ii, :], scale=std_dev)
 
         if chk:  # Assumes passed in same X_test here as to hmc_net()
             mu = tr['yp_test']
@@ -169,7 +176,10 @@ def hmc_pred(tr_list, X_test, n_layers, chk=False):
             assert(log_prec.shape == (n_iter,))
             assert(np.allclose(mu[:, :, 0], mu_test[ss, :, :]))
 
-    # TODO also report log-loss if y_test provided
+    loglik = logsumexp(loglik, axis=0) - np.log(n_samples)
+    assert(loglik.shape == (n_iter, n_grid))
+    loglik = np.mean(loglik, axis=1)  # Get average loss per example
+    assert(loglik.shape == (n_iter,))
 
     # TODO make vectorized
     mu = np.zeros((n_iter, n_grid))
@@ -179,4 +189,4 @@ def hmc_pred(tr_list, X_test, n_layers, chk=False):
         mu[ii, :] = np.mean(mu_test[:, ii, :], axis=0)
         LB[ii, :] = np.percentile(y_samples[:, ii, :], 2.5, axis=0)
         UB[ii, :] = np.percentile(y_samples[:, ii, :], 97.5, axis=0)
-    return mu, LB, UB
+    return mu, LB, UB, loglik
