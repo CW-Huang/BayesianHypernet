@@ -156,14 +156,14 @@ def hmc_pred(tr_list, X_test, n_layers, chk=False):
         noise = np.random.randn()
         for ii in xrange(n_iter):
             # TODO could use enumerate here too
-            mu_test[ss, ii, :], y_prec = \
-                mlp_pred(X_test, tr[ii], n_layers, lib=np)
+            mu_test_, y_prec = mlp_pred(X_test, tr[ii], n_layers, lib=np)
+            mu_test[ss, ii, :] = mu_test_[:, 0]
             std_dev = np.sqrt(1.0 / y_prec)
             y_samples[ss, ii, :] = mu_test[ss, ii, :] + std_dev * noise
 
         if chk:  # Assumes passed in same X_test here as to hmc_net()
-            mu = tr[ss]['yp_test']
-            log_prec = tr[ss]['log_prec']
+            mu = tr['yp_test']
+            log_prec = tr['log_prec']
             assert(mu.shape == (n_iter, n_grid, 1))
             # TODO check values too
             assert(log_prec.shape == (n_iter,))

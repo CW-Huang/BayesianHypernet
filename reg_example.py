@@ -152,12 +152,11 @@ if __name__ == '__main__':
     np.random.seed(5645)
 
     init_lr = 0.0005
-    n_epochs = 10  # 1000  # TODO revert
+    n_epochs = 3  # 1000  # TODO revert
     n_batch = 32
     N = 1000
     z_std = 1.0  # 1.0 is correct for the model, 0.0 is MAP
 
-    primary_layers = 1
     input_dim = 1
     hidden_dim = 50
     output_dim = 1
@@ -167,6 +166,8 @@ if __name__ == '__main__':
                                  ('W_1', (hidden_dim, output_dim)),
                                  ('b_1', (output_dim,)),
                                  ('log_prec', ())])
+    n_layers, rem = divmod(len(weight_shapes) - 1, 2)
+    assert(rem == 0)
 
     X, y = dm_example(N)
     X_valid, y_valid = dm_example(N)
@@ -183,8 +184,8 @@ if __name__ == '__main__':
     phi_trad, cost_hist_trad, loglik_valid_trad, primary_out_trad = \
         traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_shapes)
 
-    tr = mlp_hmc.hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=5, n_iter=20)
-    mu_hmc, LB_hmc, UB_hmc = mlp_hmc.hmc_pred(tr, x_grid[:, None], n_layers=primary_layers, chk=True)
+    tr = mlp_hmc.hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=3, n_iter=5)
+    mu_hmc, LB_hmc, UB_hmc = mlp_hmc.hmc_pred(tr, x_grid[:, None], n_layers=n_layers, chk=True)
 
     num_params = mlp_hmc.get_num_params(weight_shapes)
 
