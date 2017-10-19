@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # Ryan Turner (turnerry@iro.umontreal.ca)
 
+import cPickle as pkl
 import lasagne
 import theano
 import pymc3 as pm
@@ -54,13 +55,14 @@ def primary_net_f(X, theta, weight_shapes):
     return yp, y_prec
 
 
-def primary_net_pm(X_train, Y_train, weight_shapes):
+def primary_net_pm(X_train, Y_train, X_test, weight_shapes):
     N, D = X_train.get_value().shape
     assert(Y_train.get_value().shape == (N,))
     n_layers, rem = divmod(len(weight_shapes) - 1, 2)
     assert(rem == 0)
 
-    yp = X_train
+    yp_train = X_train
+    yp_test = X_test
     var_names_order = [None] * len(weight_shapes)
     with pm.Model() as neural_network:
         for nn in xrange(n_layers):
@@ -76,27 +78,41 @@ def primary_net_pm(X_train, Y_train, weight_shapes):
             var_names_order[2 * nn + 1] = var_name
             b = pm.Normal(var_name, 0, sd=1, shape=b0_s)
 
-            act = T.dot(yp, W) + b[None, :]  # TODO padleft, use pm. not T.
+            # TODO padleft, use pm. not T.
+            act_train = T.dot(yp_train, W) + b[None, :]
+            act_test = T.dot(yp_test, W) + b[None, :]
 
             # Linear at final layer
-            yp = act if nn == n_layers - 1 else T.maximum(0.0, act)
+            yp_train = act_train if nn == n_layers - 1 else \
+                T.maximum(0.0, act_train)
+            yp_test = act_test if nn == n_layers - 1 else \
+                T.maximum(0.0, act_test)
         assert(weight_shapes[-1] == ())
         var_name = 'log_prec'
         var_names_order[-1] = var_name
         log_prec = pm.Normal(var_name, 0, sd=1)
+        pm.Deterministic('mu_test', yp_test)
 
         y_prec = T.exp(log_prec)
-        pm.Normal('out', mu=yp, tau=y_prec, observed=Y_train)
+        pm.Normal('out', mu=yp_train, tau=y_prec, observed=Y_train)
     return neural_network, var_names_order
 
 
-def hmc_net(X_train, Y_train, hypernet_f, weight_shapes,
-            restarts=100, n_iter=500):
+def hmc_net(X_train, Y_train, X_test, hypernet_f, weight_shapes,
+            restarts=100, n_iter=500, init_scale_iter=1000):
     num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
 
     ann_input = theano.shared(X_train)
     ann_output = theano.shared(Y_train[:, 0])
-    ann_model, var_names = primary_net_pm(ann_input, ann_output, weight_shapes)
+    ann_input_test = theano.shared(X_test)
+    ann_model, var_names = primary_net_pm(ann_input, ann_output,
+                                          ann_input_test, weight_shapes)
+
+    theta_scale = [hypernet_f(np.random.randn(num_params), False)
+                   for _ in xrange(init_scale_iter)]
+    scale_est = np.var(theta_scale, axis=0)
+    assert(scale_est.shape == (num_params,))
+
     tr = [None] * restarts
     for rr in xrange(restarts):
         z_noise = np.random.randn(num_params)
@@ -105,12 +121,44 @@ def hmc_net(X_train, Y_train, hypernet_f, weight_shapes,
 
         # Use deault step => use NUTS
         # TODO decide fairest way to deal with tuning period
+        # TODO increase n_tune
         with ann_model:
-            tr[rr] = pm.sampling.sample(draws=n_iter, start=start, n_init=2000,
+            step = pm.NUTS(scaling=scale_est, is_cov=True)
+            tr[rr] = pm.sampling.sample(draws=n_iter, step=step, start=start,
                                         progressbar=True, tune=10)
 
         # TODO now evaluate posterior predictive
     return tr
+
+
+def hmc_pred(tr):
+    n_samples = len(tr)
+    assert(n_samples >= 1)
+    n_iter, n_grid, _ = tr[0]['mu_test'].shape
+
+    mu_grid = np.zeros((n_samples, n_iter, n_grid))
+    y_grid = np.zeros((n_samples, n_iter, n_grid))
+    for ss in xrange(n_samples):
+        mu = tr[ss]['mu_test']
+        log_prec = tr[ss]['log_prec']
+        assert(mu.shape == (n_iter, n_grid, 1))
+        assert(log_prec.shape == (n_iter,))
+
+        std_dev = np.sqrt(1.0 / np.exp(log_prec))
+        # Just store an MC version than do the mixture of Gauss logic
+        mu_grid[ss, :, :] = mu[:, :, 0]
+        # Note: using same noise across whole grid
+        y_grid[ss, :, :] = mu[:, :, 0] + std_dev[:, None] * np.random.randn()
+
+    # TODO make vectorized
+    mu = np.zeros((n_iter, n_grid))
+    LB = np.zeros((n_iter, n_grid))
+    UB = np.zeros((n_iter, n_grid))
+    for ii in xrange(n_iter):
+        mu[ii, :] = np.mean(mu_grid[:, ii, :], axis=0)
+        LB[ii, :] = np.percentile(y_grid[:, ii, :], 2.5, axis=0)
+        UB[ii, :] = np.percentile(y_grid[:, ii, :], 97.5, axis=0)
+    return mu, LB, UB
 
 
 def loglik_primary_f(X, y, theta, weight_shapes):
@@ -252,7 +300,7 @@ if __name__ == '__main__':
     np.random.seed(5645)
 
     init_lr = 0.0005
-    n_epochs = 10  # 1000  # TODO revert
+    n_epochs = 1000
     n_batch = 32
     N = 1000
     z_std = 1.0  # 1.0 is correct for the model, 0.0 is MAP
@@ -268,6 +316,10 @@ if __name__ == '__main__':
     X, y = dm_example(N)
     X_valid, y_valid = dm_example(N)
 
+    n_samples = 500
+    n_grid = 1000
+    x_grid = np.linspace(-0.5, 1.5, n_grid)
+
     phi, cost_hist, loglik_valid, primary_out, grad_f, hypernet_f = \
         simple_test(X, y, X_valid, y_valid,
                     n_epochs, n_batch, init_lr, weight_shapes,
@@ -276,13 +328,11 @@ if __name__ == '__main__':
     phi_trad, cost_hist_trad, loglik_valid_trad, primary_out_trad = \
         traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_shapes)
 
-    tr = hmc_net(X, y, hypernet_f, weight_shapes)
+    tr = hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=50, n_iter=20)
+    mu_hmc, LB_hmc, UB_hmc = hmc_pred(tr)
 
-    n_samples = 500
-    n_grid = 1000
     num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
 
-    x_grid = np.linspace(-0.5, 1.5, n_grid)
     mu_trad, prec_trad = primary_out_trad(x_grid[:, None])
     std_dev_trad = np.sqrt(1.0 / prec_trad)
 
@@ -296,6 +346,9 @@ if __name__ == '__main__':
         mu_grid[ss, :] = mu[:, 0]
         # Note: using same noise across whole grid
         y_grid[ss, :] = mu[:, 0] + std_dev * np.random.randn()
+
+    with open('reg_example_dump.pkl', 'wb') as f:
+        pkl.dump((x_grid, mu_hmc, LB_hmc, UB_hmc, mu_grid, y_grid, mu_trad, std_dev_trad), f)
 
     _, (ax1, ax2) = plt.subplots(1, 2, sharex=True, sharey=True)
     ax1.plot(X[:100, :], y[:100], 'rx', zorder=0)
