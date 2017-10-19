@@ -104,7 +104,7 @@ def traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_
     assert(y.shape == (N, 1))  # Univariate for now
     assert(X_valid.shape == (N_valid, D) and y_valid.shape == (N_valid, 1))
 
-    num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
+    num_params = mlp_hmc.get_num_params(weight_shapes)
     phi_shared = make_shared_dict({'w': np.random.randn(num_params)})
 
     X_ = T.matrix('x')
@@ -152,7 +152,7 @@ if __name__ == '__main__':
     np.random.seed(5645)
 
     init_lr = 0.0005
-    n_epochs = 1000
+    n_epochs = 10  # 1000  # TODO revert
     n_batch = 32
     N = 1000
     z_std = 1.0  # 1.0 is correct for the model, 0.0 is MAP
@@ -183,10 +183,10 @@ if __name__ == '__main__':
     phi_trad, cost_hist_trad, loglik_valid_trad, primary_out_trad = \
         traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_shapes)
 
-    tr = mlp_hmc.hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=50, n_iter=20)
+    tr = mlp_hmc.hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=5, n_iter=20)
     mu_hmc, LB_hmc, UB_hmc = mlp_hmc.hmc_pred(tr, x_grid[:, None], n_layers=primary_layers, chk=True)
 
-    num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
+    num_params = mlp_hmc.get_num_params(weight_shapes)
 
     mu_trad, prec_trad = primary_out_trad(x_grid[:, None])
     std_dev_trad = np.sqrt(1.0 / prec_trad)

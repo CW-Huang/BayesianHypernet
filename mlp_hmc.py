@@ -18,7 +18,7 @@ def unpack(v, weight_shapes):
         num_param = np.prod(ws, dtype=int)
         D[varname] = v[tt:tt + num_param].reshape(ws)
         tt += num_param
-    assert(tt == len(v))  # Check all used
+    # assert(tt == len(v))  # Check all used
     # Check order was preserved:
     assert(D.keys() == weight_shapes.keys())
     return D
@@ -59,7 +59,7 @@ def mlp_pred_flat_tt(X, theta, weight_shapes):
     n_layers, rem = divmod(len(theta_dict) - 1, 2)
     assert(rem == 0)
 
-    yp, y_prec = mlp_pred(X, theta, n_layers, lib=T)
+    yp, y_prec = mlp_pred(X, theta_dict, n_layers, lib=T)
     return yp, y_prec
 
 
