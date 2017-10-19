@@ -205,9 +205,17 @@ if __name__ == '__main__':
         # Note: using same noise across whole grid
         y_grid[ss, :] = mu[:, 0] + std_dev * np.random.randn()
 
-    R = (x_grid, mu_hmc, LB_hmc, UB_hmc, mu_grid, y_grid, mu_trad, std_dev_trad)
+    mu_hyper = np.mean(mu_grid, axis=0)
+    LB_hyper = np.percentile(y_grid, 2.5, axis=0)
+    UB_hyper = np.percentile(y_grid, 97.5, axis=0)
+
+    dump_dict = {}
+    dump_dict['x'] = x_grid
+    dump_dict['hmc'] = mu_hmc, LB_hmc, UB_hmc, loglik_hmc
+    dump_dict['hyper'] = mu_hyper, LB_hyper, UB_hyper, loglik_valid
+    dump_dict['trad'] = mu_trad, mu_trad - 2 * std_dev_trad, mu_trad + 2 * std_dev_trad, loglik_valid_trad
     with open('reg_example_dump.pkl', 'wb') as f:
-        pkl.dump(R, f, protocol=0)
+        pkl.dump(dump_dict, f, protocol=0)
 
     _, (ax1, ax2) = plt.subplots(1, 2, sharex=True, sharey=True)
     ax1.plot(X[:100, :], y[:100], 'rx', zorder=0)
