@@ -152,7 +152,7 @@ if __name__ == '__main__':
     np.random.seed(5645)
 
     init_lr = 0.0005
-    n_epochs = 1000  # TODO revert
+    n_epochs = 3  # 1000  # TODO revert
     n_batch = 32
     N = 1000
     z_std = 1.0  # 1.0 is correct for the model, 0.0 is MAP
@@ -184,8 +184,10 @@ if __name__ == '__main__':
     phi_trad, cost_hist_trad, loglik_valid_trad, primary_out_trad = \
         traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_shapes)
 
-    tr = mlp_hmc.hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=50, n_iter=20)
-    mu_hmc, LB_hmc, UB_hmc = mlp_hmc.hmc_pred(tr, x_grid[:, None], n_layers=n_layers, chk=True)
+    tr = mlp_hmc.hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=3, n_iter=5)
+    mu_hmc, LB_hmc, UB_hmc, _ = mlp_hmc.hmc_pred(tr, x_grid[:, None], n_layers=n_layers, chk=True)
+
+    _, _, _, loglik_hmc = mlp_hmc.hmc_pred(tr, X_valid, y_test=y_valid[:, 0], n_layers=n_layers)
 
     num_params = mlp_hmc.get_num_params(weight_shapes)
 
@@ -203,8 +205,9 @@ if __name__ == '__main__':
         # Note: using same noise across whole grid
         y_grid[ss, :] = mu[:, 0] + std_dev * np.random.randn()
 
+    R = (x_grid, mu_hmc, LB_hmc, UB_hmc, mu_grid, y_grid, mu_trad, std_dev_trad)
     with open('reg_example_dump.pkl', 'wb') as f:
-        pkl.dump((x_grid, mu_hmc, LB_hmc, UB_hmc, mu_grid, y_grid, mu_trad, std_dev_trad), f)
+        pkl.dump(R, f, protocol=0)
 
     _, (ax1, ax2) = plt.subplots(1, 2, sharex=True, sharey=True)
     ax1.plot(X[:100, :], y[:100], 'rx', zorder=0)
@@ -227,6 +230,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(loglik_valid, label='hypernet')
     plt.plot(loglik_valid_trad, label='traditional')
+    plt.plot(loglik_hmc, label='hmc')
     plt.legend()
     plt.xlabel('epoch')
     plt.ylabel('validation log likelihood')
