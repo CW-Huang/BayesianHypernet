@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # Ryan Turner (turnerry@iro.umontreal.ca)
 
+from collections import OrderedDict
 import cPickle as pkl
 import lasagne
 import theano
-import pymc3 as pm
 
 import numpy as np
 from scipy.misc import logsumexp
@@ -12,6 +12,7 @@ import theano.tensor as T
 import hypernet_trainer as ht
 import ign.ign as ign
 from ign.t_util import make_shared_dict, make_unshared_dict
+import mlp_hmc
 
 NOISE_STD = 0.02
 
@@ -26,158 +27,6 @@ def dm_example(N):
     return x, y
 
 
-def unpack(v, weight_shapes):
-    L = []
-    tt = 0
-    for ws in weight_shapes:
-        num_param = np.prod(ws, dtype=int)
-        L.append(v[tt:tt + num_param].reshape(ws))
-        tt += num_param
-    return L
-
-
-def primary_net_f(X, theta, weight_shapes):
-    L = unpack(theta, weight_shapes)
-    n_layers, rem = divmod(len(L) - 1, 2)
-    assert(rem == 0)
-
-    yp = X
-    for nn in xrange(n_layers):
-        W, b = L[2 * nn], L[2 * nn + 1]
-        assert(W.ndim == 2 and b.ndim == 1)
-        act = T.dot(yp, W) + b[None, :]
-        # Linear at final layer
-        yp = act if nn == n_layers - 1 else T.maximum(0.0, act)
-
-    log_prec = L[-1]
-    assert(log_prec.ndim == 0)
-    y_prec = T.exp(log_prec)
-    return yp, y_prec
-
-
-def primary_net_pm(X_train, Y_train, X_test, weight_shapes):
-    N, D = X_train.get_value().shape
-    assert(Y_train.get_value().shape == (N,))
-    n_layers, rem = divmod(len(weight_shapes) - 1, 2)
-    assert(rem == 0)
-
-    yp_train = X_train
-    yp_test = X_test
-    var_names_order = [None] * len(weight_shapes)
-    with pm.Model() as neural_network:
-        for nn in xrange(n_layers):
-            var_name = 'W_' + str(nn)
-            W0_s = weight_shapes[2 * nn]
-            assert(len(W0_s) == 2)
-            var_names_order[2 * nn] = var_name
-            W = pm.Normal(var_name, 0, sd=1, shape=W0_s)
-
-            var_name = 'b_' + str(nn)
-            b0_s = weight_shapes[2 * nn + 1]
-            assert(len(b0_s) == 1)
-            var_names_order[2 * nn + 1] = var_name
-            b = pm.Normal(var_name, 0, sd=1, shape=b0_s)
-
-            # TODO padleft, use pm. not T.
-            act_train = T.dot(yp_train, W) + b[None, :]
-            act_test = T.dot(yp_test, W) + b[None, :]
-
-            # Linear at final layer
-            yp_train = act_train if nn == n_layers - 1 else \
-                T.maximum(0.0, act_train)
-            yp_test = act_test if nn == n_layers - 1 else \
-                T.maximum(0.0, act_test)
-        assert(weight_shapes[-1] == ())
-        var_name = 'log_prec'
-        var_names_order[-1] = var_name
-        log_prec = pm.Normal(var_name, 0, sd=1)
-        pm.Deterministic('mu_test', yp_test)
-
-        y_prec = T.exp(log_prec)
-        pm.Normal('out', mu=yp_train, tau=y_prec, observed=Y_train)
-    return neural_network, var_names_order
-
-
-def hmc_net(X_train, Y_train, X_test, hypernet_f, weight_shapes,
-            restarts=100, n_iter=500, init_scale_iter=1000):
-    num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
-
-    ann_input = theano.shared(X_train)
-    ann_output = theano.shared(Y_train[:, 0])
-    ann_input_test = theano.shared(X_test)
-    ann_model, var_names = primary_net_pm(ann_input, ann_output,
-                                          ann_input_test, weight_shapes)
-
-    theta_scale = [hypernet_f(np.random.randn(num_params), False)
-                   for _ in xrange(init_scale_iter)]
-    scale_est = np.var(theta_scale, axis=0)
-    assert(scale_est.shape == (num_params,))
-
-    tr = [None] * restarts
-    for rr in xrange(restarts):
-        z_noise = np.random.randn(num_params)
-        theta = hypernet_f(z_noise, False)
-        start = dict(zip(var_names, unpack(theta, weight_shapes)))
-
-        # Use deault step => use NUTS
-        # TODO decide fairest way to deal with tuning period
-        # TODO increase n_tune
-        with ann_model:
-            step = pm.NUTS(scaling=scale_est, is_cov=True)
-            tr[rr] = pm.sampling.sample(draws=n_iter, step=step, start=start,
-                                        progressbar=True, tune=10)
-
-        # TODO now evaluate posterior predictive
-    return tr
-
-
-def hmc_pred(tr):
-    n_samples = len(tr)
-    assert(n_samples >= 1)
-    n_iter, n_grid, _ = tr[0]['mu_test'].shape
-
-    mu_grid = np.zeros((n_samples, n_iter, n_grid))
-    y_grid = np.zeros((n_samples, n_iter, n_grid))
-    for ss in xrange(n_samples):
-        mu = tr[ss]['mu_test']
-        log_prec = tr[ss]['log_prec']
-        assert(mu.shape == (n_iter, n_grid, 1))
-        assert(log_prec.shape == (n_iter,))
-
-        std_dev = np.sqrt(1.0 / np.exp(log_prec))
-        # Just store an MC version than do the mixture of Gauss logic
-        mu_grid[ss, :, :] = mu[:, :, 0]
-        # Note: using same noise across whole grid
-        y_grid[ss, :, :] = mu[:, :, 0] + std_dev[:, None] * np.random.randn()
-
-    # TODO make vectorized
-    mu = np.zeros((n_iter, n_grid))
-    LB = np.zeros((n_iter, n_grid))
-    UB = np.zeros((n_iter, n_grid))
-    for ii in xrange(n_iter):
-        mu[ii, :] = np.mean(mu_grid[:, ii, :], axis=0)
-        LB[ii, :] = np.percentile(y_grid[:, ii, :], 2.5, axis=0)
-        UB[ii, :] = np.percentile(y_grid[:, ii, :], 97.5, axis=0)
-    return mu, LB, UB
-
-
-def loglik_primary_f(X, y, theta, weight_shapes):
-    yp, y_prec = primary_net_f(X, theta, weight_shapes)
-    err = yp - y
-
-    loglik_c = -0.5 * np.log(2.0 * np.pi)
-    loglik_cmp = 0.5 * T.log(y_prec)  # Hopefully Theano undoes log(exp())
-    loglik_fit = -0.5 * y_prec * T.sum(err ** 2, axis=1)
-    loglik = loglik_c + loglik_cmp + loglik_fit
-    return loglik
-
-
-def logprior_f(theta):
-    # Standard Gauss
-    logprior = -0.5 * T.sum(theta ** 2)  # Ignoring normalizing constant
-    return logprior
-
-
 def simple_test(X, y, X_valid, y_valid,
                 n_epochs, n_batch, init_lr, weight_shapes,
                 n_layers=5, vis_freq=100, n_samples=100,
@@ -189,19 +38,21 @@ def simple_test(X, y, X_valid, y_valid,
     assert(y.shape == (N, 1))  # Univariate for now
     assert(X_valid.shape == (N_valid, D) and y_valid.shape == (N_valid, 1))
 
-    num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
+    num_params = mlp_hmc.get_num_params(weight_shapes)
 
     WL_init = 1e-2  # 10.0 ** (-2.0 / n_layers)
-    layers = ign.init_ign_LU(n_layers, num_params, WL_val=WL_init)
-    phi_shared = make_shared_dict(layers, '%d%s')
+    layers0 = ign.init_ign_LU(n_layers, num_params, WL_val=WL_init)
+    phi_shared = make_shared_dict(layers0, '%d%s')
 
-    ll_primary_f = lambda X, y, w: loglik_primary_f(X, y, w, weight_shapes)
+    # TODO use innfer functions to make this simpler
+
+    ll_primary_f = lambda X, y, w: mlp_hmc.mlp_loglik_flat_tt(X, y, w, weight_shapes)
     hypernet_f = lambda z, prelim=False: ign.network_T_and_J_LU(z[None, :], phi_shared, force_diag=prelim)[0][0, :]
     # TODO verify this length of size 1
     log_det_dtheta_dz_f = lambda z, prelim: T.sum(ign.network_T_and_J_LU(z[None, :], phi_shared, force_diag=prelim)[1])
-    primary_f = lambda X, w: primary_net_f(X, w, weight_shapes)
+    primary_f = lambda X, w: mlp_hmc.mlp_pred_flat_tt(X, w, weight_shapes)
     params_to_opt = phi_shared.values()
-    R = ht.build_trainer(params_to_opt, N, ll_primary_f, logprior_f,
+    R = ht.build_trainer(params_to_opt, N, ll_primary_f, mlp_hmc.mlp_logprior_flat_tt,
                          hypernet_f, primary_f=primary_f,
                          log_det_dtheta_dz_f=log_det_dtheta_dz_f)
     trainer, get_err, test_loglik, primary_out, grad_f, theta_f = R
@@ -260,7 +111,8 @@ def traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_
     y_ = T.matrix('y')  # Assuming multivariate output
     lr = T.scalar('lr')
 
-    loglik = loglik_primary_f(X_, y_, phi_shared['w'], weight_shapes)
+    loglik = mlp_hmc.mlp_loglik_flat_tt(X_, y_, phi_shared['w'], weight_shapes)
+    # TODO prior in here??
     loss = -T.sum(loglik)
     params_to_opt = phi_shared.values()
     grads = T.grad(loss, params_to_opt)
@@ -268,7 +120,7 @@ def traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_
 
     test_loglik = theano.function([X_, y_], loglik)
     trainer = theano.function([X_, y_, lr], loss, updates=updates)
-    primary_out = theano.function([X_], primary_net_f(X_, phi_shared['w'], weight_shapes))
+    primary_out = theano.function([X_], mlp_hmc.mlp_pred_flat_tt(X_, phi_shared['w'], weight_shapes))
 
     batch_order = np.arange(int(N / n_batch))
 
@@ -310,8 +162,11 @@ if __name__ == '__main__':
     hidden_dim = 50
     output_dim = 1
 
-    weight_shapes = [(input_dim, hidden_dim), (hidden_dim,),
-                     (hidden_dim, output_dim), (output_dim,), ()]
+    weight_shapes = OrderedDict([('W_0', (input_dim, hidden_dim)),
+                                 ('b_0', (hidden_dim,)),
+                                 ('W_1', (hidden_dim, output_dim)),
+                                 ('b_1', (output_dim,)),
+                                 ('log_prec', ())])
 
     X, y = dm_example(N)
     X_valid, y_valid = dm_example(N)
@@ -328,8 +183,8 @@ if __name__ == '__main__':
     phi_trad, cost_hist_trad, loglik_valid_trad, primary_out_trad = \
         traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_shapes)
 
-    tr = hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=50, n_iter=20)
-    mu_hmc, LB_hmc, UB_hmc = hmc_pred(tr)
+    tr = mlp_hmc.hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=50, n_iter=20)
+    mu_hmc, LB_hmc, UB_hmc = mlp_hmc.hmc_pred(tr, x_grid[:, None], n_layers=primary_layers, chk=True)
 
     num_params = sum(np.prod(ws, dtype=int) for ws in weight_shapes)
 
