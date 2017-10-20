@@ -8,11 +8,9 @@ import sys
 import time
 import numpy 
 np = numpy
+#np.random.seed(1) # TODO
 
 import math
-import numpy
-np = numpy
-np.random.seed(1) # TODO
 import os
 import random
 import pandas as pd
@@ -247,6 +245,7 @@ if __name__ == '__main__':
                                 print drop_prob, lbda
                                 network = MCdropout_MLP(n_hiddens=n_hiddens,
                                                           lbda=lbda,
+                                                        srng = RandomStreams(seed=seed+2000),
                                                           input_dim=input_dim)
 
                                 path = save_dir
@@ -347,6 +346,7 @@ if __name__ == '__main__':
             print drop_prob, lbda
             network = MCdropout_MLP(n_hiddens=n_hiddens,
                                       lbda=lbda,
+                                                        srng = RandomStreams(seed=seed+2000),
                                       input_dim=input_dim)
         elif model == 'BHN':
             lbda = get_lbda(tau, length_scale)
