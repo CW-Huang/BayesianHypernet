@@ -33,6 +33,8 @@ import scipy
 
 lrdefault = 1e-3    
 
+n_mc = 20
+
 def save_list(path, ll):
     thefile = open(path, 'w')
     for item in ll:
@@ -102,8 +104,8 @@ def train_model(model, save_path, save_,
             t+=1
 
 
-        tr_rmse, tr_LL = evaluate_model(model.predict, X, Y, n_mc=50, tau=tau)  
-        va_rmse, va_LL = evaluate_model(model.predict,Xv,Yv,n_mc=50, tau=tau)
+        tr_rmse, tr_LL = evaluate_model(model.predict, X, Y, n_mc=n_mc, tau=tau)  
+        va_rmse, va_LL = evaluate_model(model.predict,Xv,Yv, n_mc=n_mc, tau=tau)
         if e % 1 == 0:
             if 0: #verbose
                 print '\n'
@@ -180,7 +182,7 @@ if __name__ == '__main__':
     parser.add_argument('--drop_prob',default=0.005, type=float)
     parser.add_argument('--length_scale',default=1e-3, type=float)
     parser.add_argument('--tau',default=1e2, type=float)
-    parser.add_argument('--grid_search',default=1, type=int)
+    parser.add_argument('--grid_search',default=0, type=int)
     #parser.add_argument('--save_results',default='./results/',type=str)
     
     
@@ -188,6 +190,7 @@ if __name__ == '__main__':
     print args
     args_dict = args.__dict__
     flags = [flag.lstrip('--') for flag in sys.argv[1:] if not flag.startswith('--save_dir')]
+    exp_description = '_'.join(flags)
 
     if args_dict['save_dir'] is None:
         save_ = False
@@ -384,11 +387,12 @@ if __name__ == '__main__':
 
         e0 = 0
         rec = 0
-        tr_LLs, tr_RMSEs, va_LLs, va_RMSEs = train_model(network, name, save_,
+        result = train_model(network, name, save_,
                         train_x[:size],train_y[:size],
                         valid_x,valid_y,
                         lr0,lrdecay,bs,epochs,anneal,name,
                         e0,rec, tau)
+        tr_LLs, tr_RMSEs, va_LLs, va_RMSEs = result
         
         if save_:
             save_list(name + "_tr_RMSE.npy", tr_RMSEs)
@@ -398,4 +402,33 @@ if __name__ == '__main__':
         print "time=", time.time() - t0
 
 
+        # post-experiment analysis
+        print "tr/va LL:", max(tr_LLs), max(va_LLs)
+        print "tr/va RMSE:", max(tr_RMSEs), max(va_RMSEs)
+        print "lambda", lbda
+        # for these 2 lines to work, you need to run this script interactively in ipython with run -i SCRIPTNAME, and define flagz = []; results = [] in the interactive session
+        #flagz = []; results = [] 
+        flagz.append(flags)
+        results.append(result)
 
+        desc= exp_description + '   lbda=' + str(lbda)
+
+        figure(1)
+        subplot(121)
+        plot(tr_LLs, label=desc+'_TR')
+        plot(va_LLs, label=desc)
+        subplot(122)
+        plot(tr_RMSEs, label=desc+'_TR')
+        plot(va_RMSEs, label=desc)
+        legend()
+
+        figure()
+        suptitle(desc)
+        subplot(121)
+        plot(tr_LLs)
+        plot(va_LLs)
+        subplot(122)
+        plot(tr_RMSEs)
+        plot(va_RMSEs)
+
+        show()
