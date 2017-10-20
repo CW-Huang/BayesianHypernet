@@ -47,44 +47,48 @@ def get_dataset(data, test_inds=None):
 	return X_train, y_train, X_valid, y_valid, X_test, y_test
 
 
-def get_regression_dataset(dataset_name, test_inds=None):
-    if dataset_name == "boston":
-    	#(506, 14)
-    	data = np.loadtxt('./regression_datasets/boston_housing.txt')
+# TODO: proper path!
+def get_regression_dataset(dataset, data_path='./'):#$HOME/BayesianHypernetCW/'):
+    if dataset == "airfoil":
+    	data = np.load(data_path + 'regression_datasets/airfoil_train.npy')
 
-    elif dataset_name == "concrete":
+    elif dataset == "boston":
+    	#(506, 14)
+    	data = np.loadtxt(data_path + 'regression_datasets/boston_housing.txt')
+
+    elif dataset == "concrete":
     	#(1029, 9)
-    	data = pd.read_csv("./regression_datasets/Concrete_Data.csv")
+    	data = pd.read_csv(data_path + "regression_datasets/Concrete_Data.csv")
     	data = np.array(data)
 
-    elif dataset_name == "energy":
-    	data = pd.read_csv("./regression_datasets/energy_efficiency.csv")
+    elif dataset == "energy":
+    	data = pd.read_csv(data_path + "regression_datasets/energy_efficiency.csv")
     	data = np.array(data)
     	data = data[0:766, 0:8]	#### only used this portion of data in related papers (others : NaN)
 
-    elif dataset_name == "kin8nm":
-    	data = pd.read_csv("./regression_datasets/kin8nm.csv")
+    elif dataset == "kin8nm":
+    	data = pd.read_csv(data_path + "regression_datasets/kin8nm.csv")
     	data = np.array(data)
 
-    elif dataset_name == "naval":
-    	data = np.loadtxt('./regression_datasets/naval_propulsion.txt')
+    elif dataset == "naval":
+    	data = np.loadtxt(data_path + 'regression_datasets/naval_propulsion.txt')
 
-    elif dataset_name == "power":
-    	data = pd.read_csv('./regression_datasets/power_plant.csv')
+    elif dataset == "power":
+    	data = pd.read_csv(data_path + 'regression_datasets/power_plant.csv')
     	data = np.array(data)
 
-    elif dataset_name == "protein":
-    	data = pd.read_csv('./regression_datasets/protein_structure.csv')
+    elif dataset == "protein":
+    	data = pd.read_csv(data_path + 'regression_datasets/protein_structure.csv')
     	data = np.array(data)
 
-    elif dataset_name == "wine":
-    	data = pd.read_csv('./regression_datasets/wineQualityReds.csv')
+    elif dataset == "wine":
+    	data = pd.read_csv(data_path + 'regression_datasets/wineQualityReds.csv')
     	data = np.array(data)
 
-    elif dataset_name == "yacht":
-    	data = np.loadtxt('./regression_datasets/yach_data.txt')
+    elif dataset == "yacht":
+    	data = np.loadtxt(data_path + 'regression_datasets/yach_data.txt')
 
-    elif dataset_name == "year":
+    elif dataset == "year":
     	raise Exception('Need to process data - convert .txt to .csv')
 
     else:
