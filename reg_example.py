@@ -154,6 +154,8 @@ if __name__ == '__main__':
     N = 1000
     z_std = 1.0  # 1.0 is correct for the model, 0.0 is MAP
 
+    # TODO put summary quantiles here
+
     input_dim = 1
     hidden_dim = 50
     output_dim = 1
@@ -183,8 +185,15 @@ if __name__ == '__main__':
 
     tr, hmc_dbg = mlp_hmc.hmc_net(X, y, X_valid, y_valid, hypernet_f, weight_shapes, restarts=n_samples, n_iter=3, n_tune=5)
 
-    mu_hmc, LB_hmc, UB_hmc, _, _ = mlp_hmc.hmc_pred(tr, x_grid[:, None], n_layers=n_layers)
-    _, _, _, loglik_hmc, loglik_raw = mlp_hmc.hmc_pred(tr, X_valid, y_test=y_valid[:, 0], n_layers=n_layers)
+    mu_hmc, std_hmc, LB_hmc, UB_hmc, _, _ = \
+        mlp_hmc.hmc_pred(tr, x_grid[:, None], n_layers=n_layers)
+    _, _, _, _, loglik_hmc, loglik_raw = \
+        mlp_hmc.hmc_pred(tr, X_valid, y_test=y_valid[:, 0], n_layers=n_layers)
+
+    # Debug check to make sure get same answer for loglik
+    _, _, loglik_test_dbg = hmc_dbg
+    err = np.max(np.abs(np.sum(loglik_raw, axis=2).T - loglik_test_dbg))
+    print 'loglik raw log10 err %f' % np.log10(err)
 
     num_params = mlp_hmc.get_num_params(weight_shapes)
 
@@ -203,15 +212,15 @@ if __name__ == '__main__':
         y_grid[ss, :] = mu[:, 0] + std_dev * np.random.randn()
 
     mu_hyper = np.mean(mu_grid, axis=0)
-    LB_hyper = np.percentile(y_grid, 2.5, axis=0)
-    UB_hyper = np.percentile(y_grid, 97.5, axis=0)
+    std_hyper = np.std(mu_grid, axis=0, ddof=0)
+    LB_hyper, UB_hyper = mlp_hmc.summarize(y_grid)
 
     dump_dict = {}
     dump_dict['x'] = x_grid
-    dump_dict['hmc'] = mu_hmc, LB_hmc, UB_hmc, loglik_hmc
+    dump_dict['hmc'] = mu_hmc, std_hmc, LB_hmc, UB_hmc, loglik_hmc
     dump_dict['hmc_dbg'] = hmc_dbg
-    dump_dict['hyper'] = mu_hyper, LB_hyper, UB_hyper, loglik_valid
-    dump_dict['trad'] = mu_trad, mu_trad - 2 * std_dev_trad, mu_trad + 2 * std_dev_trad, loglik_valid_trad
+    dump_dict['hyper'] = mu_hyper, std_hyper, LB_hyper, UB_hyper, loglik_valid
+    dump_dict['trad'] = mu_trad, std_dev_trad * np.ones(mu_trad.size)
     with open('reg_example_dump.pkl', 'wb') as f:
         pkl.dump(dump_dict, f, protocol=0)
 

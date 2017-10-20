@@ -32,6 +32,18 @@ def get_num_params(weight_shapes):
     return cnt
 
 
+def summarize(X, p=(0.25, 0.50, 0.75)):
+    assert(X.ndim >= 2)
+    p = np.asarray(p)
+    assert(p.ndim == 1 and np.all(0.0 <= p) and np.all(p <= 1.0))
+    LB_p = 0.5 * (1.0 - p)
+    UB_p = 0.5 * (1.0 + p)
+
+    LB = np.percentile(X, 100.0 * LB_p, axis=0)
+    UB = np.percentile(X, 100.0 * UB_p, axis=0)
+    return LB, UB
+
+
 def mlp_pred(X, theta, n_layers, lib=T):
     '''Vanilla MLP ANN for regression. Can use lib=T or lin=np.'''
     yp = X
@@ -117,6 +129,10 @@ def primary_net_pm(X_train, Y_train, weight_shapes):
         theta_dict = make_normal_vars_pm(weight_shapes)
 
         yp_train, y_prec = mlp_pred(X_train, theta_dict, n_layers, lib=T)
+
+        assert(y_prec.ndim == 0)
+        assert(yp_train.ndim == 2)
+        assert(Y_train.ndim == 2)
         pm.Normal('out', mu=yp_train, tau=y_prec, observed=Y_train)
 
         #yp_test, _ = mlp_pred(X_test, theta_dict, n_layers, lib=T)
@@ -179,7 +195,7 @@ def hmc_net(X_train, Y_train, X_test, Y_test, initializer_f, weight_shapes,
 # Post-process pymc3 traces
 
 
-def hmc_pred(tr_list, X_test, n_layers, y_test=None, chk=False):
+def hmc_pred(tr_list, X_test, n_layers, y_test=None, p=(0.025, 0.5, 0.975)):
     n_samples = len(tr_list)
     assert(n_samples >= 1)
     n_iter = len(tr_list[0])
@@ -193,9 +209,8 @@ def hmc_pred(tr_list, X_test, n_layers, y_test=None, chk=False):
         assert(len(tr) == n_iter)
 
         noise = np.random.randn()
-        for ii in xrange(n_iter):
-            # TODO could use enumerate here too
-            mu_test_, y_prec = mlp_pred(X_test, tr[ii], n_layers, lib=np)
+        for ii, theta in enumerate(tr):
+            mu_test_, y_prec = mlp_pred(X_test, theta, n_layers, lib=np)
             mu_test[ss, ii, :] = mu_test_[:, 0]
             std_dev = np.sqrt(1.0 / y_prec)
             y_samples[ss, ii, :] = mu_test[ss, ii, :] + std_dev * noise
@@ -203,25 +218,19 @@ def hmc_pred(tr_list, X_test, n_layers, y_test=None, chk=False):
                 loglik_raw[ss, ii, :] = \
                     norm.logpdf(y_test, loc=mu_test[ss, ii, :], scale=std_dev)
 
-        if chk:  # Assumes passed in same X_test here as to hmc_net()
-            mu = tr['yp_test']
-            log_prec = tr['log_prec']
-            assert(mu.shape == (n_iter, n_grid, 1))
-            # TODO check values too
-            assert(log_prec.shape == (n_iter,))
-            assert(np.allclose(mu[:, :, 0], mu_test[ss, :, :]))
-
+    # Get predictive loglik over iteration
     loglik = logsumexp(loglik_raw, axis=0) - np.log(n_samples)
     assert(loglik.shape == (n_iter, n_grid))
     loglik = np.mean(loglik, axis=1)  # Get average loss per example
     assert(loglik.shape == (n_iter,))
 
-    # TODO make vectorized
-    mu = np.zeros((n_iter, n_grid))
-    LB = np.zeros((n_iter, n_grid))
-    UB = np.zeros((n_iter, n_grid))
-    for ii in xrange(n_iter):
-        mu[ii, :] = np.mean(mu_test[:, ii, :], axis=0)
-        LB[ii, :] = np.percentile(y_samples[:, ii, :], 2.5, axis=0)
-        UB[ii, :] = np.percentile(y_samples[:, ii, :], 97.5, axis=0)
-    return mu, LB, UB, loglik, loglik_raw
+    # Summarize the predictions
+    mu = np.mean(mu_test, axis=0)  # Average the means w/o extra noise
+    std = np.std(mu_test, axis=0, ddof=0)  # MLE std
+    LB, UB = summarize(y_samples, p)  # MC estimate quantiles using noise
+    assert(mu.shape == (n_iter, n_grid))
+    assert(std.shape == (n_iter, n_grid))
+    assert(LB.shape == (len(p), n_iter, n_grid))
+    assert(UB.shape == LB.shape)
+    assert(np.all(LB <= UB))
+    return mu, std, LB, UB, loglik, loglik_raw
