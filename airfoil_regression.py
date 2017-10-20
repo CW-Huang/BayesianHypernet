@@ -57,6 +57,7 @@ def get_lbda(tau, length_scale, drop_prob=None):
 
 def train_model(model, save_path, save_,
                 X,Y,Xv,Yv,
+                Xt, Yt, # TODO: default to None
                 lr0=0.1,lrdecay=1,bs=32,epochs=50,anneal=0,name='0',
                 e0=0,rec=0, tau=None):
                 #save_=True):
@@ -64,10 +65,12 @@ def train_model(model, save_path, save_,
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
 
-    va_RMSEs = list()
-    va_LLs = list()
     tr_RMSEs = list()
     tr_LLs = list()
+    va_RMSEs = list()
+    va_LLs = list()
+    te_RMSEs = list()
+    te_LLs = list()
     
     t = 0
     for e in range(epochs):
@@ -104,6 +107,7 @@ def train_model(model, save_path, save_,
 
         tr_rmse, tr_LL = evaluate_model(model.predict, X, Y, n_mc=n_mc, tau=tau)  
         va_rmse, va_LL = evaluate_model(model.predict,Xv,Yv, n_mc=n_mc, tau=tau)
+        te_rmse, te_LL = evaluate_model(model.predict,Xt,Yt, n_mc=n_mc, tau=tau)
         if e % 5 == 0:
             if 0: #verbose
                 print '\n'
@@ -112,10 +116,12 @@ def train_model(model, save_path, save_,
             print 'va LL at epochs {}: {}'.format(e,va_LL)    
             #print 'va rmse at epochs {}: {}'.format(e,va_rmse)    
         
-        va_LLs.append(va_LL)
+        tr_RMSEs.append(tr_rmse)
         tr_LLs.append(tr_LL)
         va_RMSEs.append(va_rmse)
-        tr_RMSEs.append(tr_rmse)
+        va_LLs.append(va_LL)
+        te_RMSEs.append(te_rmse)
+        te_LLs.append(te_LL)
         
         if va_LL > rec and save_:
             print '.... save best model .... '
@@ -123,7 +129,7 @@ def train_model(model, save_path, save_,
             rec = va_LL
         #print '\n\n'
 
-    return tr_LLs, tr_RMSEs, va_LLs, va_RMSEs
+    return tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs
     
 
 
@@ -224,7 +230,7 @@ if __name__ == '__main__':
     if grid_search:
         # TODO: better grid...
         length_scales = 10.**np.arange(-4,5)[::-1]#length_scales = [.1, .01,  .001] # length scale should be smaller!
-        taus = 10.**np.arange(-2,5)[::-1]#taus = [.01, .1, 1, 10., 100.] # tau should be larger!
+        taus = 10.**np.arange(0,6)[::-1]#taus = [.01, .1, 1, 10., 100.] # tau should be larger!
         lr0s = [.001]#lr0s = [.01, .001, .0001]
         drop_probs = [.01]#[.1, .05, .02, .01, .005, .002, .001]
 
@@ -265,7 +271,7 @@ if __name__ == '__main__':
 
                                 e0 = 0
                                 rec = 0
-                                tr_LLs, tr_RMSEs, va_LLs, va_RMSEs = train_model(network, name, save_,
+                                tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs = train_model(network, name, save_,
                                                 train_x[:size],train_y[:size],
                                                 valid_x,valid_y,
                                                 lr0,lrdecay,bs,epochs,anneal,name,
@@ -276,6 +282,8 @@ if __name__ == '__main__':
                                     save_list(name + "_tr_LL.npy", tr_LLs)
                                     save_list(name + "_va_RMSE.npy", va_RMSEs)
                                     save_list(name + "_va_LL.npy", va_LLs)
+                                    save_list(name + "_te_RMSE.npy", te_RMSEs)
+                                    save_list(name + "_te_LL.npy", te_LLs)
                                 print "time=", time.time() - t0
 
 
@@ -324,7 +332,7 @@ if __name__ == '__main__':
 
                                         e0 = 0
                                         rec = 0
-                                        tr_LLs, tr_RMSEs, va_LLs, va_RMSEs = train_model(network, name, save_,
+                                        tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs = train_model(network, name, save_,
                                                         train_x[:size],train_y[:size],
                                                         valid_x,valid_y,
                                                         lr0,lrdecay,bs,epochs,anneal,name,
@@ -335,6 +343,8 @@ if __name__ == '__main__':
                                             save_list(name + "_tr_LL", tr_LLs)
                                             save_list(name + "_va_RMSE", va_RMSEs)
                                             save_list(name + "_va_LL", va_LLs)
+                                            save_list(name + "_te", te_RMSEs)
+                                            save_list(name + "_te_LL", te_LLs)
                                         print "time=", time.time() - t0
 
     else:
@@ -392,13 +402,15 @@ if __name__ == '__main__':
                         valid_x,valid_y,
                         lr0,lrdecay,bs,epochs,anneal,name,
                         e0,rec, tau)
-        tr_LLs, tr_RMSEs, va_LLs, va_RMSEs = result
+        tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs = result
         
         if save_:
             save_list(name + "_tr_RMSE.npy", tr_RMSEs)
             save_list(name + "_tr_LL.npy", tr_LLs)
             save_list(name + "_va_RMSE.npy", va_RMSEs)
             save_list(name + "_va_LL.npy", va_LLs)
+            save_list(name + "_te_RMSE.npy", te_RMSEs)
+            save_list(name + "_te_LL.npy", te_LLs)
         print "time=", time.time() - t0
 
 
