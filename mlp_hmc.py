@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # Ryan Turner (turnerry@iro.umontreal.ca)
 from collections import OrderedDict
+from time import time
 import numpy as np
 import pymc3 as pm
 from scipy.misc import logsumexp
@@ -135,11 +136,14 @@ def hmc_net(X_train, Y_train, X_test, initializer_f, weight_shapes,
         start = dict(unpack(theta_vec, weight_shapes))
 
         # TODO decide fairest way to deal with tuning period
+        print 'starting to sample'
+        t = time()
         with ann_model:
             step = pm.NUTS(scaling=var_estimate, is_cov=True)
             tr[rr] = pm.sampling.sample(draws=n_iter, step=step, start=start,
                                         progressbar=False, tune=n_tune,
                                         discard_tuned_samples=False)
+        print (time() - t), 's'
     # Could use merge traces but prob not worth trouble
     return tr
 

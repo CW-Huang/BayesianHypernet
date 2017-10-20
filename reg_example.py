@@ -145,10 +145,7 @@ def traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_
     phi = make_unshared_dict(phi_shared)
     return phi, cost_hist, loglik_valid, primary_out
 
-
 if __name__ == '__main__':
-    import matplotlib.pyplot as plt
-
     np.random.seed(5645)
 
     init_lr = 0.0005
@@ -216,38 +213,5 @@ if __name__ == '__main__':
     dump_dict['trad'] = mu_trad, mu_trad - 2 * std_dev_trad, mu_trad + 2 * std_dev_trad, loglik_valid_trad
     with open('reg_example_dump.pkl', 'wb') as f:
         pkl.dump(dump_dict, f, protocol=0)
-
-    _, (ax1, ax2) = plt.subplots(1, 2, sharex=True, sharey=True)
-    ax1.plot(X[:100, :], y[:100], 'rx', zorder=0)
-    ax1.plot(x_grid, mu_grid[:5, :].T, zorder=1, alpha=0.7)
-    ax1.plot(x_grid, np.mean(mu_grid, axis=0), 'k', zorder=2)
-    ax1.plot(x_grid, np.percentile(y_grid, 2.5, axis=0), 'k--', zorder=2)
-    ax1.plot(x_grid, np.percentile(y_grid, 97.5, axis=0), 'k--', zorder=2)
-    ax1.grid()
-    ax1.set_title('hypernet')
-
-    ax2.plot(X[:100, :], y[:100], 'rx', zorder=0)
-    ax2.plot(x_grid, mu_trad, 'k', zorder=2)
-    ax2.plot(x_grid, mu_trad - 2 * std_dev_trad, 'k--', zorder=2)
-    ax2.plot(x_grid, mu_trad + 2 * std_dev_trad, 'k--', zorder=2)
-    ax2.grid()
-    ax2.set_title('traditional')
-    plt.xlim([-0.2, 1.3])
-    plt.ylim([-0.5, 1.2])
-
-    plt.figure()
-    plt.plot(loglik_valid, label='hypernet')
-    plt.plot(loglik_valid_trad, label='traditional')
-    plt.plot(loglik_hmc, label='hmc')
-    plt.legend()
-    plt.xlabel('epoch')
-    plt.ylabel('validation log likelihood')
-    plt.grid()
-
-    plt.figure()
-    plt.plot(cost_hist, label='hypernet')
-    plt.xlabel('epoch')
-    plt.ylabel('training cost (-ELBO)')
-    plt.grid()
 
     print 'done'
