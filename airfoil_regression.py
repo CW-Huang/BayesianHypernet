@@ -274,6 +274,7 @@ if __name__ == '__main__':
                                 tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs = train_model(network, name, save_,
                                                 train_x[:size],train_y[:size],
                                                 valid_x,valid_y,
+                                                        test_x, test_y,
                                                 lr0,lrdecay,bs,epochs,anneal,name,
                                                 e0,rec, tau)
                                 
@@ -335,6 +336,7 @@ if __name__ == '__main__':
                                         tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs = train_model(network, name, save_,
                                                         train_x[:size],train_y[:size],
                                                         valid_x,valid_y,
+                                                        test_x, test_y,
                                                         lr0,lrdecay,bs,epochs,anneal,name,
                                                         e0,rec, tau)
                                         
@@ -400,6 +402,7 @@ if __name__ == '__main__':
         result = train_model(network, name, save_,
                         train_x[:size],train_y[:size],
                         valid_x,valid_y,
+                                                        test_x, test_y,
                         lr0,lrdecay,bs,epochs,anneal,name,
                         e0,rec, tau)
         tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs = result
