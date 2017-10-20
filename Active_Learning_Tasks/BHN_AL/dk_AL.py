@@ -5,7 +5,7 @@ from utils import log_normal, log_laplace
 import numpy
 np = numpy
 import random
-random.seed(5001)
+#random.seed(5001)
 from lasagne import layers
 from scipy.stats import mode
 
@@ -15,6 +15,31 @@ import time
 import os
 
 from AL_helpers import *
+
+import lasagne
+import theano
+floatX = theano.config.floatX
+
+from modules import *
+
+
+# TODO: clean-up args, etc.
+# TODO: unify models
+# TODO: don't use functions (?)
+
+# TODO: implement "save" feature!
+
+
+def train_epoch(train_func,predict_func,X,Y,Xt,Yt,
+                lr0=0.1,lrdecay=1,bs=20):
+    N = X.shape[0]    
+    for i in range( N/bs + int(N%bs > 0) ):
+        x = X[i*bs:(i+1)*bs]
+        y = Y[i*bs:(i+1)*bs]
+        loss = train_func(x,y,N,lr0)
+    tr_acc = (predict_func(X)==Y.argmax(1)).mean()
+    print '\ttrain acc: {}'.format(tr_acc)
+    return tr_acc
 
 
 def train_model(train_func,predict_func,X,Y,Xt,Yt,
@@ -83,14 +108,10 @@ def active_learning(acquisition_iterations):
     train_x = train_x.reshape(50000,1,28,28)
     valid_x = valid_x.reshape(10000,1,28,28)
     test_x = test_x.reshape(10000,1,28,28)
-        
     train_x, train_y, pool_x, pool_y = split_train_pool_data(train_x, train_y)
-
     train_y_multiclass = train_y.argmax(1)
-
-
     train_x, train_y = get_initial_training_data(train_x, train_y_multiclass)
-
+    train_y = train_y.astype('float32')
     print "Initial Training Data", train_x.shape
 
     # select model
@@ -121,18 +142,49 @@ def active_learning(acquisition_iterations):
     else:
         raise Exception('no model named `{}`'.format(model))
         
+    if save:
+        model.save(save_path + '_params_init.npy')
 
-    
-    train_y = train_y.astype('float32')
-    recs = train_model(model.train_func,model.predict,
+    # TODO: pretraining
+    if params_reset == 'pretrained': # train the model to 100% train accuracy on the initial train set 
+        # TODO: we could also try training to 100% every time...
+        # TODO: and the last time, we should train until overfitting
+        # TODO: we also need to consider cross-validating the prior (do we even USE a prior for the dropout net?? we're supposed to!!!)
+        # TODO: ...and we could also use the validation set for early-stopping after every acquisition
+        tr_acc = 0.
+        epochs = 0
+        print "pretraining..."
+        while tr_acc < 1.:
+            epochs += 1
+            print "                     epoch", epochs
+            tr_acc = train_epoch(model.train_func,model.predict,
                        train_x[:size],train_y[:size],
                        valid_x,valid_y,
-                       lr0,lrdecay,bs,epochs)
+                       lr0,lrdecay,bs)
+        
+        model.add_reset('pretrained')
+        if save:
+            model.save(save_path + '_params_pretrained.npy')
+        print "pretraining completed"
+
+    else:
+        recs = train_model(model.train_func,model.predict,
+                           train_x[:size],train_y[:size],
+                           valid_x,valid_y,
+                           lr0,lrdecay,bs,epochs)
+    
+    
+            
+
+
+
    
+    valid_accuracy = test_model(model.predict_proba, valid_x, valid_y)
+    print "                                                          valid Accuracy", valid_accuracy
+    all_valid_accuracy = valid_accuracy
+
     test_accuracy = test_model(model.predict_proba, test_x, test_y)
-
     print "                                                          Test Accuracy", test_accuracy
-
     all_accuracy = test_accuracy
 
     for i in range(acquisition_iterations):
@@ -252,8 +304,8 @@ def active_learning(acquisition_iterations):
             x_pool_index = a_1d.argsort()[-Queries:][::-1]
             
         elif acq == 'random':
-            x_pool_index = np.asarray(random.sample(range(0, 38000), Queries))
-            #x_pool_index = np.random.choice(range(pool_size), Queries, replace=False)
+            #x_pool_index = np.asarray(random.sample(range(0, 38000), Queries))
+            x_pool_index = np.random.choice(range(pool_size), Queries, replace=False)
 
 
         # END ACQUISITION
@@ -274,15 +326,37 @@ def active_learning(acquisition_iterations):
         #assert False
 
 
-        if 0:# don't warm start (TODO!)
-            model = HyperCNN(lbda=lbda,
-                              perdatapoint=perdatapoint,
-                              prior=prior,
-                              kernel_width=4,
-                              pad='valid',
-                              stride=1,
-                              coupling=coupling,
-                              extra_linear=extra_linear)
+        if params_reset == 'random':# don't warm start (TODO!)
+            if arch == 'hyperCNN':
+                model = HyperCNN(lbda=lbda,
+                                 perdatapoint=perdatapoint,
+                                 prior=prior,
+                                 coupling=coupling,
+                                 kernel_width=4,
+                                 pad='valid',
+                                 stride=1,
+                                 extra_linear=extra_linear)
+                                 #dataset=dataset)
+            elif arch == 'CNN':
+                model = MCdropoutCNN(kernel_width=4,
+                                 pad='valid',
+                                 stride=1)
+            elif arch == 'CNN_spatial_dropout':
+                model = MCdropoutCNN(dropout='spatial',
+                                 kernel_width=4,
+                                 pad='valid',
+                                 stride=1)
+            elif arch == 'CNN_dropout':
+                model = MCdropoutCNN(dropout=1,
+                                 kernel_width=4,
+                                 pad='valid',
+                                 stride=1)
+            else:
+                raise Exception('no model named `{}`'.format(model))
+        elif params_reset == 'deterministic':
+            model.call_reset('init')
+        elif params_reset == 'pretrained':
+            model.call_reset('pretrained')
     
         recs = train_model(model.train_func,model.predict,
 	                       train_x[:size],train_y[:size],
@@ -290,39 +364,53 @@ def active_learning(acquisition_iterations):
 	                       lr0,lrdecay,bs,epochs)
    
 
-        test_accuracy = test_model(model.predict_proba, test_x, test_y)   
+        valid_accuracy = test_model(model.predict_proba, valid_x, valid_y)   
+        print "                                                          Valid Accuracy", valid_accuracy
+        all_valid_accuracy = np.append(all_valid_accuracy, valid_accuracy)
 
-        print "                                                          Test Accuracy", test_accuracy
+        if test_eval:
+            test_accuracy = test_model(model.predict_proba, test_x, test_y)   
+            print "                                                          Test Accuracy", test_accuracy
+            all_accuracy = np.append(all_accuracy, test_accuracy)
 
-        all_accuracy = np.append(all_accuracy, test_accuracy)
-
-
-    return all_accuracy
+    return all_accuracy, all_valid_accuracy
 
 
 def main():
 
     #num_experiments = 3
     acquisition_iterations = 98
-    all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
+    valid_all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
+    test_all_accuracy = np.zeros(shape=(acquisition_iterations+1, num_experiments))
     
     for i in range(num_experiments):
         
-        accuracy = active_learning(acquisition_iterations)
-        all_accuracy[:, i] = accuracy
-        np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy'), all_accuracy)
+        test_accuracy, valid_accuracy = active_learning(acquisition_iterations)
+        valid_all_accuracy[:, i] = valid_accuracy
+        np.save(save_path + '_valid_all_accuracy.npy', valid_all_accuracy)
+
+        if test_eval:
+            test_all_accuracy[:, i] = test_accuracy
+            np.save(save_path + '_test_all_accuracy.npy', test_all_accuracy)
 
     
-    mean_accuracy = np.mean(all_accuracy)
+    valid_mean_accuracy = np.mean(valid_all_accuracy)
+    np.save(save_path + '_valid_all_accuracy.npy', all_accuracy)
+    np.save(save_path + '_valid_mean_accuracy.npy', mean_accuracy)
 
-    np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_all_accuracy.npy'), all_accuracy)
-    np.save(os.path.join(save_dir, 'BH_HyperCNN_' + acq + '__' + arch + '__' + params_reset + '_mean_accuracy.npy'), mean_accuracy)
+    if test_eval:
+        valid_mean_accuracy = np.mean(valid_all_accuracy)
+        np.save(save_path + '_valid_all_accuracy.npy', all_accuracy)
+        np.save(save_path + '_valid_mean_accuracy.npy', mean_accuracy)
 
 
 
 if __name__ == '__main__':
     
     import argparse
+    import os
+    import sys
+    import numpy
     
     parser = argparse.ArgumentParser()
     
@@ -330,19 +418,71 @@ if __name__ == '__main__':
     parser.add_argument('--acq',default='bald',type=str, choices=['bald', 'max_ent', 'var_ratio', 'mean_std', 'random'])
     parser.add_argument('--arch',default='hyperCNN',type=str)
     parser.add_argument('--bs',default=128,type=int)  
+    parser.add_argument('--convex_combination',default=0,type=int)  
     parser.add_argument('--coupling',default=4,type=int)  
     parser.add_argument('--epochs',default=50,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)  
-    parser.add_argument('--lr0',default=0.0001,type=float)  
+    parser.add_argument('--lr0',default=0.001,type=float)  
     parser.add_argument('--lbda',default=1,type=float)  
+    parser.add_argument('--new_model',default=1,type=int)  
+    parser.add_argument('--nonlinearity',default='rectify',type=str)  
     parser.add_argument('--num_experiments',default=3,type=int)  
-    parser.add_argument('--params_reset',default='none', type=str, choices=['deterministic', 'random', 'none'] ) # TODO
+    parser.add_argument('--params_reset',default='none', type=str, choices=['deterministic', 'none', 'pretrained', 'random'] )
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
     parser.add_argument('--pool_size',default=2000,type=int)
-    parser.add_argument('--save_dir',default='./',type=str)      
-    parser.add_argument('--size',default=10000,type=int)      
+    parser.add_argument('--size',default=10000,type=int)       # NOT USED!!!
+    parser.add_argument('--test_eval',default=0,type=int)      
+    #
+    #parser.add_argument('--save_path',default=None,type=str)  
+    parser.add_argument('--save', type=int, default=0)
+    parser.add_argument('--save_dir', type=str, default="./")
+    parser.add_argument('--seed', type=int, default=1337)
+    parser.add_argument('--verbose', type=int, default=1)
+
+
+    # --------------------------------------------
+    # PARSE ARGS and SET-UP SAVING and RANDOM SEED
     args = parser.parse_args()
+    args_dict = args.__dict__
+
+    # save_path = filename + PROVIDED parser arguments
+    flags = [flag.lstrip('--') for flag in sys.argv[1:]]
+    flags = [ff for ff in flags if not ff.startswith('save_dir')]
+    save_dir = args_dict.pop('save_dir')
+    save_path = os.path.join(save_dir, os.path.basename(__file__) + '___' + '_'.join(flags))
+    args_dict['save_path'] = save_path
+
+    if args_dict['save']:
+        # make directory for results, save ALL parser arguments
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        with open (os.path.join(save_path,'exp_settings.txt'), 'w') as f:
+            for key in sorted(args_dict):
+                f.write(key+'\t'+str(args_dict[key])+'\n')
+        print( save_path)
+        #assert False
+
+    locals().update(args_dict)
+    extra_linear = convex_combination
+
+    if nonlinearity == 'rectify':
+        nonlinearity = lasagne.nonlinearities.rectify
+    elif nonlinearity == 'gelu':
+        nonlinearity = gelu
+    
+    lbda = np.cast[floatX](args.lbda)
+    size = max(10,min(50000,args.size))
+    clip_grad = 100
+    max_norm = 100
+
+    # SET RANDOM SEED (TODO: rng vs. random.seed)
+    if seed is not None:
+        np.random.seed(seed)  # for reproducibility
+        rng = numpy.random.RandomState(seed)
+    else:
+        rng = numpy.random.RandomState(np.random.randint(2**32 - 1))
+    # --------------------------------------------
     print "\n\n\n-----------------------------------------------------------------------\n\n\n"
     print args
     

@@ -6,6 +6,9 @@
 *.swo
 *.swp
 *.pyc
+**.pyc
+***.pyc
+****.pyc
 *.log
 *.aux
 *.synctex.gz
@@ -21,4 +24,10 @@
 LOGS
 SMART_DISPATCH_LOGS
 
-SLURMS
+#
+SLURMs
+slurm*
+cifar-10-batches*
+
+models*
+

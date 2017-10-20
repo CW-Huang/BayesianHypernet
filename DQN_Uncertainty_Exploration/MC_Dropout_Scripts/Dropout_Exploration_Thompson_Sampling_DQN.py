@@ -1,9 +1,3 @@
-"""
-Implementation of Dropout based Thompson Sampling - estimating Q posterior at every state
-
-and then taking the max_a (Q_mean) where Q_mean is the mean from the Q distribution 
-"""
-
 import copy
 import gym
 from gym import wrappers
@@ -24,6 +18,8 @@ max_n_ep = 1000    #originally defined! Don't change this.
 min_avg_Rwd = 200000000  # Minimum average reward to consider the problem as solved
 n_avg_ep = 100      # Number of consecutive episodes to calculate the average reward
 
+
+save_dir = '/home/ml/rislam4/Documents/BH_2/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'
 
 def run_episode(env,
                 agent,
@@ -202,17 +198,15 @@ for e in range(Experiments):
     Experiments_All_Rewards[:, e] = total_reward
     episode_length_over_time = stats.episode_lengths
 
-    #np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Dropout_Thompson_CartPole' + '.npy', Experiments_All_Rewards)
-    np.save('/home/ml/rislam4/Documents/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Dropout_Thompson_CartPole' + '.npy', Experiments_All_Rewards)
-
+    np.save(save_dir + 'MCDropout_Thompson_CartPole' + '.npy', Experiments_All_Rewards)
 
 env.close()
 
 
-
 Average_Cum_Rwd = np.mean(Experiments_All_Rewards, axis=1)
-#np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Average_Dropout_Thompson_CartPole' + '.npy', Average_Cum_Rwd)
-np.save('/home/ml/rislam4/Documents/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Average_Dropout_Thompson_CartPole' + '.npy', Average_Cum_Rwd)
+np.save(save_dir + 'Average_MCDropout_Thompson_CartPole' + '.npy', Average_Cum_Rwd)
+
+
 
 
 

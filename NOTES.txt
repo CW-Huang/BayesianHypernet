@@ -1,0 +1,54 @@
+
+
+
+
+TODO:
+    COMBINE ops / helpers / utils etc.
+    REMOVE cruft
+
+
+EXPERIMENTS (we might want to put these in subdirs):
+    AL
+    AD
+    toy
+    RL
+    Generalization
+
+
+
+-----------------------OLD--------------------------
+
+TODO:
+    checkpointing!
+
+
+Things we want to be able to toggle:
+    analysis (probably just always keep things in logs...)
+        plots
+        prints
+        saves
+    dataset
+        regression
+        mnist
+        CIFAR
+    hnet
+        NICE vs. LReLU vs. OTHER FLOWS
+        coupling_architecture
+        num_coupling_layers
+        Permute/Reverse
+        OTHER?
+    pnet
+        MLP / CNN
+    hnet-outputs:
+        ALL params
+        WN
+        CNN
+    inits
+        scale
+        hnet-outps
+            CWs (what is????)
+            close to prior
+    cost-weights
+        annealing
+        
+

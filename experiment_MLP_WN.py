@@ -7,6 +7,7 @@ Created on Sun May 14 19:49:51 2017
 """
 
 from BHNs import MLPWeightNorm_BHN
+from concrete_dropout import MLPConcreteDropout_BHN
 from ops import load_mnist
 from utils import log_normal, log_laplace
 import numpy as np
@@ -14,27 +15,30 @@ import numpy as np
 import lasagne
 import theano
 import theano.tensor as T
+import os
+from lasagne.random import set_rng
+from theano.tensor.shared_randomstreams import RandomStreams
 
 
-class MLPWeightNorm_BHN_full(MLPWeightNorm_BHN):
-    
-    weight_shapes = [(784, 800),
-                     (800, 800),
-                     (800,  10)]
-    num_params = sum(ws[1] for ws in weight_shapes)
-    
+# TODO: add all LCS
 
-    
+lrdefault = 1e-3    
     
 class MCdropout_MLP(object):
-    
-    weight_shapes = [(784, 800),
-                     (800, 800),
-                     (800,  10)]
-                     
-    def __init__(self):
+
+    def __init__(self,n_hiddens,n_units, n_inputs=784):
         
-        layer = lasagne.layers.InputLayer([None,784])
+        layer = lasagne.layers.InputLayer([None,n_inputs])
+        
+        self.n_hiddens = n_hiddens
+        self.n_units = n_units
+        self.weight_shapes = list()        
+        self.weight_shapes.append((n_inputs,n_units))
+        for i in range(1,n_hiddens):
+            self.weight_shapes.append((n_units,n_units))
+        self.weight_shapes.append((n_units,10))
+        self.num_params = sum(ws[1] for ws in self.weight_shapes)
+        
         
         for j,ws in enumerate(self.weight_shapes):
             layer = lasagne.layers.DenseLayer(
@@ -48,7 +52,6 @@ class MCdropout_MLP(object):
         self.input_var = T.matrix('input_var')
         self.target_var = T.matrix('target_var')
         self.learning_rate = T.scalar('leanring_rate')
-        self.dataset_size = T.scalar('dataset_size') # useless
         
         self.layer = layer
         self.y = lasagne.layers.get_output(layer,self.input_var)
@@ -57,112 +60,201 @@ class MCdropout_MLP(object):
         
         losses = lasagne.objectives.categorical_crossentropy(self.y,
                                                              self.target_var)
-        self.loss = losses.mean() + self.dataset_size * 0.
+        self.loss = losses.mean()
         self.params = lasagne.layers.get_all_params(self.layer)
         self.updates = lasagne.updates.adam(self.loss,self.params,
                                             self.learning_rate)
 
         print '\tgetting train_func'
-        self.train_func = theano.function([self.input_var,
-                                           self.target_var,
-                                           self.dataset_size,
-                                           self.learning_rate],
-                                          self.loss,
-                                          updates=self.updates)
+        self.train_func_ = theano.function([self.input_var,
+                                            self.target_var,
+                                            self.learning_rate],
+                                           self.loss,
+                                           updates=self.updates)
         
         print '\tgetting useful_funcs'
         self.predict_proba = theano.function([self.input_var],self.y)
         self.predict = theano.function([self.input_var],self.y_det.argmax(1))
         
+    def train_func(self,x,y,n,lr=lrdefault,w=1.0):
+        return self.train_func_(x,y,lr)
 
+    def save(self,save_path,notes=[]):
+        np.save(save_path, [p.get_value() for p in self.params]+notes)
 
+    def load(self,save_path):
+        values = np.load(save_path)
+        notes = values[-1]
+        values = values[:-1]
 
+        if len(self.params) != len(values):
+            raise ValueError("mismatch: got %d values to set %d parameters" %
+                             (len(values), len(self.params)))
 
-def train_model(train_func,predict_func,X,Y,Xt,Yt,
-                lr0=0.1,lrdecay=1,bs=20,epochs=50):
+        for p, v in zip(self.params, values):
+            if p.get_value().shape != v.shape:
+                raise ValueError("mismatch: parameter has shape %r but value to "
+                                 "set has shape %r" %
+                                 (p.get_value().shape, v.shape))
+            else:
+                p.set_value(v)
+
+        return notes
+
+    
+
+def train_model(train_func,predict_func,X,Y,Xv,Yv,
+                lr0=0.1,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
+                e0=0,rec=0):
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
-    records=list()
+    va_rec_name = name+'_recs'
+    save_path = name + '.params'
+    va_recs = list()
+    tr_recs = list()
     
     t = 0
     for e in range(epochs):
+        
+        if e <= e0:
+            continue
         
         if lrdecay:
             lr = lr0 * 10**(-e/float(epochs-1))
         else:
             lr = lr0         
+        
+        if anneal:
+            w = min(1.0,0.001+e/(epochs/2.))
+        else:
+            w = 1.0         
             
         for i in range(N/bs):
             x = X[i*bs:(i+1)*bs]
             y = Y[i*bs:(i+1)*bs]
             
-            loss = train_func(x,y,N,lr)
+            loss = train_func(x,y,N,lr,w)
             
             if t%100==0:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
                 tr_acc = (predict_func(X)==Y.argmax(1)).mean()
-                te_acc = (predict_func(Xt)==Yt.argmax(1)).mean()
+                va_acc = (predict_func(Xv)==Yv.argmax(1)).mean()
                 print '\ttrain acc: {}'.format(tr_acc)
-                print '\ttest acc: {}'.format(te_acc)
+                print '\tvalid acc: {}'.format(va_acc)
             t+=1
-            
-        records.append(loss)
         
-    return records
+        va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=20)
+        print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
+        
+        va_recs.append(va_acc)
+        
+        if va_acc > rec:
+            print '.... save best model .... '
+            model.save(save_path,[e])
+            rec = va_acc
+    
+            with open(va_rec_name,'a') as rec_file:
+                for r in va_recs:
+                    rec_file.write(str(r)+'\n')
+            
+            va_recs = list()
+            
+        print '\n\n'
+    
 
 
-def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=100):
+
+def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100):
     MCt = np.zeros((n_mc,X.shape[0],10))
-    MCv = np.zeros((n_mc,Xt.shape[0],10))
+    
+    N = X.shape[0]
+    num_batches = np.ceil(N / float(max_n)).astype(int)
     for i in range(n_mc):
-        MCt[i] = predict_proba(X)
-        MCv[i] = predict_proba(Xt)
+        for j in range(num_batches):
+            x = X[j*max_n:(j+1)*max_n]
+            MCt[i,j*max_n:(j+1)*max_n] = predict_proba(x)
     
     Y_pred = MCt.mean(0).argmax(-1)
     Y_true = Y.argmax(-1)
-    Yt_pred = MCv.mean(0).argmax(-1)
-    Yt_true = Yt.argmax(-1)
-    
-    tr = np.equal(Y_pred,Y_true).mean()
-    va = np.equal(Yt_pred,Yt_true).mean()
-    print "train perf=", tr
-    print "valid perf=", va
+    return np.equal(Y_pred,Y_true).mean()
 
-    ind_positive = np.arange(Xt.shape[0])[Yt_pred == Yt_true]
-    ind_negative = np.arange(Xt.shape[0])[Yt_pred != Yt_true]
-    
-    ind = ind_negative[-1] #TO-DO: complete evaluation
-    for ii in range(15): 
-        print np.round(MCv[ii][ind] * 1000)
-    
-    ind = ind_negative[-2] #TO-DO: complete evaluation
-    for ii in range(15): 
-        print np.round(MCv[ii][ind] * 1000)
 
-#def main():
+    
 if __name__ == '__main__':
     
     import argparse
     
     parser = argparse.ArgumentParser()
     
-    # boolean: 1 -> True ; 0 -> False 
     parser.add_argument('--perdatapoint',default=0,type=int)
-    parser.add_argument('--lrdecay',default=0,type=int)  
-    
-    parser.add_argument('--lr0',default=0.1,type=float)  
+    parser.add_argument('--lrdecay',default=0,type=int)      
+    parser.add_argument('--lr0',default=0.0001,type=float)  
     parser.add_argument('--coupling',default=0,type=int) 
     parser.add_argument('--lbda',default=1,type=float)  
-    parser.add_argument('--size',default=10000,type=int)      
-    parser.add_argument('--bs',default=20,type=int)  
-    parser.add_argument('--epochs',default=50,type=int)
+    parser.add_argument('--size',default=2000,type=int)      
+    parser.add_argument('--bs',default=32,type=int)  
+    parser.add_argument('--epochs',default=10,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='BHN_MLPWN',type=str)
+    parser.add_argument('--model',default='BHN_MLPWN',type=str, choices=['BHN_MLPWN', 'BHN_MLPCD', 'MCdropout_MLP']) # TODO: concrete dropout
+    parser.add_argument('--anneal',default=0,type=int)
+    parser.add_argument('--n_hiddens',default=1,type=int)
+    parser.add_argument('--n_units',default=200,type=int)
+    parser.add_argument('--totrain',default=1,type=int)
+    parser.add_argument('--seed',default=427,type=int)
+    parser.add_argument('--override',default=1,type=int)
+    parser.add_argument('--reinit',default=1,type=int)
+    parser.add_argument('--flow',default='RealNVP',type=str, choices=['RealNVP', 'IAF'])
+    parser.add_argument('--alpha',default=2, type=float)
+    parser.add_argument('--beta',default=1, type=float)
+    parser.add_argument('--save_dir',default='./models',type=str)
+    
     
     args = parser.parse_args()
     print args
     
+    
+    set_rng(np.random.RandomState(args.seed))
+    np.random.seed(args.seed+1000)
+
+    
+    if args.prior == 'log_normal':
+        pr = 0
+    if args.prior == 'log_laplace':
+        pr = 1
+    
+    
+    if args.model == 'BHN_MLPCD':
+        md = 2
+    if args.model == 'BHN_MLPWN':
+        md = 0
+    if args.model == 'MCdropout_MLP':
+        md = 1
+    
+    
+    path = args.save_dir
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    name = '{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}alpha{}beta{}flow{}'.format(
+        path,
+        md,
+        args.n_hiddens,
+        args.n_units,
+        args.coupling,
+        pr,
+        args.lbda,
+        args.lr0,
+        args.lrdecay,
+        args.anneal,
+        args.size,
+        args.seed,
+        args.reinit,
+        args.alpha,
+        args.beta,
+        args.flow
+    )
+
     coupling = args.coupling
     perdatapoint = args.perdatapoint
     lrdecay = args.lrdecay
@@ -170,6 +262,9 @@ if __name__ == '__main__':
     lbda = np.cast['float32'](args.lbda)
     bs = args.bs
     epochs = args.epochs
+    n_hiddens = args.n_hiddens
+    n_units = args.n_units
+    anneal = args.anneal
     if args.prior=='log_normal':
         prior = log_normal
     elif args.prior=='log_laplace':
@@ -178,31 +273,86 @@ if __name__ == '__main__':
         raise Exception('no prior named `{}`'.format(args.prior))
     size = max(10,min(50000,args.size))
     
-    filename = '/data/lisa/data/mnist.pkl.gz'
+    if os.path.isfile('/data/lisa/data/mnist.pkl.gz'):
+        filename = '/data/lisa/data/mnist.pkl.gz'
+    elif os.path.isfile(r'./data/mnist.pkl.gz'):
+        filename = r'./data/mnist.pkl.gz'
+    else:        
+        print '\n\tdownloading mnist'
+        import download_datasets.mnist
+        filename = r'./data/mnist.pkl.gz'
+
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
     
+    if args.reinit:
+        init_batch_size = min(64, size)
+        init_batch = train_x[:size][-init_batch_size:].reshape(init_batch_size,784)
+    else:
+        init_batch = None
+        
     if args.model == 'BHN_MLPWN':
-        model = MLPWeightNorm_BHN_full(lbda=lbda,
-                                       perdatapoint=perdatapoint,
-                                       prior=prior,
-                                       coupling=coupling)
+        model = MLPWeightNorm_BHN(lbda=lbda,
+                                  perdatapoint=perdatapoint,
+                                  srng = RandomStreams(seed=args.seed+2000),
+                                  prior=prior,
+                                  coupling=coupling,
+                                  n_hiddens=n_hiddens,
+                                  n_units=n_units,
+                                  flow=args.flow,
+                                  init_batch=init_batch)
+    elif args.model == 'BHN_MLPCD':
+        model = MLPConcreteDropout_BHN(lbda=lbda,
+                                  alpha=args.alpha,
+                                  beta=args.beta,
+                                  perdatapoint=perdatapoint,
+                                  srng = RandomStreams(seed=args.seed+2000),
+                                  prior=prior,
+                                  coupling=coupling,
+                                  n_hiddens=n_hiddens,
+                                  n_units=n_units,
+                                  flow=args.flow,
+                                  init_batch=init_batch)
     elif args.model == 'MCdropout_MLP':
-        model = MCdropout_MLP()
+        model = MCdropout_MLP(n_hiddens=n_hiddens,
+                              n_units=n_units)
     else:
         raise Exception('no model named `{}`'.format(args.model))
-        
-    recs = train_model(model.train_func,model.predict,
-                       train_x[:size],train_y[:size],
-                       valid_x,valid_y,
-                       lr0,lrdecay,bs,epochs)
-    
-    evaluate_model(model.predict_proba,
-                   train_x[:size],train_y[:size],
-                   valid_x,valid_y)
-    
-    evaluate_model(model.predict_proba,
-                   train_x[:size],train_y[:size],
-                   test_x,test_y)
 
+    va_rec_name = name+'_recs'
+    tr_rec_name = name+'_recs_train' # TODO (we're already saving the valid_recs!)
+    save_path = name + '.params.npy'
+    if os.path.isfile(save_path) and not args.override:
+        print 'load best model'
+        e0 = model.load(save_path)
+        va_recs = open(va_rec_name,'r').read().split('\n')[:e0]
+        #tr_recs = open(tr_rec_name,'r').read().split('\n')[:e0]
+        rec = max([float(r) for r in va_recs])
+        
+    else:
+        e0 = 0
+        rec = 0
+
+
+    if args.totrain:
+        print '\nstart training from epoch {}'.format(e0)
+        train_model(model.train_func,model.predict,
+                    train_x[:size],train_y[:size],
+                    valid_x,valid_y,
+                    lr0,lrdecay,bs,epochs,anneal,name,
+                    e0,rec)
+    else:
+        print '\nno training'
+    
+    tr_acc = evaluate_model(model.predict_proba,
+                            train_x[:size],train_y[:size])
+    print 'train acc: {}'.format(tr_acc)
+                   
+    va_acc = evaluate_model(model.predict_proba,
+                            valid_x,valid_y)
+    print 'valid acc: {}'.format(va_acc)
+    
+    te_acc = evaluate_model(model.predict_proba,
+                            test_x,test_y)
+    print 'test acc: {}'.format(te_acc)
 
 

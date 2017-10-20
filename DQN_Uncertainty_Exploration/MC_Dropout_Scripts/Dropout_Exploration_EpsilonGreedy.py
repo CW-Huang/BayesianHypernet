@@ -20,6 +20,12 @@ min_avg_Rwd = 200000000  # Minimum average reward to consider the problem as sol
 n_avg_ep = 100      # Number of consecutive episodes to calculate the average reward
 
 
+#save_dir = '/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BH_2/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'
+
+save_dir = '/home/ml/rislam4/Documents/BH_2/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'
+
+
+
 def run_episode(env,
                 agent,
                 state_normalizer,
@@ -179,17 +185,14 @@ for e in range(Experiments):
     Experiments_All_Rewards[:, e] = total_reward
     episode_length_over_time = stats.episode_lengths
 
-    #np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Dropout_Epsilon_Greedy_CartPole' + '.npy', Experiments_All_Rewards)
-    np.save('/home/ml/rislam4/Documents/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Dropout_Epsilon_Greedy_CartPole' + '.npy', Experiments_All_Rewards)
-
-
+    np.save(save_dir + 'MCDropout_Epsilon_Greedy_CartPole' + '.npy', Experiments_All_Rewards)
 
 env.close()
 
 
 Average_Cum_Rwd = np.mean(Experiments_All_Rewards, axis=1)
-#np.save('/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Average_Dropout_Epsilon_Greedy_CartPole' + '.npy', Average_Cum_Rwd)
-np.save('/home/ml/rislam4/Documents/BayesianHypernet/DQN_Uncertainty_Exploration/MC_Dropout_Scripts/Results/'  + 'Average_Dropout_Epsilon_Greedy_CartPole' + '.npy', Average_Cum_Rwd)
+np.save(save_dir + 'Average_MCDropout_Epsilon_Greedy_CartPole' + '.npy', Average_Cum_Rwd)
+
 
 
 

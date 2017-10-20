@@ -1,5 +1,7 @@
 import numpy as np
 
+import theano
+floatX = theano.config.floatX
 
 class AgentEpsGreedy:
 
@@ -29,7 +31,7 @@ class AgentEpsGreedy:
         dropout_acton_values = np.zeros(shape=(self.n_actions, dropout_iterations))
 
         for d in range(dropout_iterations):
-            action_values = self.value_func.predict(state)
+            action_values = self.value_func.predict(state.astype(floatX))
             dropout_acton_values[:, d] = action_values
 
         mean_action_values = np.mean(dropout_acton_values, axis=1)
@@ -49,7 +51,7 @@ class AgentEpsGreedy:
             dropout_acton_values = np.zeros(shape=(self.n_actions, dropout_iterations))
 
             for d in range(dropout_iterations):
-                action_values = self.value_func.predict(state)
+                action_values = self.value_func.predict(state.astype(floatX))
                 dropout_acton_values[:, d] = action_values
 
             mean_action_values = np.mean(dropout_acton_values, axis=1)
@@ -68,7 +70,7 @@ class AgentEpsGreedy:
             dropout_acton_values_entropy = np.zeros(shape=(self.n_actions, dropout_iterations))
             
             for d in range(dropout_iterations):
-                action_values_entropy = self.value_func.predict(state)
+                action_values_entropy = self.value_func.predict(state.astype(floatX))
                 dropout_acton_values_entropy[:, d] = action_values_entropy
 
             mean_action_values_entropy = np.mean(dropout_acton_values_entropy, axis=1)
@@ -84,32 +86,36 @@ class AgentEpsGreedy:
             dropout_acton_values = np.zeros(shape=(self.n_actions, dropout_iterations))
 
             for d in range(dropout_iterations):
-                action_values = self.value_func.predict(state)
+                action_values = self.value_func.predict(state.astype(floatX))
                 dropout_acton_values[:, d] = action_values
 
             mean_action_values = np.mean(dropout_acton_values, axis=1)
 
             return np.argmax(mean_action_values)
 
+    # TODO: more float problems here???
     def eval_train(self, states, targets, dropout_probability):
-        return self.value_func.eval_train(states, targets, dropout_probability)
+        return self.value_func.eval_train(states.astype(floatX), targets.astype(floatX), dropout_probability)
 
 
     def eval_valid(self, states, targets, dropout_probability):
-        return self.value_func.eval_valid(states, targets, dropout_probability)
+        return self.value_func.eval_valid(states.astype(floatX), targets.astype(floatX), dropout_probability)
 
 
     def predict_q_values(self, states):
-        return self.value_func.predict(states)
+        return self.value_func.predict(states.astype(floatX))
 
 
     def evaluate_predicted_q_values(self, states, dropout_probability):
-        return self.value_func.predict_stochastic(states, dropout_probability)
+        return self.value_func.predict_stochastic(states.astype(floatX), dropout_probability)
 
 
 
     #good lr0 : 0.0001
     def train(self, X,Y, lr0=0.001,lrdecay=1,bs=20,epochs=50):
+        X = X.astype(floatX)
+        Y = Y.astype(floatX)
+        
 
         train_func = self.value_func.train_func
 

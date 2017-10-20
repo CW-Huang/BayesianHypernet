@@ -16,11 +16,19 @@ from lasagne import nonlinearities
 from lasagne.layers import get_output
 from theano.tensor.var import TensorVariable as tv
 
+from externals_modules.made_modules import MADE
 
 conv = lasagne.theano_extensions.conv
-
+softplus = lambda x: T.nnet.softplus(x) + delta
+exp = lambda x: T.exp(x) + delta
 
 delta = 0.001
+
+
+
+# TODO: separate primary/hnet layers!
+    
+
 
 class CoupledDenseLayer(lasagne.layers.base.Layer):    
     def __init__(self, incoming, num_units, W=init.Normal(0.0001),
@@ -32,11 +40,12 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
 
         self.num_units = num_units
 
-        num_inputs = int(np.prod(self.input_shape[1]/2))
+        num_inputs1 = int(self.input_shape[1]/2)
+        num_inputs2 = self.input_shape[1] - num_inputs1
 
-        self.W1 = self.add_param(W, (num_inputs, num_units), name="cpds_W1")
-        self.W21 = self.add_param(W, (num_units, num_inputs), name="cpds_W21")
-        self.W22 = self.add_param(W, (num_units, num_inputs), name="cdds_W22")
+        self.W1 = self.add_param(W, (num_inputs1, num_units), name="cpds_W1")
+        self.W21 = self.add_param(W, (num_units, num_inputs2), name="cpds_W21")
+        self.W22 = self.add_param(W, (num_units, num_inputs2), name="cdds_W22")
         if b is None:
             self.b1 = None
             self.b21 = None
@@ -44,9 +53,9 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
         else:
             self.b1 = self.add_param(b, (num_units,), name="cpds_b1",
                                      regularizable=False)
-            self.b21 = self.add_param(b, (num_inputs,), name="cpds_b21",
+            self.b21 = self.add_param(b, (num_inputs2,), name="cpds_b21",
                                       regularizable=False)
-            self.b22 = self.add_param(b, (num_inputs,), name="cpds_b22",
+            self.b22 = self.add_param(b, (num_inputs2,), name="cpds_b22",
                                       regularizable=False)
             
     def get_output_shape_for(self, input_shape):
@@ -78,93 +87,29 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
         
         return output, ls.sum(1)
 
-class NormalizingPlanarFlowLayer(lasagne.layers.Layer):
-    """
-    Adapted from 
-    https://github.com/casperkaae/parmesan/blob/master/parmesan/layers/flow.py
-    
-    Normalizing Planar Flow Layer as described in Rezende et
-    al. [REZENDE]_ (Equation numbers and appendixes refers to this paper)
-    Eq. (8) is used for calculating the forward transformation f(z).
-    The last term of eq. (13) is also calculated within this layer and
-    returned as an output for computational reasons. Furthermore, the
-    transformation is ensured to be invertible using the constrains
-    described in appendix A.1
-    Parameters
-    ----------
-    incoming : a :class:`Layer` instance or a tuple
-        The layer feeding into this layer, or the expected input shape
-    u,w : Theano shared variable, numpy array or callable
-        An initializer for the weights of the layer. If a shared variable or a
-        numpy array is provided the shape should be (num_inputs, num_units).
-        See :meth:`Layer.create_param` for more information.
-    b : Theano shared variable, numpy array, callable or None
-        An initializer for the biases of the layer. If a shared variable or a
-        numpy array is provided the shape should be (num_units,).
-        If None is provided the layer will have no biases.
-        See :meth:`Layer.create_param` for more information.
-    References
-    ----------
-        ..  [REZENDE] Rezende, Danilo Jimenez, and Shakir Mohamed.
-            "Variational Inference with Normalizing Flows."
-            arXiv preprint arXiv:1505.05770 (2015).
-    """
-    def __init__(self, incoming, u=lasagne.init.Normal(),
-                 w=lasagne.init.Normal(),
-                 b=lasagne.init.Constant(0.0), **kwargs):
-        super(NormalizingPlanarFlowLayer, self).__init__(incoming, **kwargs)
-        
-        num_latent = int(np.prod(self.input_shape[1:]))
-        
-        self.u = self.add_param(u, (num_latent,), name="u")
-        self.w = self.add_param(w, (num_latent,), name="w")
-        self.b = self.add_param(b, tuple(), name="b") # scalar
-    
-    def get_output_shape_for(self, input_shape):
-        return input_shape
-    
-    
-    def get_output_for(self, input, **kwargs):
-        # 1) calculate u_hat to ensure invertibility (appendix A.1 to)
-        # 2) calculate the forward transformation of the input f(z) (Eq. 8)
-        # 3) calculate u_hat^T psi(z) 
-        # 4) calculate logdet-jacobian log|1 + u_hat^T psi(z)| to be used in the LL function
-        
-        z = input
-        # z is (batch_size, num_latent_units)
-        uw = T.dot(self.u,self.w)
-        muw = -1 + T.nnet.softplus(uw) # = -1 + T.log(1 + T.exp(uw))
-        u_hat = self.u + (muw - uw) * T.transpose(self.w) / T.sum(self.w**2)
-        zwb = T.dot(z,self.w) + self.b
-        f_z = z + u_hat.dimshuffle('x',0) * lasagne.nonlinearities.tanh(zwb).dimshuffle(0,'x')
-        
-        psi = T.dot( (1-lasagne.nonlinearities.tanh(zwb)**2).dimshuffle(0,'x'),  self.w.dimshuffle('x',0)) # tanh(x)dx = 1 - tanh(x)**2
-        psi_u = T.dot(psi, u_hat)
-
-        logdet_jacobian = T.log(T.abs_(1 + psi_u))
-        
-        return [f_z, logdet_jacobian]
-
 
 class CoupledWNDenseLayer(lasagne.layers.base.Layer):    
-    def __init__(self, incoming, num_units, W=init.Normal(1),
+    def __init__(self, incoming, num_units,
+                 W=init.Normal(1),
                  r=init.Normal(0.0001),
                  b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
                  **kwargs):
         super(CoupledWNDenseLayer, self).__init__(incoming, **kwargs)
         self.nonlinearity = (nonlinearities.identity if nonlinearity is None
                              else nonlinearity)
-
+        
         self.num_units = num_units
+        
+        num_inputs1 = int(self.input_shape[1]/2)
+        num_inputs2 = self.input_shape[1] - num_inputs1
 
-        num_inputs = int(np.prod(self.input_shape[1]/2))
 
-        self.W1 = self.add_param(W, (num_inputs, num_units), name="cpds_W1")
-        self.W21 = self.add_param(W, (num_units, num_inputs), name="cpds_W21")
-        self.W22 = self.add_param(W, (num_units, num_inputs), name="cdds_W22")
+        self.W1 = self.add_param(W, (num_inputs1, num_units), name="cpds_W1")
+        self.W21 = self.add_param(W, (num_units, num_inputs2), name="cpds_W21")
+        self.W22 = self.add_param(W, (num_units, num_inputs2), name="cdds_W22")
         self.r1 = self.add_param(r, (num_units,), name='cpds_r1')
-        self.r21 = self.add_param(r, (num_units,), name='cpds_r21')
-        self.r22 = self.add_param(r, (num_units,), name='cpds_r22')
+        self.r21 = self.add_param(r, (num_inputs2,), name='cpds_r21')
+        self.r22 = self.add_param(r, (num_inputs2,), name='cpds_r22')
         if b is None:
             self.b1 = None
             self.b21 = None
@@ -172,9 +117,9 @@ class CoupledWNDenseLayer(lasagne.layers.base.Layer):
         else:
             self.b1 = self.add_param(b, (num_units,), name="cpds_b1",
                                      regularizable=False)
-            self.b21 = self.add_param(b, (num_inputs,), name="cpds_b21",
+            self.b21 = self.add_param(b, (num_inputs2,), name="cpds_b21",
                                       regularizable=False)
-            self.b22 = self.add_param(b, (num_inputs,), name="cpds_b22",
+            self.b22 = self.add_param(b, (num_inputs2,), name="cpds_b22",
                                       regularizable=False)
             
     def get_output_shape_for(self, input_shape):
@@ -213,6 +158,155 @@ class CoupledWNDenseLayer(lasagne.layers.base.Layer):
         
         return output, ls.sum(1)
 
+
+
+
+
+def get_wn_params(P,add_param,specs,name,d1,d2):
+    u,g,b = specs
+    P['u_{}'.format(name)] = add_param(u,(d1,d2))   
+    P['g_{}'.format(name)] = add_param(g,(d2,))     
+    P['b_{}'.format(name)] = add_param(b,(d2,),
+                                       regularizable=False)        
+
+def weightnorm(W_,g):
+    if W_.ndim==4:
+        W_axes_to_sum = (1,2,3)
+        W_dimshuffle_args = [0,'x','x','x']
+    else:
+        W_axes_to_sum = 0
+        W_dimshuffle_args = ['x',0]
+        
+    norm = T.sqrt(T.sum(T.square(W_),axis=W_axes_to_sum,keepdims=True))
+    W_normed = W_ / norm
+    return W_normed * g.dimshuffle(*W_dimshuffle_args)
+
+    
+def dot_():
+    dot = lambda X,W,b: T.dot(X,W) + b.dimshuffle('x',0)
+    return dot
+
+    
+def weightnormdot(X,W,g,b,operator=dot_(),nonl=None):
+    h = operator(X,weightnorm(W,g),b)
+    if nonl is not None:
+        return nonl(h)
+    else:
+        return h
+        
+        
+class IAFDenseLayer(lasagne.layers.base.Layer):    
+    def __init__(self, incoming, num_units, 
+                 num_hids=1, L=1, cond_bias=False,
+                 W=init.Normal(0.0001),
+                 r=init.Normal(0.0001),
+                 b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
+                 **kwargs):
+        super(IAFDenseLayer, self).__init__(incoming, **kwargs)
+        self.nonlinearity = (nonlinearities.identity if nonlinearity is None
+                             else nonlinearity)
+        self.num_units = num_units
+        
+        
+        aux_input = T.matrix()
+        masks = list()      
+        P = dict()
+        name = 'iaf'
+        for l in range(L):
+            made = MADE(aux_input,incoming.input_shape[1],
+                        hidden_sizes=[num_units,]*num_hids,
+                        hidden_activation=None,
+                        random_seed=1234+l)
+            
+            
+            made.shuffle('Once')
+            made.shuffle('Full')
+            
+            # saving the masks generated by `MADE`
+            masks.append([m.get_value() for m in made.masks])
+            # initializing parameters, 
+            # # last one is mean
+            for h,m in enumerate(masks[l]):
+                d1,d2 = m.shape
+                get_wn_params(P,self.add_param,[W,r,b],
+                              '{}_l{}h{}'.format(name,l,h),d1,d2)
+            # # std
+            get_wn_params(P,self.add_param,[W,r,b],
+                          '{}_l{}h{}s'.format(name,l,h),d1,d2)
+            # # additional conditional bias
+            if cond_bias:
+                d1,d2 = masks[l][0]
+                get_wn_params(P,self.add_param,[W,r,b],
+                              '{}_l{}cb1'.format(name,l),d1,d2)
+                if l != L-1:
+                    get_wn_params(P,self.add_param,[W,r,b],
+                                  '{}_l{}cb2'.format(name,l),d1,d2)
+        
+        self.P = P
+        self.cond_bias = cond_bias
+        self.num_hids = num_hids
+        self.L = L
+        self.masks = masks
+        
+            
+    def get_output_shape_for(self, input_shape):
+        return input_shape
+
+    def get_output_for(self, input, cond_bias=None, **kwargs):
+        z = input
+        zs = list()
+        zs.append(input)
+        ss = T.zeros((input.shape[0],)) # logdet jacobian
+    
+
+        masks = self.masks        
+        P = self.P
+        L = self.L
+        num_hids = self.num_hids
+        #cond_bias = self.cond_bias
+        nonl = self.nonlinearity
+        name = 'iaf'
+        
+        for l in range(L):
+            hidden = zs[l]
+            for h in range(num_hids+1):
+                mask = masks[l][h]
+                u = P['u_{}_l{}h{}'.format(name,l,h)]
+                g = P['g_{}_l{}h{}'.format(name,l,h)]
+                b = P['b_{}_l{}h{}'.format(name,l,h)]
+                u_ = T.switch(mask,u,0)
+                if h != num_hids:
+                    hidden = weightnormdot(hidden,u_,g,b,nonl=nonl)
+                else:
+                    mean = weightnormdot(hidden,u_,g,b,nonl=None)
+            
+                if h == 0 and cond_bias is not None:
+                    u = P['u_{}_l{}cb1'.format(name,l,h)]
+                    g = P['g_{}_l{}cb1'.format(name,l,h)]
+                    b = P['b_{}_l{}cb1'.format(name,l,h)]
+                    hidden_cb = weightnormdot(cond_bias,u,g,b,nonl=nonl)
+                    hidden += hidden_cb
+                    if l != L-1:
+                        u = P['u_{}_l{}cb2'.format(name,l,h)]
+                        g = P['g_{}_l{}cb2'.format(name,l,h)]
+                        b = P['b_{}_l{}cb2'.format(name,l,h)]
+                        cond_bias = weightnormdot(hidden_cb,u,g,b,nonl=nonl)
+                        
+            
+            u = P['u_{}_l{}h{}s'.format(name,l,h)]
+            g = P['g_{}_l{}h{}s'.format(name,l,h)]
+            b = P['b_{}_l{}h{}s'.format(name,l,h)]
+            u_ = T.switch(mask,u,0)
+            std = weightnormdot(hidden,u_,g,b,nonl=exp)
+            
+            z = mean + std * zs[l]
+            zs.append(z)
+            ss += T.sum(T.log(std),1)
+        
+        return z, ss
+        
+        
+        
 class CoupledConv1DLayer(lasagne.layers.base.Layer):
     """
     shape[1] should be even number
@@ -668,16 +762,22 @@ if __name__ == '__main__':
     layer = IndexLayer(layer_temp,0)
     logdets_layers.append(IndexLayer(layer_temp,1))
     
-    layer_temp = CoupledDenseLayer(layer,100)
-    layer = IndexLayer(layer_temp,0)
-    logdets_layers.append(IndexLayer(layer_temp,1))
     
-    layer = PermuteLayer(layer,2)
-    
-    layer_temp = CoupledDenseLayer(layer,100)
-    layer = IndexLayer(layer_temp,0)
-    logdets_layers.append(IndexLayer(layer_temp,1))
-    
+    if 0:    
+        layer_temp = CoupledDenseLayer(layer,100)
+        layer = IndexLayer(layer_temp,0)
+        logdets_layers.append(IndexLayer(layer_temp,1))
+        
+        layer = PermuteLayer(layer,2)
+        
+        layer_temp = CoupledDenseLayer(layer,100)
+        layer = IndexLayer(layer_temp,0)
+        logdets_layers.append(IndexLayer(layer_temp,1))
+    else:
+        layer_temp = IAFDenseLayer(layer,100,1,
+                                   L=2,cond_bias=False)
+        layer = IndexLayer(layer_temp,0)
+        logdets_layers.append(IndexLayer(layer_temp,1))
     
     ep = T.matrix('ep')
     z = lasagne.layers.get_output(layer,ep)

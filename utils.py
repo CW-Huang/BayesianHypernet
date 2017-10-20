@@ -8,6 +8,9 @@ Created on Fri Mar 31 21:39:54 2017
 import theano.tensor as T
 import numpy as np
 
+from lasagne.init import Normal
+from lasagne.init import Initializer, Orthogonal
+
 c = - 0.5 * T.log(2*np.pi)
 
 def log_sum_exp(A, axis=None, sum_op=T.sum):
@@ -36,8 +39,9 @@ def weighted_sum(weights):
 def log_stdnormal(x):
     return c - 0.5 * x**2 
 
-
 def log_normal(x,mean,log_var,eps=0.0):
+    if type(x) == list:
+        x = T.concatenate([w.flatten() for w in x])
     return c - log_var/2. - (x - mean)**2 / (2. * T.exp(log_var) + eps)
 
 
@@ -79,4 +83,37 @@ def MCpred(X, predict_probs_fn=None, num_samples=100, inds=None, returns='preds'
 
     
     
-    
+# TODO
+class DanNormal(Initializer):
+    def __init__(self, initializer=Normal, nonlinearity='relu', c01b=False, dropout_p=0.):
+        if nonlinearity == 'relu':
+            g1 = g2 = .5
+        elif nonlinearity == 'gelu':
+            g1 = .425
+            g2 = .444
+
+        p = 1 - dropout_p
+        self.denominator = (g1 / p + p * g2)**.5
+
+        self.__dict__.update(locals())
+
+    def sample(self, shape):
+        if self.c01b:
+            assert False
+            if len(shape) != 4:
+                raise RuntimeError(
+                    "If c01b is True, only shapes of length 4 are accepted")
+
+            n1, n2 = shape[0], shape[3]
+            receptive_field_size = shape[1] * shape[2]
+        else:
+            if len(shape) < 2:
+                raise RuntimeError(
+                    "This initializer only works with shapes of length >= 2")
+
+            n1, n2 = shape[:2]
+            receptive_field_size = np.prod(shape[2:])
+
+        std = self.gain * np.sqrt(2.0 / ((n1 + n2) * receptive_field_size))
+        # TODO: orthogonal
+        return self.initializer(std=std).sample(shape)
