@@ -184,7 +184,7 @@ if __name__ == '__main__':
     phi_trad, cost_hist_trad, loglik_valid_trad, primary_out_trad = \
         traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_shapes)
 
-    tr = mlp_hmc.hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=n_samples, n_iter=500, n_tune=500)
+    tr = mlp_hmc.hmc_net(X, y, x_grid[:, None], hypernet_f, weight_shapes, restarts=n_samples, n_iter=20, n_tune=50)
     mu_hmc, LB_hmc, UB_hmc, _ = mlp_hmc.hmc_pred(tr, x_grid[:, None], n_layers=n_layers, chk=True)
 
     _, _, _, loglik_hmc = mlp_hmc.hmc_pred(tr, X_valid, y_test=y_valid[:, 0], n_layers=n_layers)
