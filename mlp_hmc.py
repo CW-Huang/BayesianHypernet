@@ -46,6 +46,22 @@ def mlp_pred(X, theta, n_layers, lib=T):
     return yp, y_prec
 
 
+def mlp_loglik_np(X, y, theta, n_layers):
+    yp, y_prec = mlp_pred(X, theta, n_layers, lib=np)
+    std_dev = np.sqrt(1.0 / y_prec)
+    assert(std_dev.ndim == 0)
+    assert(yp.shape == y.shape)
+
+    loglik = norm.logpdf(y, loc=yp, scale=std_dev)
+    assert(loglik.shape == y.shape)
+    return np.sum(loglik)
+
+
+def logprior_np(theta):
+    logprior = sum(np.sum(norm.logpdf(th, loc=0.0, scale=1.0))
+                   for th in theta.itervalues())
+    return logprior
+
 # Define theano only flat versions of MLP functions
 
 
@@ -108,9 +124,10 @@ def primary_net_pm(X_train, Y_train, X_test, weight_shapes):
     return neural_network
 
 
-def hmc_net(X_train, Y_train, X_test, initializer_f, weight_shapes,
+def hmc_net(X_train, Y_train, X_test, Y_test, initializer_f, weight_shapes,
             restarts=100, n_iter=500, n_tune=10, init_scale_iter=1000):
-    '''hypernet_f can serve as initializer_f.'''
+    '''hypernet_f can serve as initializer_f. Y_test only used to monitor
+    loglik'''
     num_params = get_num_params(weight_shapes)
 
     ann_input = theano.shared(X_train)
@@ -126,6 +143,9 @@ def hmc_net(X_train, Y_train, X_test, initializer_f, weight_shapes,
     assert(var_estimate.shape == (num_params,))
 
     tr = [None] * restarts
+    logprior = np.nan + np.zeros((n_tune + n_iter, restarts))
+    loglik_train = np.nan + np.zeros((n_tune + n_iter, restarts))
+    loglik_test = np.nan + np.zeros((n_tune + n_iter, restarts))
     for rr in xrange(restarts):
         print 'HMC run', str(rr)
 
@@ -144,8 +164,15 @@ def hmc_net(X_train, Y_train, X_test, initializer_f, weight_shapes,
                                         progressbar=False, tune=n_tune,
                                         discard_tuned_samples=False)
         print (time() - t), 's'
+
+        n_layers, rem = divmod(len(weight_shapes) - 1, 2)
+        assert(rem == 0)
+        for ii, theta in enumerate(tr[rr]):
+            logprior[ii, rr] = logprior_np(theta)
+            loglik_train[ii, rr] = mlp_loglik_np(X_train, Y_train, theta, n_layers)
+            loglik_test[ii, rr] = mlp_loglik_np(X_test, Y_test, theta, n_layers)
     # Could use merge traces but prob not worth trouble
-    return tr
+    return tr, (logprior, loglik_train, loglik_test)
 
 # Post-process pymc3 traces
 
@@ -159,7 +186,7 @@ def hmc_pred(tr_list, X_test, n_layers, y_test=None, chk=False):
 
     mu_test = np.zeros((n_samples, n_iter, n_grid))
     y_samples = np.zeros((n_samples, n_iter, n_grid))
-    loglik = np.nan + np.zeros((n_samples, n_iter, n_grid))
+    loglik_raw = np.nan + np.zeros((n_samples, n_iter, n_grid))
     for ss, tr in enumerate(tr_list):
         assert(len(tr) == n_iter)
 
@@ -171,7 +198,7 @@ def hmc_pred(tr_list, X_test, n_layers, y_test=None, chk=False):
             std_dev = np.sqrt(1.0 / y_prec)
             y_samples[ss, ii, :] = mu_test[ss, ii, :] + std_dev * noise
             if y_test is not None:
-                loglik[ss, ii, :] = \
+                loglik_raw[ss, ii, :] = \
                     norm.logpdf(y_test, loc=mu_test[ss, ii, :], scale=std_dev)
 
         if chk:  # Assumes passed in same X_test here as to hmc_net()
@@ -182,7 +209,7 @@ def hmc_pred(tr_list, X_test, n_layers, y_test=None, chk=False):
             assert(log_prec.shape == (n_iter,))
             assert(np.allclose(mu[:, :, 0], mu_test[ss, :, :]))
 
-    loglik = logsumexp(loglik, axis=0) - np.log(n_samples)
+    loglik = logsumexp(loglik_raw, axis=0) - np.log(n_samples)
     assert(loglik.shape == (n_iter, n_grid))
     loglik = np.mean(loglik, axis=1)  # Get average loss per example
     assert(loglik.shape == (n_iter,))
@@ -195,4 +222,4 @@ def hmc_pred(tr_list, X_test, n_layers, y_test=None, chk=False):
         mu[ii, :] = np.mean(mu_test[:, ii, :], axis=0)
         LB[ii, :] = np.percentile(y_samples[:, ii, :], 2.5, axis=0)
         UB[ii, :] = np.percentile(y_samples[:, ii, :], 97.5, axis=0)
-    return mu, LB, UB, loglik
+    return mu, LB, UB, loglik, loglik_raw
