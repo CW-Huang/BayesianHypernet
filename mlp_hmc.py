@@ -104,10 +104,10 @@ def make_normal_vars_pm(weight_shapes):
     return D
 
 
-def primary_net_pm(X_train, Y_train, X_test, weight_shapes):
+def primary_net_pm(X_train, Y_train, weight_shapes):
     '''Assume input data are shared variables.'''
     N, D = X_train.get_value().shape
-    assert(Y_train.get_value().shape == (N,))
+    assert(Y_train.get_value().shape == (N, 1))
     # TODO check X_test
     n_layers, rem = divmod(len(weight_shapes) - 1, 2)
     assert(rem == 0)
@@ -119,8 +119,8 @@ def primary_net_pm(X_train, Y_train, X_test, weight_shapes):
         yp_train, y_prec = mlp_pred(X_train, theta_dict, n_layers, lib=T)
         pm.Normal('out', mu=yp_train, tau=y_prec, observed=Y_train)
 
-        yp_test, _ = mlp_pred(X_test, theta_dict, n_layers, lib=T)
-        pm.Deterministic('yp_test', yp_test)
+        #yp_test, _ = mlp_pred(X_test, theta_dict, n_layers, lib=T)
+        #pm.Deterministic('yp_test', yp_test)
     return neural_network
 
 
@@ -131,10 +131,8 @@ def hmc_net(X_train, Y_train, X_test, Y_test, initializer_f, weight_shapes,
     num_params = get_num_params(weight_shapes)
 
     ann_input = theano.shared(X_train)
-    ann_output = theano.shared(Y_train[:, 0])
-    ann_input_test = theano.shared(X_test)
-    ann_model = primary_net_pm(ann_input, ann_output, ann_input_test,
-                               weight_shapes)
+    ann_output = theano.shared(Y_train)
+    ann_model = primary_net_pm(ann_input, ann_output, weight_shapes)
 
     theta0 = [initializer_f(np.random.randn(num_params), False)
               for _ in xrange(init_scale_iter)]
@@ -146,6 +144,7 @@ def hmc_net(X_train, Y_train, X_test, Y_test, initializer_f, weight_shapes,
     logprior = np.nan + np.zeros((n_tune + n_iter, restarts))
     loglik_train = np.nan + np.zeros((n_tune + n_iter, restarts))
     loglik_test = np.nan + np.zeros((n_tune + n_iter, restarts))
+    logp_chk = np.nan + np.zeros((n_tune + n_iter, restarts))
     for rr in xrange(restarts):
         print 'HMC run', str(rr)
 
@@ -168,9 +167,12 @@ def hmc_net(X_train, Y_train, X_test, Y_test, initializer_f, weight_shapes,
         n_layers, rem = divmod(len(weight_shapes) - 1, 2)
         assert(rem == 0)
         for ii, theta in enumerate(tr[rr]):
+            logp_chk[ii, rr] = ann_model.logp(theta)
             logprior[ii, rr] = logprior_np(theta)
             loglik_train[ii, rr] = mlp_loglik_np(X_train, Y_train, theta, n_layers)
             loglik_test[ii, rr] = mlp_loglik_np(X_test, Y_test, theta, n_layers)
+    err = np.max(np.abs(logp_chk - (logprior + loglik_train)))
+    print 'nrg log10 err %f' % np.log10(err)
     # Could use merge traces but prob not worth trouble
     return tr, (logprior, loglik_train, loglik_test)
 
