@@ -126,6 +126,8 @@ def hmc_net(X_train, Y_train, X_test, initializer_f, weight_shapes,
 
     tr = [None] * restarts
     for rr in xrange(restarts):
+        print 'HMC run', str(rr)
+
         z_noise = np.random.randn(num_params)
         theta_vec = initializer_f(z_noise, False)
         assert(theta_vec.shape == (num_params,))
@@ -136,7 +138,7 @@ def hmc_net(X_train, Y_train, X_test, initializer_f, weight_shapes,
         with ann_model:
             step = pm.NUTS(scaling=var_estimate, is_cov=True)
             tr[rr] = pm.sampling.sample(draws=n_iter, step=step, start=start,
-                                        progressbar=True, tune=n_tune,
+                                        progressbar=False, tune=n_tune,
                                         discard_tuned_samples=False)
     # Could use merge traces but prob not worth trouble
     return tr
