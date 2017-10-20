@@ -148,10 +148,10 @@ def traditional_test(X, y, X_valid, y_valid, n_epochs, n_batch, init_lr, weight_
 if __name__ == '__main__':
     np.random.seed(5645)
 
-    n_tune_hmc = 5  # 50
-    n_iter_hmc = 3  # 50
-    n_samples = 5  # 100
-    n_epochs = 3  # 1000
+    n_tune_hmc = 50
+    n_iter_hmc = 50
+    n_samples = 100
+    n_epochs = 1000
 
     init_lr = 0.0005
     n_batch = 32
