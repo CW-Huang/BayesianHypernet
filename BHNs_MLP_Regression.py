@@ -371,7 +371,6 @@ class MLPWeightNorm_BHN(Base_BHN):
             assert False
         
     def _get_useful_funcs(self):
-        self.predict_proba = theano.function([self.input_var],self.y)
         self.predict = theano.function([self.input_var],self.y)
 
 
@@ -451,9 +450,8 @@ class MCdropout_MLP(object):
                                            updates=self.updates)
         
         print '\tgetting useful_funcs'
-        self.predict_proba = theano.function([self.input_var],self.y)
         self.predict = theano.function([self.input_var],self.y_stochastic)
-        self.predict_stochastic = theano.function([self.input_var], self.y_stochastic)
+        self.predict_deterministic = theano.function([self.input_var], self.y_det)
         
     def train_func(self,x,y,n,lr=lrdefault,w=1.0):
         return self.train_func_(x,y,lr, n)
@@ -550,7 +548,6 @@ class Backprop_MLP(object):
                                            updates=self.updates)
         
         print '\tgetting useful_funcs'
-        self.predict_proba = theano.function([self.input_var],self.y)
         self.predict = theano.function([self.input_var],self.y)
 
         
