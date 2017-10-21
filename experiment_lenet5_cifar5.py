@@ -150,8 +150,6 @@ if __name__ == '__main__':
     parser.add_argument('--prior',default='log_normal',type=str)
     parser.add_argument('--model',default='HyperWN_CNN',type=str) 
     parser.add_argument('--anneal',default=0,type=int)
-    parser.add_argument('--n_hiddens',default=1,type=int)
-    parser.add_argument('--n_units',default=200,type=int)
     parser.add_argument('--totrain',default=1,type=int)
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
@@ -192,13 +190,11 @@ if __name__ == '__main__':
     if not os.path.exists(path):
         os.makedirs(path)
 
-    name = '{}/WNCNN_md{}ds{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}' \
+    name = '{}/WNCNN_md{}ds{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}' \
            'reinit{}alpha{}beta{}flow{}'.format(
         path,
         md,
         ds,
-        args.n_hiddens,
-        args.n_units,
         args.coupling,
         pr,
         args.lbda,
