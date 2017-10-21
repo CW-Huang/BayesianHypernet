@@ -1,6 +1,6 @@
-    #!/usr/bin/env python
-    # -*- coding: utf-8 -*-
-    """@author: Riashat Islam
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""@author: Riashat Islam
 """
 import argparse
 import os
@@ -229,8 +229,8 @@ if __name__ == '__main__':
     # SET HPARAMS FOR SEARCH (override grid search if provided as flag)
     if grid_search:
         # TODO: better grid...
-        length_scales = 10.**np.arange(-4,5)[::-1]#length_scales = [.1, .01,  .001] # length scale should be smaller!
-        taus = 10.**np.arange(0,6)[::-1]#taus = [.01, .1, 1, 10., 100.] # tau should be larger!
+        length_scales = 100.**np.arange(-4,2)#length_scales = [.1, .01,  .001] # length scale should be smaller!
+        taus = 3.**np.arange(3,8)#taus = [.01, .1, 1, 10., 100.] # tau should be larger!
         lr0s = [.001]#lr0s = [.01, .001, .0001]
         drop_probs = [.01]#[.1, .05, .02, .01, .005, .002, .001]
 

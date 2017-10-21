@@ -344,7 +344,8 @@ class MLPWeightNorm_BHN(Base_BHN):
         self.logdets = sum([get_output(ld,self.ep) for ld in logdets_layers])
     
     def _get_primary_net(self):
-        t = 0 #np.cast['int32'](0) # TODO: what's wrong with np.cast
+        # TODO: figure out why I can't run at school anymore (DK)  >:( 
+        t = 0#np.cast['int32'](0) # TODO: what's wrong with np.cast
         p_net = lasagne.layers.InputLayer([None,self.n_inputs])
         inputs = {p_net:self.input_var}
         for ws in self.weight_shapes:
