@@ -6,8 +6,8 @@ Created on Sun May 14 19:49:51 2017
 """
 
 
-from ops import load_mnist, load_cifar10
-from utils import log_normal, log_laplace
+from ops import load_mnist, load_cifar10, load_cifar5
+from utils import log_normal, log_laplace, train_model, evaluate_model
 import numpy as np
 
 import lasagne
@@ -18,26 +18,53 @@ floatX = theano.config.floatX
 # DK / CW
 from BHNs import HyperWN_CNN
 from theano.tensor.shared_randomstreams import RandomStreams
+from lasagne import nonlinearities
+from lasagne.random import set_rng
+import os
+rectify = nonlinearities.rectify
 
 class MCdropoutCNN(object):
                      
-    def __init__(self, dropout=None, dataset='mnist'):
-        if dataset == 'mnist':
-            weight_shapes = [(20,1,5,5),        # -> (None, 20, 12, 12)
-                             (50,20,5,5)]       # -> (None, 50,  5,  5)
-                             
-            args = [[20,5,1,'valid',lasagne.nonlinearities.rectify,'max'],
-                    [50,5,1,'valid',lasagne.nonlinearities.rectify,'max']]
-            num_hids = 500
+    def __init__(self, dropout=None, 
+                 input_channels=3,
+                 input_shape = (3,32,32),
+                 n_convlayers=2,
+                 n_channels = 192,
+                 stride = 1,
+                 pad = 'valid',
+                 nonl = rectify,
+                 dataset='mnist', 
+                 n_mlplayers=1,
+                 n_units=1000,
+                 n_classes=10):
+
+        weight_shapes = list()
+        args = list()
+        n_channels = n_channels if isinstance(n_channels,list) else \
+                     [n_channels for i in range(n_convlayers)]
+        in_chan = input_channels
+        for i in range(n_convlayers):
+            out_chan = n_channels[i]
+            weight_shape = (out_chan, in_chan, kernel_size, kernel_size)
+            weight_shapes.append(weight_shape)
             
-        elif dataset == 'cifar5':
-            weight_shapes = [(192,3  ,5,5),        
-                             (192,192,5,5)]
-            args = [[192,5,1,'valid',lasagne.nonlinearities.rectify,'max'],
-                    [192,5,1,'valid',lasagne.nonlinearities.rectify,'max']]
-            num_hids = 1000
-            
-            
+            num_filters = out_chan
+            filter_size = kernel_size
+            stride = stride
+            pad = pad
+            nonl = nonl
+            # pool every `pool` conv layers
+            if (i+1)%pool_per == 0:
+                pool = 'max'
+            else:
+                pool = None
+            arg = (num_filters,filter_size,stride,pad,nonl,pool)
+            args.append(arg)
+            in_chan = out_chan
+        
+        num_hids = n_units
+        
+        
         n_kernels = np.array(weight_shapes)[:,1].sum()
         kernel_shape = weight_shapes[0][:1]+weight_shapes[0][2:]
         
@@ -47,10 +74,7 @@ class MCdropoutCNN(object):
         self.__dict__.update(locals())
         ##################
         
-        if dataset == 'mnist':
-            layer = lasagne.layers.InputLayer([None,1,28,28])
-        elif dataset == 'cifar10':
-            layer = lasagne.layers.InputLayer([None,3,32,32])
+        layer = lasagne.layers.InputLayer((None,)+input_shape)
         
         for j,(ws,arg) in enumerate(zip(weight_shapes,args)):
             num_filters = ws[1]
@@ -69,10 +93,11 @@ class MCdropoutCNN(object):
 
             print layer.output_shape
         # MLP layers
-        layer = lasagne.layers.DenseLayer(layer, num_hids)
-        if dropout is not None and j!=len(self.weight_shapes)-1:
-            layer = lasagne.layers.dropout(layer, 0.5)
-        layer = lasagne.layers.DenseLayer(layer, 10)
+        for i in range(n_mlplayers):
+            layer = lasagne.layers.DenseLayer(layer, num_hids)
+            if dropout is not None and i!=n_mlplayers-1:
+                layer = lasagne.layers.dropout(layer, 0.5)
+        layer = lasagne.layers.DenseLayer(layer, n_classes)
 
         layer.nonlinearity = lasagne.nonlinearities.softmax
         self.input_var = T.tensor4('input_var')
@@ -93,106 +118,101 @@ class MCdropoutCNN(object):
                                             self.learning_rate)
 
         print '\tgetting train_func'
-        self.train_func = theano.function([self.input_var,
-                                           self.target_var,
-                                           self.dataset_size,
-                                           self.learning_rate],
-                                          self.loss,
-                                          updates=self.updates)
+        self.train_func_ = theano.function([self.input_var,
+                                            self.target_var,
+                                            self.dataset_size,
+                                            self.learning_rate],
+                                           self.loss,
+                                           updates=self.updates)
         
+        self.train_func = lambda a,b,c,d,w: self.train_func_(a,b,c,d)
         print '\tgetting useful_funcs'
         self.predict_proba = theano.function([self.input_var],self.y)
         self.predict = theano.function([self.input_var],self.y_det.argmax(1))
         
 
 
-
-def train_model(train_func,predict_func,X,Y,Xt,Yt,
-                lr0=0.1,lrdecay=1,bs=20,epochs=50):
-    
-    print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
-    N = X.shape[0]    
-    records=list()
-    
-    t = 0
-    for e in range(epochs):
-        
-        if lrdecay:
-            lr = lr0 * 10**(-e/float(epochs-1))
-        else:
-            lr = lr0         
-            
-        for i in range(N/bs):
-            x = X[i*bs:(i+1)*bs]
-            y = Y[i*bs:(i+1)*bs]
-            
-            loss = train_func(x,y,N,lr)
-            
-            if t%500==0:
-                print 'epoch: {} {}, loss:{}'.format(e,t,loss)
-                tr_acc = (predict_func(X[:1000])==Y[:1000].argmax(1)).mean()
-                te_acc = (predict_func(Xt[:1000])==Yt[:1000].argmax(1)).mean()
-                print '\ttrain acc: {}'.format(tr_acc)
-                print '\ttest acc: {}'.format(te_acc)
-            t+=1
-            
-        records.append(loss)
-        
-    return records
-
-
-def evaluate_model(predict_proba,X,Y,Xt,Yt,n_mc=1000):
-    n = X.shape[0]
-    MCt = np.zeros((n_mc,X.shape[0],10))
-    MCv = np.zeros((n_mc,Xt.shape[0],10))
-    for i in range(n_mc):
-        MCt[i] = predict_proba(X)
-        MCv[i] = predict_proba(Xt)
-    
-    Y_pred = MCt.mean(0).argmax(-1)
-    Y_true = Y.argmax(-1)
-    Yt_pred = MCv.mean(0).argmax(-1)
-    Yt_true = Yt.argmax(-1)
-    
-    tr = np.equal(Y_pred,Y_true).mean()
-    va = np.equal(Yt_pred,Yt_true).mean()
-    print "train perf=", tr
-    print "valid perf=", va
-
-    ind_positive = np.arange(Xt.shape[0])[Yt_pred == Yt_true]
-    ind_negative = np.arange(Xt.shape[0])[Yt_pred != Yt_true]
-    
-    ind = ind_negative[-1] #TO-DO: complete evaluation
-    for ii in range(15): 
-        print np.round(MCv[ii][ind] * 1000)
-    
-    ind = ind_negative[-2] #TO-DO: complete evaluation
-    for ii in range(15): 
-        print np.round(MCv[ii][ind] * 1000)
-
-#def main():
 if __name__ == '__main__':
     
     import argparse
     
     parser = argparse.ArgumentParser()
     
-    # boolean: 1 -> True ; 0 -> False 
+    parser.add_argument('--dataset',default='cifar5',type=str)
     parser.add_argument('--perdatapoint',default=0,type=int)
-    parser.add_argument('--lrdecay',default=0,type=int)  
-    
-    parser.add_argument('--lr0',default=0.001,type=float)  
-    parser.add_argument('--coupling',default=4,type=int) 
+    parser.add_argument('--lrdecay',default=0,type=int)      
+    parser.add_argument('--lr0',default=0.0001,type=float)  
+    parser.add_argument('--coupling',default=0,type=int) 
     parser.add_argument('--lbda',default=1,type=float)  
-    parser.add_argument('--size',default=10000,type=int)      
-    parser.add_argument('--bs',default=20,type=int)  
-    parser.add_argument('--epochs',default=50,type=int)
+    parser.add_argument('--size',default=2000,type=int)      
+    parser.add_argument('--bs',default=32,type=int)  
+    parser.add_argument('--epochs',default=10,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='CNN_dropout',type=str)
-    parser.add_argument('--dataset',default='cifar10',type=str)
+    parser.add_argument('--model',default='HyperWN_CNN',type=str) 
+    parser.add_argument('--anneal',default=0,type=int)
+    parser.add_argument('--n_hiddens',default=1,type=int)
+    parser.add_argument('--n_units',default=200,type=int)
+    parser.add_argument('--totrain',default=1,type=int)
+    parser.add_argument('--seed',default=427,type=int)
+    parser.add_argument('--override',default=1,type=int)
+    parser.add_argument('--reinit',default=1,type=int)
+    parser.add_argument('--flow',default='RealNVP',type=str, 
+                        choices=['RealNVP', 'IAF'])
+    parser.add_argument('--alpha',default=2, type=float)
+    parser.add_argument('--beta',default=1, type=float)
+    parser.add_argument('--save_dir',default='./models_CNN',type=str)
+    
     
     args = parser.parse_args()
     print args
+    
+    
+    set_rng(np.random.RandomState(args.seed))
+    np.random.seed(args.seed+1000)
+
+    
+    if args.prior == 'log_normal':
+        pr = 0
+    if args.prior == 'log_laplace':
+        pr = 1
+    
+    pr = {'log_normal':0,
+          'log_laplace':1}[args.prior]
+    
+    md = {'HyperWN_CNN':0, 
+          'CNN':1,
+          'CNN_spatial_dropout':2,
+          'CNN_dropout':3}[args.model]
+          
+    ds = {'mnist':0,
+          'cifar5':1,
+          'cifar10':2}[args.dataset]
+    
+    path = args.save_dir
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    name = '{}/WNCNN_md{}ds{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}' \
+           'reinit{}alpha{}beta{}flow{}'.format(
+        path,
+        md,
+        ds,
+        args.n_hiddens,
+        args.n_units,
+        args.coupling,
+        pr,
+        args.lbda,
+        args.lr0,
+        args.lrdecay,
+        args.anneal,
+        args.size,
+        args.seed,
+        args.reinit,
+        args.alpha,
+        args.beta,
+        args.flow
+    )
+    
     
     coupling = args.coupling
     perdatapoint = args.perdatapoint
@@ -202,6 +222,7 @@ if __name__ == '__main__':
     bs = args.bs
     epochs = args.epochs
     dataset = args.dataset
+    anneal = args.anneal
     if args.prior=='log_normal':
         prior = log_normal
     elif args.prior=='log_laplace':
@@ -211,82 +232,138 @@ if __name__ == '__main__':
     size = max(10,min(50000,args.size))
     
     print '\tloading dataset'
-    if dataset=='mnist':
-        filename = '/data/lisa/data/mnist.pkl.gz'
-        train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
-        train_x = train_x.reshape((-1, 1, 28, 28))
-        valid_x = valid_x.reshape((-1, 1, 28, 28))
-        test_x = test_x.reshape((-1, 1, 28, 28))
-    elif dataset=='cifar10':
-        filename = 'cifar10.pkl'
-        train_x, train_y, test_x, test_y = load_cifar10(filename)
-        train_x = train_x.reshape((-1, 3, 32, 32))
-        test_x = test_x.reshape((-1, 3, 32, 32))
-        
-        valid_x = test_x.copy()
-        valid_y = test_y.copy()
-    elif dataset=='cifar5':
-        filename = 'cifar10.pkl'
-        train_x, train_y, test_x, test_y = load_cifar10(filename)
-        train_x = train_x.reshape((-1, 3, 32, 32))
-        test_x = test_x.reshape((-1, 3, 32, 32))
-        
-        valid_x = test_x.copy()
-        valid_y = test_y.copy()
-    
-    if args.model == 'HyperWN_CNN':
-        
+    if 0:
+        if dataset=='mnist':
+            filename = '/data/lisa/data/mnist.pkl.gz'
+            train_x, train_y, valid_x, valid_y, test_x, test_y = \
+                load_mnist(filename)
+            train_x = train_x.reshape((-1, 1, 28, 28))
+            valid_x = valid_x.reshape((-1, 1, 28, 28))
+            test_x = test_x.reshape((-1, 1, 28, 28))
+            input_channels = 1
+            input_shape = (1,28,28)
+            n_classes = 10
+            n_convlayers = 2
+            n_channels = [20,50]
+            kernel_size = 5
+            n_mlplayers = 1
+            n_units = 500
+            stride = 1
+            pad = 'valid'
+            nonl = rectify
+            pool_per = 1
+        elif dataset=='cifar10':
+            filename = 'cifar10.pkl'
+            train_x, train_y, valid_x, valid_y, test_x, test_y = \
+                load_cifar10(filename,seed=args.seed)
+            train_x = train_x.reshape((-1, 3, 32, 32))
+            test_x = test_x.reshape((-1, 3, 32, 32))
             
+            input_channels = 3
+            input_shape = (3,32,32)
+            n_classes = 10
+            n_convlayers = 4
+            n_channels = 192
+            kernel_size = 5
+            n_mlplayers = 1
+            n_units = 1000
+            stride = 1
+            pad = 'valid'
+            nonl = rectify
+            pool_per = 2
+        elif dataset=='cifar5':
+            filename = 'cifar10.pkl'
+            train_x, train_y, valid_x, valid_y, test_x, test_y = \
+                load_cifar5(filename,seed=args.seed)
+            train_x = train_x.reshape((-1, 3, 32, 32))
+            test_x = test_x.reshape((-1, 3, 32, 32))
+            
+            input_channels = 3
+            input_shape = (3,32,32)
+            n_classes = 5 
+            n_convlayers = 2
+            n_channels = 192
+            kernel_size = 5
+            n_mlplayers = 1
+            n_units = 1000
+            stride = 1
+            pad = 'valid'
+            nonl = rectify
+            pool_per = 1
+            
+    if args.model == 'HyperWN_CNN':
         model = HyperWN_CNN(lbda=lbda,
                             perdatapoint=perdatapoint,
                             srng=RandomStreams(seed=427),
                             prior=prior,
                             coupling=coupling,
-                            input_channels=3,
-                            input_shape = (3,32,32),
-                            n_classes=5,
-                            n_convlayers=2,
-                            n_channels=192,
-                            kernel_size=3,
-                            n_mlplayers=1,
-                            n_units=1000,
-                            stride=1,
-                            pad='valid',
-                            nonl=rectify,
-                            pool_per=1)
+                            input_channels=input_channels,
+                            input_shape=input_shape,
+                            n_classes=n_classes,
+                            n_convlayers=n_convlayers,
+                            n_channels=n_channels,
+                            kernel_size=kernel_size,
+                            n_mlplayers=n_mlplayers,
+                            n_units=n_units,
+                            stride=stride,
+                            pad=pad,
+                            nonl=nonl,
+                            pool_per=pool_per)
     elif args.model == 'CNN':
-        model = MCdropoutCNN(dataset=dataset)
+        model = MCdropoutCNN(dataset=dataset,n_classes=n_classes)
     elif args.model == 'CNN_spatial_dropout':
         model = MCdropoutCNN(dropout='spatial',
-                             dataset=dataset)
+                             dataset=dataset,n_classes=n_classes)
     elif args.model == 'CNN_dropout':
         model = MCdropoutCNN(dropout=1,
-                             dataset=dataset)
-    elif args.model == 'CNN_BHN':
-        model = Conv2D_BHN(lbda=lbda,
-                           perdatapoint=perdatapoint,
-                           prior=prior,
-                           coupling=coupling,
-                           dataset=dataset)
+                             dataset=dataset,n_classes=n_classes)
     else:
         raise Exception('no model named `{}`'.format(args.model))
     
 
-    print '\tbegin training'
-    recs = train_model(model.train_func,model.predict,
-                       train_x[:size],train_y[:size],
-                       valid_x,valid_y,
-                       lr0,lrdecay,bs,epochs)
+    va_rec_name = name+'_recs'
+    save_path = name + '.params.npy'
+    if os.path.isfile(save_path) and not args.override:
+        print 'load best model'
+        e0 = model.load(save_path)
+        va_recs = open(va_rec_name,'r').read().split('\n')[:e0]
+        rec = max([float(r) for r in va_recs])
+        
+    else:
+        e0 = 0
+        rec = 0
+
+
+    if args.to_train:
+        print '\tbegin training'
+        train_model(model,
+                    train_x[:size],train_y[:size],
+                    valid_x,valid_y,
+                    lr0,lrdecay,bs,epochs,anneal,name,e0,rec,
+                    print_every=10,
+                    n_classes=n_classes)
     
+
+                    
     print '\tevaluating train/valid sets'
     evaluate_model(model.predict_proba,
                    train_x[:min(size,10000)],train_y[:min(size,10000)],
-                   valid_x,valid_y)
+                   valid_x,valid_y,
+                   n_classes=n_classes)
     
     print '\tevaluating train/test sets'
     evaluate_model(model.predict_proba,
                    train_x[:min(size,10000)],train_y[:min(size,10000)],
-                   test_x,test_y)
+                   test_x,test_y,
+                   n_classes=n_classes)
 
+    if args.totrain == 1:
+        # report the best valid-model's test acc
+        e0 = model.load(save_path)
+        te_acc = evaluate_model(model.predict_proba,
+                                test_x,test_y,n_mc=200)
+        print 'test acc (best valid): {}'.format(te_acc)
+
+    
 
 

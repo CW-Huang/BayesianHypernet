@@ -118,7 +118,9 @@ if __name__ == '__main__':
     parser.add_argument('--bs',default=32,type=int)  
     parser.add_argument('--epochs',default=10,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='BHN_MLPWN',type=str, choices=['BHN_MLPWN', 'BHN_MLPCD', 'MCdropout_MLP']) # TODO: concrete dropout
+    parser.add_argument('--model',default='BHN_MLPWN',type=str, 
+                        choices=['BHN_MLPWN', 'BHN_MLPCD', 'MCdropout_MLP']) 
+                        # TODO: concrete dropout
     parser.add_argument('--anneal',default=0,type=int)
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
@@ -126,7 +128,8 @@ if __name__ == '__main__':
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
-    parser.add_argument('--flow',default='RealNVP',type=str, choices=['RealNVP', 'IAF'])
+    parser.add_argument('--flow',default='RealNVP',type=str, 
+                        choices=['RealNVP', 'IAF'])
     parser.add_argument('--alpha',default=2, type=float)
     parser.add_argument('--beta',default=1, type=float)
     parser.add_argument('--save_dir',default='./models',type=str)

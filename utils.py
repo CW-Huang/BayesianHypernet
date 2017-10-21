@@ -120,8 +120,8 @@ class DanNormal(Initializer):
 
 
 def train_model(model,X,Y,Xv,Yv,
-                lr0=0.1,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
-                e0=0,rec=0):
+                lr0=0.001,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
+                e0=0,rec=0,print_every=100,v_mc=20,n_classes=10):
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
@@ -152,7 +152,7 @@ def train_model(model,X,Y,Xv,Yv,
             
             loss = model.train_func(x,y,N,lr,w)
             
-            if t%100==0:
+            if t%print_every==0:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
                 tr_acc = (model.predict(X)==Y.argmax(1)).mean()
                 va_acc = (model.predict(Xv)==Yv.argmax(1)).mean()
@@ -160,7 +160,8 @@ def train_model(model,X,Y,Xv,Yv,
                 print '\tvalid acc: {}'.format(va_acc)
             t+=1
         
-        va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=20)
+        va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=v_mc,
+                                n_classes=n_classes)
         print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
         
         va_recs.append(va_acc)
@@ -181,8 +182,8 @@ def train_model(model,X,Y,Xv,Yv,
 
 
 
-def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100):
-    MCt = np.zeros((n_mc,X.shape[0],10))
+def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100,n_classes=10):
+    MCt = np.zeros((n_mc,X.shape[0],n_classes))
     
     N = X.shape[0]
     num_batches = np.ceil(N / float(max_n)).astype(int)

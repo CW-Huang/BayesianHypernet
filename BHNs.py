@@ -412,9 +412,11 @@ class HyperWN_CNN(Base_BHN):
         
         weight_shapes = list()
         args = list()
+        n_channels = n_channels if isinstance(n_channels,list) else \
+                     [n_channels for i in range(n_convlayers)]
         in_chan = input_channels
         for i in range(n_convlayers):
-            out_chan = n_channels
+            out_chan = n_channels[i]
             weight_shape = (out_chan, in_chan, kernel_size, kernel_size)
             weight_shapes.append(weight_shape)
             
