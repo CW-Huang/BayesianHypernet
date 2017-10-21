@@ -395,37 +395,50 @@ class HyperWN_CNN(Base_BHN):
                  srng = RandomStreams(seed=427),
                  prior = log_normal,
                  coupling=4,
-                 dataset='mnist',
+                 input_channels=3,
+                 input_shape = (3,32,32),
+                 n_classes=5,
+                 n_convlayers=2,
+                 n_channels=128,
+                 kernel_size=3,
+                 n_mlplayers=1,
+                 n_units=1000,
+                 stride=1,
+                 pad='valid',
+                 nonl=rectify,
+                 pool_per=1,
                  **kargs):
         
-        self.dataset = dataset
         
-        if dataset == 'mnist':
-            self.weight_shapes = [(32,1,3,3),        # -> (None, 16, 14, 14)
-                                  (32,32,3,3),       # -> (None, 16,  7,  7)
-                                  (32,32,3,3)]       # -> (None, 16,  4,  4)
-            self.args = [[32,3,1,'same',rectify,'max'],
-                         [32,3,1,'same',rectify,'max'],
-                         [32,3,1,'same',rectify,'max']]
+        weight_shapes = list()
+        args = list()
+        in_chan = input_channels
+        for i in range(n_convlayers):
+            out_chan = n_channels
+            weight_shape = (out_chan, in_chan, kernel_size, kernel_size)
+            weight_shapes.append(weight_shape)
             
-            self.num_classes = 10
-            self.num_hids = 128
-            self.num_mlp_layers = 1
-
-        elif dataset == 'cifar10':
-            self.weight_shapes = [(64, 3,3,3),       
-                                  (64,64,3,3),     
-                                  (128,64,3,3),
-                                  (128,128,3,3)]
-            self.args = [[64,3,1,'valid',rectify,None],
-                         [64,3,1,'valid',rectify,'max'],
-                         [128,3,1,'valid',rectify,None],
-                         [128,3,1,'valid',rectify,'max']]
-                                  
-            self.num_classes = 10
-            self.num_hids = 512
-            self.num_mlp_layers = 1
-                        
+            num_filters = out_chan
+            filter_size = kernel_size
+            stride = stride
+            pad = pad
+            nonl = nonl
+            # pool every `pool` conv layers
+            if (i+1)%pool_per == 0:
+                pool = 'max'
+            else:
+                pool = None
+            arg = (num_filters,filter_size,stride,pad,nonl,pool)
+            args.append(arg)
+            in_chan = out_chan
+        
+        self.input_shape = input_shape
+        self.weight_shapes = weight_shapes
+        self.args = args
+        self.num_classes = n_classes
+        self.num_mlp_layers = n_mlplayers
+        self.num_hids = n_units
+        
         self.n_kernels = np.array(self.weight_shapes)[:,1].sum()
         self.kernel_shape = self.weight_shapes[0][:1]+self.weight_shapes[0][2:]
         print "kernel_shape", self.kernel_shape
@@ -446,10 +459,8 @@ class HyperWN_CNN(Base_BHN):
     
     def _get_theano_variables(self):
         # redefine a 4-d tensor for convnet
+        super(HyperWN_CNN, self)._get_theano_variables()
         self.input_var = T.tensor4('input_var')
-        self.target_var = T.matrix('target_var')
-        self.dataset_size = T.scalar('dataset_size')
-        self.learning_rate = T.scalar('learning_rate') 
      
     
     def _get_hyper_net(self):
@@ -478,7 +489,8 @@ class HyperWN_CNN(Base_BHN):
                     h_net = IndexLayer(layer_temp,0)
                     logdets_layers.append(IndexLayer(layer_temp,1))
         elif self.flow == 'IAF':
-            layer_temp = IAFDenseLayer(h_net,200,1,L=self.coupling,cond_bias=False)
+            layer_temp = IAFDenseLayer(h_net,200,1,
+                                       L=self.coupling,cond_bias=False)
             h_net = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))
         else:
@@ -487,14 +499,13 @@ class HyperWN_CNN(Base_BHN):
         self.h_net = h_net
         self.weights = lasagne.layers.get_output(h_net,ep)
         self.logdets = sum([get_output(ld,ep) for ld in logdets_layers])
+        
+        
     
     def _get_primary_net(self):
         
-        t = np.cast['int32'](0)
-        if self.dataset == 'mnist':
-            p_net = lasagne.layers.InputLayer([None,1,28,28])
-        elif self.dataset == 'cifar10':
-            p_net = lasagne.layers.InputLayer([None,3,32,32])
+        t = 0 #np.cast['int32'](0)
+        p_net = lasagne.layers.InputLayer((None,)+self.input_shape)
         print p_net.output_shape
         inputs = {p_net:self.input_var}
         for ws, args in zip(self.weight_shapes,self.args):
@@ -544,3 +555,42 @@ class HyperWN_CNN(Base_BHN):
         self.predict_proba = theano.function([self.input_var],self.y)
         self.predict = theano.function([self.input_var],self.y.argmax(1))       
         
+
+
+if __name__ == '__main__':
+    
+    
+    
+    # lenet 5
+    model = HyperWN_CNN(lbda=1,
+                        perdatapoint=False,
+                        srng = RandomStreams(seed=427),
+                        prior = log_normal,
+                        coupling=4,
+                        input_channels=3,
+                        input_shape = (3,32,32),
+                        n_classes=5,
+                        n_convlayers=2,
+                        n_channels=192,
+                        kernel_size=3,
+                        n_mlplayers=1,
+                        n_units=1000,
+                        stride=1,
+                        pad='valid',
+                        nonl=rectify,
+                        pool_per=1)
+    
+    
+    x = np.random.rand(8,3,32,32).astype('float32')
+    y = np.zeros((8,5)).astype('float32')
+    print model.train_func(x,y,1000)
+
+    for l in lasagne.layers.get_all_layers(model.p_net)[1:]:
+        if isinstance(l,WeightNormLayer):
+            continue
+        print l.output_shape
+    
+    
+    
+    
+    
