@@ -67,7 +67,8 @@ lrdefault = 1e-3
     
 class MCdropout_MLP(object):
 
-    def __init__(self,n_hiddens,n_units, output_type='categorical', n_inputs=784, n_outputs=3, drop_prob=.5):
+    def __init__(self,n_hiddens,n_units, output_type='categorical', n_inputs=784, n_outputs=3, drop_prob=.5,
+        opt='adam'):
         self.__dict__.update(locals())
         
         layer = lasagne.layers.InputLayer([None,n_inputs])
@@ -84,7 +85,8 @@ class MCdropout_MLP(object):
         for j,ws in enumerate(self.weight_shapes):
             layer = lasagne.layers.DenseLayer(
                 layer,ws[1],
-                nonlinearity=lasagne.nonlinearities.rectify
+                nonlinearity=lasagne.nonlinearities.rectify,
+                #W=lasagne.init.He(), # TODO: test without?
             )
             self.layers.append(layer)
             if j!=len(self.weight_shapes)-1:
@@ -111,12 +113,13 @@ class MCdropout_MLP(object):
         self.masks = []
         self.mask_sizes = []
         #self.drop_prob = .5 # TODO: hard coded
-        for layer in self.layers:
-            if type(layer) is DropoutLayer:
-                self.masks.append( layer.mask ) # for fixed mask dropout
-                print layer.input_shape
-                # TODO: very very hacky (e.g. for MLP only!)
-                self.mask_sizes.append((1,layer.input_shape[1]))
+        if self.drop_prob > 0:
+            for layer in self.layers:
+                if type(layer) is DropoutLayer:
+                    self.masks.append( layer.mask ) # for fixed mask dropout
+                    print layer.input_shape
+                    # TODO: very very hacky (e.g. for MLP only!)
+                    self.mask_sizes.append((1,layer.input_shape[1]))
         
         if output_type == 'categorical':
             losses = lasagne.objectives.categorical_crossentropy(self.y, self.target_var)
@@ -127,7 +130,14 @@ class MCdropout_MLP(object):
 
         self.loss = losses.mean()
         self.params = lasagne.layers.get_all_params(self.layer)
-        self.updates = lasagne.updates.adam(self.loss,self.params,
+        if self.opt == 'adam':
+            self.updates = lasagne.updates.adam(self.loss,self.params,
+                                            self.learning_rate)
+        elif self.opt == 'momentum':
+            self.updates = lasagne.updates.nesterov_momentum(self.loss, self.params, 
+                                                learning_rate=self.learning_rate)
+        elif self.opt == 'sgd':
+            self.updates = lasagne.updates.sgd(self.loss,self.params,
                                             self.learning_rate)
 
         print '\tgetting train_func'
@@ -135,18 +145,23 @@ class MCdropout_MLP(object):
                                             self.target_var,
                                             self.learning_rate],
                                            self.loss,
+                                           allow_input_downcast=True,
                                            updates=self.updates)
         
         print '\tgetting useful_funcs'
-        self.predict_proba = theano.function([self.input_var],self.y)
-        self.predict = theano.function([self.input_var],self.y_det.argmax(1))
-        self.predict_fixed_mask = theano.function([self.input_var] + self.masks,self.y)
+        self.predict_proba = theano.function([self.input_var],self.y, allow_input_downcast=True)
+        self.predict = theano.function([self.input_var],self.y_det.argmax(1), allow_input_downcast=True)
+        self.predict_fixed_mask = theano.function([self.input_var] + self.masks,self.y, allow_input_downcast=True)
         
     def sample_qyx(self):
         """ return a function that will make predictions with a fixed random mask"""
-        masks = [np.random.binomial(1,1-self.drop_prob, mask_size).astype('float32') for mask_size in self.mask_sizes]
-        return lambda x : self.predict_fixed_mask(x, *masks)
+        if self.drop_prob > 0:
+            masks = [np.random.binomial(1,1-self.drop_prob, mask_size).astype('float32') for mask_size in self.mask_sizes]
+            return lambda x : self.predict_fixed_mask(x, *masks)
+        else:
+            return self.predict_proba
 
+    # FIXME: make it depend on the size of the dataset!
     def train_func(self,x,y,n,lr=lrdefault,w=1.0):
         return self.train_func_(x,y,lr)
 

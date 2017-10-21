@@ -110,16 +110,17 @@ def get_regression_dataset(dataset, data_path='./'):#$HOME/BayesianHypernetCW/')
     
 
     ###normalizing dataset
-    train_x = (train_x - train_x.mean()) / train_x.var()
-    train_y = (train_y - train_y.mean()) / train_y.var()
+    train_x = (train_x - train_x.mean(axis=0)) / train_x.std(axis=0)
+    valid_x = (valid_x - valid_x.mean(axis=0)) / valid_x.std(axis=0)
 
-    valid_x = (valid_x - valid_x.mean()) / valid_x.var()
-    valid_y = (valid_y - valid_y.mean()) / valid_y.var()
+    train_y = (train_y - train_y.mean()) / train_y.std()
+    valid_y = (valid_y - valid_y.mean()) / valid_y.std()
 
 
     ## DO NOT normalize test data and test labels
-    # test_x = (test_x - test_x.mean()) / test_x.var()
-    # test_y = (test_y - test_y.mean()) / test_y.var()
+    if dataset == 'airfoil':
+        test_x = (test_x - test_x.mean()) / test_x.var()
+        test_y = (test_y - test_y.mean()) / test_y.var()
 
 
     return input_dim, train_x, train_y, valid_x, valid_y, test_x , test_y
