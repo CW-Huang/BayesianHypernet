@@ -154,8 +154,8 @@ def train_model(model,X,Y,Xv,Yv,
             
             if t%100==0:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
-                tr_acc = (model.predict_func(X)==Y.argmax(1)).mean()
-                va_acc = (model.predict_func(Xv)==Yv.argmax(1)).mean()
+                tr_acc = (model.predict(X)==Y.argmax(1)).mean()
+                va_acc = (model.predict(Xv)==Yv.argmax(1)).mean()
                 print '\ttrain acc: {}'.format(tr_acc)
                 print '\tvalid acc: {}'.format(va_acc)
             t+=1

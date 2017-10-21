@@ -7,7 +7,7 @@ Created on Sun May 14 19:49:51 2017
 """
 
 from BHNs import MLPWeightNorm_BHN
-from concrete_dropout import MLPConcreteDropout_BHN
+#from concrete_dropout import MLPConcreteDropout_BHN
 from ops import load_mnist
 from utils import log_normal, log_laplace, train_model, evaluate_model
 import numpy as np
@@ -257,7 +257,7 @@ if __name__ == '__main__':
 
     if args.totrain:
         print '\nstart training from epoch {}'.format(e0)
-        train_model(model.train_func,model.predict,
+        train_model(model,
                     train_x[:size],train_y[:size],
                     valid_x,valid_y,
                     lr0,lrdecay,bs,epochs,anneal,name,
@@ -270,11 +270,18 @@ if __name__ == '__main__':
     print 'train acc: {}'.format(tr_acc)
                    
     va_acc = evaluate_model(model.predict_proba,
-                            valid_x,valid_y)
+                            valid_x,valid_y,n_mc=200)
     print 'valid acc: {}'.format(va_acc)
     
     te_acc = evaluate_model(model.predict_proba,
-                            test_x,test_y)
+                            test_x,test_y,n_mc=200)
     print 'test acc: {}'.format(te_acc)
 
+
+    if args.totrain == 1:
+        # report the best valid-model's test acc
+        e0 = model.load(save_path)
+        te_acc = evaluate_model(model.predict_proba,
+                                test_x,test_y,n_mc=200)
+        print 'test acc (best valid): {}'.format(te_acc)
 
