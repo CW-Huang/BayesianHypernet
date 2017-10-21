@@ -1,23 +1,24 @@
-import math
-import numpy as np
-import random
-np.random.seed(1)
-import pandas as pd
-
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """@author: Riashat Islam
 """
 
+import math
+import numpy
+np = numpy
+np.random.seed(1) # TODO
+import os
+import random
+import pandas as pd
+
 from BHNs_MLP_Regression import MLPWeightNorm_BHN, MCdropout_MLP, Backprop_MLP
+from get_regression_data import get_regression_dataset
 from ops import load_mnist
 from utils import log_normal, log_laplace
-import numpy as np
 
 import lasagne
 import theano
 import theano.tensor as T
-import os
 from lasagne.random import set_rng
 from theano.tensor.shared_randomstreams import RandomStreams
 import matplotlib.pyplot as plt
@@ -118,41 +119,9 @@ def evaluate_model(predict,X,Y,n_mc=100,max_n=100):
     return RMSE
 
 
-def get_dataset(data):
-
-	X = data[ :, range(data.shape[ 1 ] - 1) ]
-	y = data[ :, data.shape[ 1 ] - 1 ]
-	permutation = np.asarray(random.sample(range(0,X.shape[0]), X.shape[0]))
-
-	size_train = int(round(np.round(X.shape[ 0 ] * 0.7)))
-	size_valid = int(round(np.round(X.shape[ 0 ] * 0.2)))
-	size_test = int(round(np.round(X.shape[ 0 ] * 0.1)))
-
-	# index_train = permutation[ 0 : size_train ]
-	# index_valid = permutation[ size_valid : size_test]
-	# index_test = permutation[ size_valid : ]
-
-	index_train = permutation[0:size_train]
-	index_valid = permutation[size_train+1 : size_train+1+size_valid]
-	index_test = permutation[ size_train+1+size_valid : ]
-
-	# index_valid = permutation[355:455]
-	# index_test = permutation[455:]
-
-	X_train = X[ index_train, : ]
-	y_train = y[ index_train ]
-
-	X_valid = X[index_valid, :]
-	y_valid = y[index_valid]
-
-	X_test = X[ index_test, : ]
-	y_test = y[ index_test ]
-
-	return X_train, y_train, X_valid, y_valid, X_test, y_test
 
 
-
-def plot_rmse(stats1, stats2, save_results, data_name, smoothing_window=1, noshow=False):
+def plot_rmse(stats1, stats2, save_results, dataset_name, smoothing_window=1, noshow=False):
 
     fig = plt.figure(figsize=(16, 8))
     ax = plt.subplot()
@@ -176,7 +145,7 @@ def plot_rmse(stats1, stats2, save_results, data_name, smoothing_window=1, nosho
     plt.title("Training and Validation RMSE", **axis_font)
     plt.show()
 
-    fig.savefig(save_results + data_name + '_train_valid_rmse.png')
+    fig.savefig(save_results + dataset_name + '_train_valid_rmse.png')
     
     return fig
 
@@ -209,10 +178,10 @@ if __name__ == '__main__':
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=0,type=int)
-    parser.add_argument('--data_name',default='boston',type=str, choices=['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year'])
+    parser.add_argument('--dataset_name',default='boston',type=str, choices=['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year'])
     parser.add_argument('--flow',default='IAF',type=str, choices=['RealNVP', 'IAF'])
-    parser.add_argument('--save_dir',default='./models',type=str)
-    parser.add_argument('--save_results',default='./results/',type=str)
+    parser.add_argument('--save_dir',default=None, type=str)
+    #parser.add_argument('--save_results',default='./results/',type=str)
     
     
     args = parser.parse_args()
@@ -233,9 +202,8 @@ if __name__ == '__main__':
     if args.model == 'Backprop':
         md = 2
     
-    
     path = args.save_dir
-    name = '{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}flow{}'.format(
+    name = '{}/regressionWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}flow{}'.format(
         path,
         md,
         args.n_hiddens,
@@ -263,7 +231,7 @@ if __name__ == '__main__':
     n_units = args.n_units
     anneal = args.anneal
 
-    dataset_name = args.data_name
+    dataset_name = args.dataset_name
 
     if args.prior=='log_normal':
         prior = log_normal
@@ -273,83 +241,7 @@ if __name__ == '__main__':
         raise Exception('no prior named `{}`'.format(args.prior))
     size = max(10,min(50000,args.size))
     
-    if os.path.isfile('/data/lisa/data/mnist.pkl.gz'):
-        filename = '/data/lisa/data/mnist.pkl.gz'
-    elif os.path.isfile(r'./data/mnist.pkl.gz'):
-        filename = r'./data/mnist.pkl.gz'
-    else:        
-        print '\n\tdownloading mnist'
-        import download_datasets.mnist
-        filename = r'./data/mnist.pkl.gz'
-
-
-    if dataset_name == "boston":
-    	#(506, 14)
-    	data = np.loadtxt('./regression_datasets/boston_housing.txt')
-
-    elif dataset_name == "concrete":
-    	#(1029, 9)
-    	data = pd.read_csv("./regression_datasets/Concrete_Data.csv")
-    	data = np.array(data)
-
-    elif dataset_name == "energy":
-    	data = pd.read_csv("./regression_datasets/energy_efficiency.csv")
-    	data = np.array(data)
-    	data = data[0:766, 0:8]	#### only used this portion of data in related papers (others : NaN)
-
-    elif dataset_name == "kin8nm":
-    	data = pd.read_csv("./regression_datasets/kin8nm.csv")
-    	data = np.array(data)
-
-    elif dataset_name == "naval":
-    	data = np.loadtxt('./regression_datasets/naval_propulsion.txt')
-
-    elif dataset_name == "power":
-    	data = pd.read_csv('./regression_datasets/power_plant.csv')
-    	data = np.array(data)
-
-    elif dataset_name == "protein":
-    	data = pd.read_csv('./regression_datasets/protein_structure.csv')
-    	data = np.array(data)
-
-    elif dataset_name == "wine":
-    	data = pd.read_csv('./regression_datasets/wineQualityReds.csv')
-    	data = np.array(data)
-
-    elif dataset_name == "yacht":
-    	data = np.loadtxt('./regression_datasets/yach_data.txt')
-
-    elif dataset_name == "year":
-    	raise Exception('Need to process data - convert .txt to .csv')
-
-    else:
-    	raise Exception('Need a valid dataset')
-
-
-    #normalize entire dataset
-    #data = (data - data.mean()) / data.var()
-
-    train_x, train_y, valid_x, valid_y, test_x , test_y = get_dataset(data)
-
-    train_y = train_y.reshape((train_y.shape[0],1))
-    valid_y = valid_y.reshape((valid_y.shape[0], 1))
-    test_y = test_y.reshape((test_y.shape[0],1))
-
-    input_dim = train_x.shape[1]
-    
-
-    ###normalizing dataset
-    train_x = (train_x - train_x.mean()) / train_x.var()
-    train_y = (train_y - train_y.mean()) / train_y.var()
-
-    valid_x = (valid_x - valid_x.mean()) / valid_x.var()
-    valid_y = (valid_y - valid_y.mean()) / valid_y.var()
-
-
-    ## DO NOT normalize test data and test labels
-    # test_x = (test_x - test_x.mean()) / test_x.var()
-    # test_y = (test_y - test_y.mean()) / test_y.var()
-
+    input_dim, train_x, train_y, valid_x, valid_y, test_x , test_y = get_regression_dataset(dataset_name)
 
     if args.reinit:
         init_batch_size = 64
@@ -422,28 +314,19 @@ if __name__ == '__main__':
     # te_rmse = evaluate_model(model.predict_proba,
     #                         test_x,test_y)
     # print 'test acc: {}'.format(te_rmse)
-
-
-    if args.model == 'BHN':
-        np.save(args.save_results + args.data_name +  '_model_' + args.model + '_coupling_' + str(args.coupling) + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_all_training_rmse.npy", all_trainining_rmse)
-        np.save(args.save_results + args.data_name +  '_model_' + args.model + '_coupling_' + str(args.coupling) + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_all_validation_rmse.npy", all_validation_rmse)
-
-        np.save(args.save_results + args.data_name +  '_model_' + args.model + '_coupling_' + str(args.coupling) + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_training_rmse.npy", tr_rmse)
-        np.save(args.save_results + args.data_name +  '_model_' + args.model + '_coupling_' + str(args.coupling) + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_validation_rmse.npy", va_rmse)
-
-
-    else:
-        np.save(args.save_results  + args.data_name +  '_model_' + args.model  + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_all_training_rmse.npy", all_trainining_rmse)
-        np.save(args.save_results  + args.data_name +  '_model_' + args.model  + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_all_validation_rmse.npy", all_validation_rmse)
-
-        np.save(args.save_results  + args.data_name +  '_model_' + args.model  + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_training_rmse.npy", tr_rmse)
-        np.save(args.save_results  + args.data_name +  '_model_' + args.model  + '_units_' + str(args.n_units) + '_layers_' + str(args.n_hiddens) + '_lr_' + str(args.lr0) + "_validation_rmse.npy", va_rmse)
-
-
+    #
     # print ("TEST ACCURACY", te_rmse)
     # for plotting
-    # plot_rmse(all_trainining_rmse, all_validation_rmse, args.save_results, args.data_name)
+    # plot_rmse(all_trainining_rmse, all_validation_rmse, args.save_results, args.dataset_name)
 	
+
+    if save_dir is not None:
+        np.save(name + "_all_training_rmse.npy", all_trainining_rmse)
+        np.save(name + "_all_validation_rmse.npy", all_validation_rmse)
+        np.save(name + "_training_rmse.npy", tr_rmse)
+        np.save(name + "_validation_rmse.npy", va_rmse)
+
+
 
 
 
