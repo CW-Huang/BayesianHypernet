@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # Ryan Turner (turnerry@iro.umontreal.ca)
 from collections import OrderedDict
+from time import time
 import numpy as np
 import pymc3 as pm
 from scipy.misc import logsumexp
@@ -11,7 +12,7 @@ import theano.tensor as T
 # Utils we will be using elsewhere:
 
 
-def unpack(v, weight_shapes):
+def unpack(v, weight_shapes, skip_chk=True):
     assert(np.ndim(v) == 1)
 
     D = OrderedDict()
@@ -20,7 +21,8 @@ def unpack(v, weight_shapes):
         num_param = np.prod(ws, dtype=int)
         D[varname] = v[tt:tt + num_param].reshape(ws)
         tt += num_param
-    # assert(tt == len(v))  # Check all used
+    # Check all used, skip by default since will not work with theano vars
+    assert(skip_chk or tt == len(v))
     # Check order was preserved:
     assert(D.keys() == weight_shapes.keys())
     return D
@@ -31,8 +33,31 @@ def get_num_params(weight_shapes):
     return cnt
 
 
-def mlp_pred(X, theta, n_layers, lib=T):
+def summarize(X, p=(0.25, 0.50, 0.75)):
+    assert(X.ndim >= 2)
+    p = np.asarray(p)
+    assert(p.ndim == 1 and np.all(0.0 <= p) and np.all(p <= 1.0))
+    LB_p = 0.5 * (1.0 - p)
+    UB_p = 0.5 * (1.0 + p)
+
+    LB = np.percentile(X, 100.0 * LB_p, axis=0)
+    UB = np.percentile(X, 100.0 * UB_p, axis=0)
+    return LB, UB
+
+# Std MLP functions
+
+
+def get_n_layers(theta_dict):
+    '''Could also validate with key names, but more expensive.'''
+    n_layers, rem = divmod(len(theta_dict) - 1, 2)
+    assert(rem == 0)
+    return n_layers
+
+
+def mlp_pred(X, theta, lib=T):
     '''Vanilla MLP ANN for regression. Can use lib=T or lin=np.'''
+    n_layers = get_n_layers(theta)
+
     yp = X
     for nn in xrange(n_layers):
         W, b = theta['W_' + str(nn)], theta['b_' + str(nn)]
@@ -44,6 +69,22 @@ def mlp_pred(X, theta, n_layers, lib=T):
     y_prec = lib.exp(log_prec)
     return yp, y_prec
 
+
+def mlp_loglik_np(X, y, theta):
+    yp, y_prec = mlp_pred(X, theta, lib=np)
+    std_dev = np.sqrt(1.0 / y_prec)
+    assert(std_dev.ndim == 0)
+    assert(yp.shape == y.shape)
+
+    loglik = norm.logpdf(y, loc=yp, scale=std_dev)
+    assert(loglik.shape == y.shape)
+    return np.sum(loglik)
+
+
+def logprior_np(theta):
+    logprior = sum(np.sum(norm.logpdf(th, loc=0.0, scale=1.0))
+                   for th in theta.itervalues())
+    return logprior
 
 # Define theano only flat versions of MLP functions
 
@@ -58,10 +99,7 @@ def mlp_logprior_flat_tt(theta):
 
 def mlp_pred_flat_tt(X, theta, weight_shapes):
     theta_dict = unpack(theta, weight_shapes)
-    n_layers, rem = divmod(len(theta_dict) - 1, 2)
-    assert(rem == 0)
-
-    yp, y_prec = mlp_pred(X, theta_dict, n_layers, lib=T)
+    yp, y_prec = mlp_pred(X, theta_dict, lib=T)
     return yp, y_prec
 
 
@@ -87,36 +125,35 @@ def make_normal_vars_pm(weight_shapes):
     return D
 
 
-def primary_net_pm(X_train, Y_train, X_test, weight_shapes):
+def primary_net_pm(X_train, Y_train, weight_shapes,
+                   build_priors=make_normal_vars_pm):
     '''Assume input data are shared variables.'''
     N, D = X_train.get_value().shape
-    assert(Y_train.get_value().shape == (N,))
-    # TODO check X_test
-    n_layers, rem = divmod(len(weight_shapes) - 1, 2)
-    assert(rem == 0)
+    assert(Y_train.get_value().shape == (N, 1))
 
     with pm.Model() as neural_network:
-        # Build param_dict
-        theta_dict = make_normal_vars_pm(weight_shapes)
+        theta_dict = build_priors(weight_shapes)
 
-        yp_train, y_prec = mlp_pred(X_train, theta_dict, n_layers, lib=T)
+        yp_train, y_prec = mlp_pred(X_train, theta_dict, lib=T)
+
+        assert(y_prec.ndim == 0)
+        assert(yp_train.ndim == 2)
+        assert(Y_train.ndim == 2)
         pm.Normal('out', mu=yp_train, tau=y_prec, observed=Y_train)
-
-        yp_test, _ = mlp_pred(X_test, theta_dict, n_layers, lib=T)
-        pm.Deterministic('yp_test', yp_test)
     return neural_network
 
 
-def hmc_net(X_train, Y_train, X_test, initializer_f, weight_shapes,
-            restarts=100, n_iter=500, n_tune=10, init_scale_iter=1000):
-    '''hypernet_f can serve as initializer_f.'''
+def hmc_net(X_train, Y_train, X_test, Y_test, initializer_f, weight_shapes,
+            restarts=100, n_iter=500, n_tune=500, init_scale_iter=1000,
+            build_model=primary_net_pm,
+            logprior_np=logprior_np, loglik_np=mlp_loglik_np):
+    '''hypernet_f can serve as initializer_f. Y_test only used to monitor
+    loglik'''
     num_params = get_num_params(weight_shapes)
 
     ann_input = theano.shared(X_train)
-    ann_output = theano.shared(Y_train[:, 0])
-    ann_input_test = theano.shared(X_test)
-    ann_model = primary_net_pm(ann_input, ann_output, ann_input_test,
-                               weight_shapes)
+    ann_output = theano.shared(Y_train)
+    ann_model = build_model(ann_input, ann_output, weight_shapes)
 
     theta0 = [initializer_f(np.random.randn(num_params), False)
               for _ in xrange(init_scale_iter)]
@@ -125,6 +162,10 @@ def hmc_net(X_train, Y_train, X_test, initializer_f, weight_shapes,
     assert(var_estimate.shape == (num_params,))
 
     tr = [None] * restarts
+    logprior = np.nan + np.zeros((n_tune + n_iter, restarts))
+    loglik_train = np.nan + np.zeros((n_tune + n_iter, restarts))
+    loglik_test = np.nan + np.zeros((n_tune + n_iter, restarts))
+    logp_chk = np.nan + np.zeros((n_tune + n_iter, restarts))
     for rr in xrange(restarts):
         print 'HMC run', str(rr)
 
@@ -134,19 +175,31 @@ def hmc_net(X_train, Y_train, X_test, initializer_f, weight_shapes,
         # Cast to ordinary dict to be safe, for now
         start = dict(unpack(theta_vec, weight_shapes))
 
-        # TODO decide fairest way to deal with tuning period
+        print 'starting to sample'
+        t = time()
         with ann_model:
             step = pm.NUTS(scaling=var_estimate, is_cov=True)
             tr[rr] = pm.sampling.sample(draws=n_iter, step=step, start=start,
                                         progressbar=False, tune=n_tune,
                                         discard_tuned_samples=False)
+        print (time() - t), 's'
+
+        assert(len(tr[rr]) == n_tune + n_iter)
+        for ii, theta in enumerate(tr[rr]):
+            logp_chk[ii, rr] = ann_model.logp(theta)
+            # We could also allow these to be None to skip checks
+            logprior[ii, rr] = logprior_np(theta)
+            loglik_train[ii, rr] = loglik_np(X_train, Y_train, theta)
+            loglik_test[ii, rr] = loglik_np(X_test, Y_test, theta)
+    err = np.max(np.abs(logp_chk - (logprior + loglik_train)))
+    print 'nrg log10 err %f' % np.log10(err)
     # Could use merge traces but prob not worth trouble
-    return tr
+    return tr, (logprior, loglik_train, loglik_test)
 
 # Post-process pymc3 traces
 
 
-def hmc_pred(tr_list, X_test, n_layers, y_test=None, chk=False):
+def hmc_pred(tr_list, X_test, y_test=None, p=(0.025, 0.5, 0.975)):
     n_samples = len(tr_list)
     assert(n_samples >= 1)
     n_iter = len(tr_list[0])
@@ -155,40 +208,36 @@ def hmc_pred(tr_list, X_test, n_layers, y_test=None, chk=False):
 
     mu_test = np.zeros((n_samples, n_iter, n_grid))
     y_samples = np.zeros((n_samples, n_iter, n_grid))
-    loglik = np.nan + np.zeros((n_samples, n_iter, n_grid))
+    loglik_raw = np.nan + np.zeros((n_samples, n_iter, n_grid))
     for ss, tr in enumerate(tr_list):
         assert(len(tr) == n_iter)
 
         noise = np.random.randn()
-        for ii in xrange(n_iter):
-            # TODO could use enumerate here too
-            mu_test_, y_prec = mlp_pred(X_test, tr[ii], n_layers, lib=np)
+        for ii, theta in enumerate(tr):
+            mu_test_, y_prec = mlp_pred(X_test, theta, lib=np)
             mu_test[ss, ii, :] = mu_test_[:, 0]
             std_dev = np.sqrt(1.0 / y_prec)
             y_samples[ss, ii, :] = mu_test[ss, ii, :] + std_dev * noise
             if y_test is not None:
-                loglik[ss, ii, :] = \
+                # Could assert same as MLP loglik here for extra check
+                loglik_raw[ss, ii, :] = \
                     norm.logpdf(y_test, loc=mu_test[ss, ii, :], scale=std_dev)
 
-        if chk:  # Assumes passed in same X_test here as to hmc_net()
-            mu = tr['yp_test']
-            log_prec = tr['log_prec']
-            assert(mu.shape == (n_iter, n_grid, 1))
-            # TODO check values too
-            assert(log_prec.shape == (n_iter,))
-            assert(np.allclose(mu[:, :, 0], mu_test[ss, :, :]))
-
-    loglik = logsumexp(loglik, axis=0) - np.log(n_samples)
+    # Get predictive loglik over iteration
+    loglik = logsumexp(loglik_raw, axis=0) - np.log(n_samples)
     assert(loglik.shape == (n_iter, n_grid))
     loglik = np.mean(loglik, axis=1)  # Get average loss per example
     assert(loglik.shape == (n_iter,))
 
-    # TODO make vectorized
-    mu = np.zeros((n_iter, n_grid))
-    LB = np.zeros((n_iter, n_grid))
-    UB = np.zeros((n_iter, n_grid))
-    for ii in xrange(n_iter):
-        mu[ii, :] = np.mean(mu_test[:, ii, :], axis=0)
-        LB[ii, :] = np.percentile(y_samples[:, ii, :], 2.5, axis=0)
-        UB[ii, :] = np.percentile(y_samples[:, ii, :], 97.5, axis=0)
-    return mu, LB, UB, loglik
+    # Summarize the predictions
+    mu = np.mean(mu_test, axis=0)  # Average the means w/o extra noise
+    std = np.std(mu_test, axis=0, ddof=0)  # MLE std
+    LB, UB = summarize(y_samples, p)  # MC estimate quantiles using noise
+    assert(mu.shape == (n_iter, n_grid))
+    assert(std.shape == (n_iter, n_grid))
+    assert(LB.shape == (len(p), n_iter, n_grid))
+    assert(UB.shape == LB.shape)
+    assert(np.all(LB <= UB))
+
+    # Only returning loglik_raw for now for debugging purposes
+    return mu, std, LB, UB, loglik, loglik_raw

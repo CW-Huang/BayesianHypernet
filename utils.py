@@ -117,3 +117,81 @@ class DanNormal(Initializer):
         std = self.gain * np.sqrt(2.0 / ((n1 + n2) * receptive_field_size))
         # TODO: orthogonal
         return self.initializer(std=std).sample(shape)
+
+
+def train_model(model,X,Y,Xv,Yv,
+                lr0=0.001,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
+                e0=0,rec=0,print_every=100,v_mc=20,n_classes=10):
+    
+    print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
+    N = X.shape[0]    
+    va_rec_name = name+'_recs'
+    save_path = name + '.params'
+    va_recs = list()
+    tr_recs = list()
+    
+    t = 0
+    for e in range(epochs):
+        
+        if e <= e0:
+            continue
+        
+        if lrdecay:
+            lr = lr0 * 10**(-e/float(epochs-1))
+        else:
+            lr = lr0         
+        
+        if anneal:
+            w = min(1.0,0.001+e/(epochs/2.))
+        else:
+            w = 1.0         
+            
+        for i in range(N/bs):
+            x = X[i*bs:(i+1)*bs]
+            y = Y[i*bs:(i+1)*bs]
+            
+            loss = model.train_func(x,y,N,lr,w)
+            
+            if t%print_every==0:
+                print 'epoch: {} {}, loss:{}'.format(e,t,loss)
+                tr_acc = (model.predict(X)==Y.argmax(1)).mean()
+                va_acc = (model.predict(Xv)==Yv.argmax(1)).mean()
+                print '\ttrain acc: {}'.format(tr_acc)
+                print '\tvalid acc: {}'.format(va_acc)
+            t+=1
+        
+        va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=v_mc,
+                                n_classes=n_classes)
+        print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
+        
+        va_recs.append(va_acc)
+        
+        if va_acc > rec:
+            print '.... save best model .... '
+            model.save(save_path,[e])
+            rec = va_acc
+    
+            with open(va_rec_name,'a') as rec_file:
+                for r in va_recs:
+                    rec_file.write(str(r)+'\n')
+            
+            va_recs = list()
+            
+        print '\n\n'
+    
+
+
+
+def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100,n_classes=10):
+    MCt = np.zeros((n_mc,X.shape[0],n_classes))
+    
+    N = X.shape[0]
+    num_batches = np.ceil(N / float(max_n)).astype(int)
+    for i in range(n_mc):
+        for j in range(num_batches):
+            x = X[j*max_n:(j+1)*max_n]
+            MCt[i,j*max_n:(j+1)*max_n] = predict_proba(x)
+    
+    Y_pred = MCt.mean(0).argmax(-1)
+    Y_true = Y.argmax(-1)
+    return np.equal(Y_pred,Y_true).mean()

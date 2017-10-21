@@ -7,9 +7,9 @@ Created on Sun May 14 19:49:51 2017
 """
 
 from BHNs import MLPWeightNorm_BHN
-from concrete_dropout import MLPConcreteDropout_BHN
+#from concrete_dropout import MLPConcreteDropout_BHN
 from ops import load_mnist
-from utils import log_normal, log_laplace
+from utils import log_normal, log_laplace, train_model, evaluate_model
 import numpy as np
 
 import lasagne
@@ -101,84 +101,6 @@ class MCdropout_MLP(object):
 
         return notes
 
-    
-
-def train_model(train_func,predict_func,X,Y,Xv,Yv,
-                lr0=0.1,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
-                e0=0,rec=0):
-    
-    print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
-    N = X.shape[0]    
-    va_rec_name = name+'_recs'
-    save_path = name + '.params'
-    va_recs = list()
-    tr_recs = list()
-    
-    t = 0
-    for e in range(epochs):
-        
-        if e <= e0:
-            continue
-        
-        if lrdecay:
-            lr = lr0 * 10**(-e/float(epochs-1))
-        else:
-            lr = lr0         
-        
-        if anneal:
-            w = min(1.0,0.001+e/(epochs/2.))
-        else:
-            w = 1.0         
-            
-        for i in range(N/bs):
-            x = X[i*bs:(i+1)*bs]
-            y = Y[i*bs:(i+1)*bs]
-            
-            loss = train_func(x,y,N,lr,w)
-            
-            if t%100==0:
-                print 'epoch: {} {}, loss:{}'.format(e,t,loss)
-                tr_acc = (predict_func(X)==Y.argmax(1)).mean()
-                va_acc = (predict_func(Xv)==Yv.argmax(1)).mean()
-                print '\ttrain acc: {}'.format(tr_acc)
-                print '\tvalid acc: {}'.format(va_acc)
-            t+=1
-        
-        va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=20)
-        print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
-        
-        va_recs.append(va_acc)
-        
-        if va_acc > rec:
-            print '.... save best model .... '
-            model.save(save_path,[e])
-            rec = va_acc
-    
-            with open(va_rec_name,'a') as rec_file:
-                for r in va_recs:
-                    rec_file.write(str(r)+'\n')
-            
-            va_recs = list()
-            
-        print '\n\n'
-    
-
-
-
-def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100):
-    MCt = np.zeros((n_mc,X.shape[0],10))
-    
-    N = X.shape[0]
-    num_batches = np.ceil(N / float(max_n)).astype(int)
-    for i in range(n_mc):
-        for j in range(num_batches):
-            x = X[j*max_n:(j+1)*max_n]
-            MCt[i,j*max_n:(j+1)*max_n] = predict_proba(x)
-    
-    Y_pred = MCt.mean(0).argmax(-1)
-    Y_true = Y.argmax(-1)
-    return np.equal(Y_pred,Y_true).mean()
-
 
     
 if __name__ == '__main__':
@@ -196,7 +118,9 @@ if __name__ == '__main__':
     parser.add_argument('--bs',default=32,type=int)  
     parser.add_argument('--epochs',default=10,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='BHN_MLPWN',type=str, choices=['BHN_MLPWN', 'BHN_MLPCD', 'MCdropout_MLP']) # TODO: concrete dropout
+    parser.add_argument('--model',default='BHN_MLPWN',type=str, 
+                        choices=['BHN_MLPWN', 'BHN_MLPCD', 'MCdropout_MLP']) 
+                        # TODO: concrete dropout
     parser.add_argument('--anneal',default=0,type=int)
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
@@ -204,7 +128,8 @@ if __name__ == '__main__':
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
-    parser.add_argument('--flow',default='RealNVP',type=str, choices=['RealNVP', 'IAF'])
+    parser.add_argument('--flow',default='RealNVP',type=str, 
+                        choices=['RealNVP', 'IAF'])
     parser.add_argument('--alpha',default=2, type=float)
     parser.add_argument('--beta',default=1, type=float)
     parser.add_argument('--save_dir',default='./models',type=str)
@@ -335,7 +260,7 @@ if __name__ == '__main__':
 
     if args.totrain:
         print '\nstart training from epoch {}'.format(e0)
-        train_model(model.train_func,model.predict,
+        train_model(model,
                     train_x[:size],train_y[:size],
                     valid_x,valid_y,
                     lr0,lrdecay,bs,epochs,anneal,name,
@@ -348,11 +273,18 @@ if __name__ == '__main__':
     print 'train acc: {}'.format(tr_acc)
                    
     va_acc = evaluate_model(model.predict_proba,
-                            valid_x,valid_y)
+                            valid_x,valid_y,n_mc=200)
     print 'valid acc: {}'.format(va_acc)
     
     te_acc = evaluate_model(model.predict_proba,
-                            test_x,test_y)
+                            test_x,test_y,n_mc=200)
     print 'test acc: {}'.format(te_acc)
 
+
+    if args.totrain == 1:
+        # report the best valid-model's test acc
+        e0 = model.load(save_path)
+        te_acc = evaluate_model(model.predict_proba,
+                                test_x,test_y,n_mc=200)
+        print 'test acc (best valid): {}'.format(te_acc)
 
