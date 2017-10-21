@@ -1,3 +1,6 @@
+
+
+
 import json
 import numpy as np
 
@@ -8,24 +11,13 @@ from keras.optimizers import sgd
 from keras import backend as K
 from keras.layers.core import Lambda
 
+from catch.dropout import MCdropout_MLP
 
-# formerly env.mc_dropout_act
-def mc_greedy(model, input_tm, n_mc_samples=50):
-    """
-    Sample and average several q-values, return the greedy action
-    """
-    #n_mc_samples = 50
-    q_value = model.predict_proba(input_tm.astype("float32"))
-    all_q_values = np.zeros(shape=(n_mc_samples, q_value.shape[1]))
+#import theano
+#theano.config.floatX='float32'
 
-    for m in range(n_mc_samples):
-        q_value = model.predict_proba(input_tm.astype("float32"))
-        all_q_values[m, :] = q_value
-
-    mean_q_values = np.array([np.mean(all_q_values, axis=0)])
-    action = np.argmax(mean_q_values[0])
-
-    return action
+# model.predict
+# model.train_on_batch
 
 class Catch(object):
     def __init__(self, grid_size=10):
@@ -123,14 +115,10 @@ class ExperienceReplay(object):
 
     def get_batch(self, model, batch_size=10):
         len_memory = len(self.memory)
-        try:
-            n_actions = model.output_shape[-1]
-        except:
-            n_actions = 3
-        #print "n_actions", num_actions
+        num_actions = 3#model.output_shape[-1]
         env_dim = self.memory[0][0][0].shape[1]
         inputs = np.zeros((min(len_memory, batch_size), env_dim))
-        targets = np.zeros((inputs.shape[0], n_actions))
+        targets = np.zeros((inputs.shape[0], num_actions))
         for i, idx in enumerate(np.random.randint(0, len_memory,
                                                   size=inputs.shape[0])):
             state_t, action_t, reward_t, state_tp1 = self.memory[idx][0]
@@ -139,8 +127,8 @@ class ExperienceReplay(object):
             inputs[i:i+1] = state_t
             # There should be no target values for actions not taken.
             # Thou shalt not correct actions not taken #deep
-            targets[i] = model.predict(state_t.astype("float32"))[0]
-            Q_sa = np.max(model.predict(state_tp1.astype("float32"))[0])
+            targets[i] = model.predict(state_t)[0]
+            Q_sa = np.max(model.predict(state_tp1)[0])
             if game_over:  # if game_over is True
                 targets[i, action_t] = reward_t
             else:
@@ -152,21 +140,37 @@ class ExperienceReplay(object):
 if __name__ == "__main__":
     # parameters
     epsilon = .1  # exploration
-    n_actions = 3  # [move_left, stay, move_right]
+    num_actions = 3  # [move_left, stay, move_right]
     epoch = 1000
     max_memory = 500
     hidden_size = 100
     batch_size = 50
     grid_size = 10
+    dropout=0.
 
-    model = Sequential()
-    model.add(Dense(hidden_size, input_shape=(grid_size**2,), activation='relu'))
-    model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
-    model.add(Dense(hidden_size, activation='relu'))
-    model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
-    model.add(Dense(n_actions))
-    model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
-    model.compile(sgd(lr=.2), "mse")
+    if 0:
+        model = Sequential()
+        model.add(Dense(hidden_size, input_shape=(grid_size**2,), activation='relu'))
+        if dropout:
+            model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
+        model.add(Dense(hidden_size, activation='relu'))
+        if dropout:
+            model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
+        model.add(Dense(num_actions))
+        if dropout: # TODO: rm this! (no dropout at the output, brah!
+            model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
+        model.compile(sgd(lr=.2), "mse")
+    else:
+        model = MCdropout_MLP(drop_prob=dropout,
+                opt='momentum', # TODO: try others?
+                              n_inputs=grid_size**2,
+                              n_outputs=num_actions,
+                              n_hiddens=2,
+                              n_units=hidden_size,
+                              output_type='real')
+        model.predict = model.predict_proba
+        # TODO: n=??
+        model.train_on_batch = lambda x,y: model.train_func(x,y,n=1000, lr=.2)
 
 
     # If you want to continue training from a previous model, just uncomment the line bellow
@@ -191,7 +195,7 @@ if __name__ == "__main__":
             input_tm1 = input_t
             # get next action
             if np.random.rand() <= epsilon:
-                action = np.random.randint(0, n_actions, size=1)
+                action = np.random.randint(0, num_actions, size=1)
             else:
                 action = env.mc_dropout_act(model, input_tm1)
 
@@ -209,7 +213,9 @@ if __name__ == "__main__":
             loss += model.train_on_batch(inputs, targets)
         print("Epoch {:03d}/999 | Loss {:.4f} | Win count {}".format(e, loss, win_cnt))
 
-    # Save trained model weights and architecture, this will be used by the visualization code
-    model.save_weights("model.h5", overwrite=True)
-    with open("model.json", "w") as outfile:
-        json.dump(model.to_json(), outfile)
+    if 0:
+        # Save trained model weights and architecture, this will be used by the visualization code
+        model.save_weights("model.h5", overwrite=True)
+        with open("model.json", "w") as outfile:
+            json.dump(model.to_json(), outfile)
+
