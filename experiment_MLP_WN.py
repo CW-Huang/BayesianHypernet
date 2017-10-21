@@ -7,7 +7,7 @@ Created on Sun May 14 19:49:51 2017
 """
 
 from BHNs import MLPWeightNorm_BHN
-from concrete_dropout import MLPConcreteDropout_BHN
+#from concrete_dropout import MLPConcreteDropout_BHN
 from ops import load_mnist
 from utils import log_normal, log_laplace
 import numpy as np
@@ -144,7 +144,7 @@ def train_model(train_func,predict_func,X,Y,Xv,Yv,
                 print '\tvalid acc: {}'.format(va_acc)
             t+=1
         
-        va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=20)
+        va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=100)
         print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
         
         va_recs.append(va_acc)
@@ -348,11 +348,18 @@ if __name__ == '__main__':
     print 'train acc: {}'.format(tr_acc)
                    
     va_acc = evaluate_model(model.predict_proba,
-                            valid_x,valid_y)
+                            valid_x,valid_y,n_mc=200)
     print 'valid acc: {}'.format(va_acc)
     
     te_acc = evaluate_model(model.predict_proba,
-                            test_x,test_y)
+                            test_x,test_y,n_mc=200)
     print 'test acc: {}'.format(te_acc)
 
+
+    if args.totrain == 1:
+        # report the best valid-model's test acc
+        e0 = model.load(save_path)
+        te_acc = evaluate_model(model.predict_proba,
+                                test_x,test_y,n_mc=200)
+        print 'test acc (best valid): {}'.format(te_acc)
 
