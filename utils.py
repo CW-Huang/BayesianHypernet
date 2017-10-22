@@ -154,10 +154,10 @@ def train_model(model,X,Y,Xv,Yv,
             
             if t%print_every==0:
                 print 'epoch: {} {}, loss:{}'.format(e,t,loss)
-                tr_acc = (model.predict(X)==Y.argmax(1)).mean()
-                va_acc = (model.predict(Xv)==Yv.argmax(1)).mean()
-                print '\ttrain acc: {}'.format(tr_acc)
-                print '\tvalid acc: {}'.format(va_acc)
+                #tr_acc = (model.predict(X)==Y.argmax(1)).mean()
+                #va_acc = (model.predict(Xv)==Yv.argmax(1)).mean()
+                #print '\ttrain acc: {}'.format(tr_acc)
+                #print '\tvalid acc: {}'.format(va_acc)
             t+=1
         
         va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=v_mc,

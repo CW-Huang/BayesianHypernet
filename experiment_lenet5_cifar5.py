@@ -156,6 +156,7 @@ if __name__ == '__main__':
     parser.add_argument('--reinit',default=1,type=int)
     parser.add_argument('--flow',default='RealNVP',type=str, 
                         choices=['RealNVP', 'IAF'])
+    parser.add_argument('--n_units_h',default=200, type=int)
     parser.add_argument('--alpha',default=2, type=float)
     parser.add_argument('--beta',default=1, type=float)
     parser.add_argument('--save_dir',default='./models_CNN',type=str)
@@ -191,7 +192,7 @@ if __name__ == '__main__':
         os.makedirs(path)
 
     name = '{}/WNCNN_md{}ds{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}' \
-           'reinit{}alpha{}beta{}flow{}'.format(
+           'reinit{}alpha{}beta{}flow{}{}'.format(
         path,
         md,
         ds,
@@ -206,7 +207,8 @@ if __name__ == '__main__':
         args.reinit,
         args.alpha,
         args.beta,
-        args.flow
+        args.flow,
+        args.n_units_h
     )
     
     
@@ -228,7 +230,7 @@ if __name__ == '__main__':
     size = max(10,min(50000,args.size))
     
     print '\tloading dataset'
-    if 0:
+    if 1:
         if dataset=='mnist':
             filename = '/data/lisa/data/mnist.pkl.gz'
             train_x, train_y, valid_x, valid_y, test_x, test_y = \
@@ -304,7 +306,8 @@ if __name__ == '__main__':
                             stride=stride,
                             pad=pad,
                             nonl=nonl,
-                            pool_per=pool_per)
+                            pool_per=pool_per,
+                            n_units_h=args.n_units_h)
     elif args.model == 'CNN':
         model = MCdropoutCNN(dataset=dataset,n_classes=n_classes)
     elif args.model == 'CNN_spatial_dropout':
@@ -330,34 +333,37 @@ if __name__ == '__main__':
         rec = 0
 
 
-    if args.to_train:
+    if args.totrain:
         print '\tbegin training'
         train_model(model,
                     train_x[:size],train_y[:size],
                     valid_x,valid_y,
                     lr0,lrdecay,bs,epochs,anneal,name,e0,rec,
-                    print_every=10,
+                    print_every=999999,
                     n_classes=n_classes)
     
 
-                    
-    print '\tevaluating train/valid sets'
-    evaluate_model(model.predict_proba,
-                   train_x[:min(size,10000)],train_y[:min(size,10000)],
-                   valid_x,valid_y,
-                   n_classes=n_classes)
+    tr_acc = evaluate_model(model.predict_proba,
+                            train_x[:size],train_y[:size],
+                            n_classes=n_classes)
+    print 'train acc: {}'.format(tr_acc)
+                   
+    va_acc = evaluate_model(model.predict_proba,
+                            valid_x,valid_y,n_mc=200,
+                            n_classes=n_classes)
+    print 'valid acc: {}'.format(va_acc)
     
-    print '\tevaluating train/test sets'
-    evaluate_model(model.predict_proba,
-                   train_x[:min(size,10000)],train_y[:min(size,10000)],
-                   test_x,test_y,
-                   n_classes=n_classes)
+    te_acc = evaluate_model(model.predict_proba,
+                            test_x,test_y,n_mc=200,
+                            n_classes=n_classes)
+    print 'test acc: {}'.format(te_acc)
 
     if args.totrain == 1:
         # report the best valid-model's test acc
         e0 = model.load(save_path)
         te_acc = evaluate_model(model.predict_proba,
-                                test_x,test_y,n_mc=200)
+                                test_x,test_y,n_mc=200,
+                                n_classes=n_classes)
         print 'test acc (best valid): {}'.format(te_acc)
 
     
