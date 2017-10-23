@@ -119,8 +119,8 @@ def get_regression_dataset(dataset, data_path='./'):#$HOME/BayesianHypernetCW/')
 
     ## DO NOT normalize test data and test labels
     if dataset == 'airfoil':
-        test_x = (test_x - test_x.mean()) / test_x.var()
-        test_y = (test_y - test_y.mean()) / test_y.var()
+        test_x = (test_x - test_x.mean(axis=0)) / test_x.std(axis=0)
+        test_y = (test_y - test_y.mean()) / test_y.std()
 
 
     return input_dim, train_x, train_y, valid_x, valid_y, test_x , test_y

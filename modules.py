@@ -14,8 +14,14 @@ import lasagne
 from lasagne import init
 from lasagne import nonlinearities
 from lasagne.layers import get_output
+from lasagne.layers import Conv2DLayer, DenseLayer
+from lasagne.nonlinearities import rectify
+from lasagne.objectives import categorical_crossentropy as cc
+from lasagne.objectives import squared_error as se
+
 from theano.tensor.var import TensorVariable as tv
 
+from utils import log_normal
 from externals_modules.made_modules import MADE
 
 conv = lasagne.theano_extensions.conv
@@ -738,106 +744,435 @@ def stochastic_weight_norm(layer, weight, **kwargs):
 
         
         
-
-if __name__ == '__main__':
-    
-    """
-    an example of using invertible transformation to fit a complicated 
-    density function that is hard to sample from
-    """
-    
-    def U(Z):
-        """ Toroid """
-        z1 = Z[:, 0]
-        z2 = Z[:, 1]
-        R = 5.0
-        return - 2*(R-(z1**2+.5*z2**2)**0.5)**2 
+# new BHN with WN/BN
         
+from lasagne.layers import InputLayer, ElemwiseSumLayer, BatchNormLayer, \
+                           MergeLayer, get_all_layers, Layer
+from lasagne import utils
+from difflib import get_close_matches
+from warnings import warn
+
+def NVP_dense_layer(incoming, 
+                    num_units=200,
+                    L=2,
+                    W=init.Normal(1),
+                    r=init.Normal(0.0001),
+                    b=init.Constant(0.), 
+                    nonlinearity=nonlinearities.rectify,):
     
-    print 'building model'
+    layer = incoming
+    shape = layer.output_shape
+    
+    for c in range(L):
+       layer = PermuteLayer(layer,shape)
+       layer_temp = CoupledWNDenseLayer(layer,num_units,
+                                        W=W,r=r,b=b,nonlinearity=nonlinearity)
+       layer = IndexLayer(layer_temp,0)
+       logdets_layers.append(IndexLayer(layer_temp,1))
+                    
+    return layer, logdets_layers
+
+def IAF_dense_layer(incoming, 
+                    num_units=200,
+                    L=2,
+                    num_hids=1,
+                    W=init.Normal(1),
+                    r=init.Normal(0.0001),
+                    b=init.Constant(0.), 
+                    nonlinearity=nonlinearities.rectify):
+
+    layer_temp = IAFDenseLayer(incoming,num_units,num_hids,L=L,cond_bias=False)
+    layer = IndexLayer(layer_temp,0)
+    logdets_layers = IndexLayer(layer_temp,1)
+    
+    return layer, [logdets_layers,]
+
+
+normalizable_layers = [DenseLayer,Conv2DLayer]
+nlb = lambda layer: any([isinstance(layer,nl) for nl in normalizable_layers])
+
+def hypernet(net, 
+             hidden_size=512, 
+             layers=0, 
+             flow='IAF', 
+             output_size=None,
+             nlb = nlb,
+             copies = 1, # 2 for bias + scale; 1 for scale only
+             **kargs):
+
+    if output_size is None:
+        all_layers = lasagne.layers.get_all_layers(net)
+        output_size = sum([layer.output_shape[1] for layer in all_layers
+                           if not isinstance(layer,InputLayer) and 
+                              not isinstance(layer,ElemwiseSumLayer) and
+                              nlb(layer)]) * copies
+    
     logdets_layers = []
-    layer = lasagne.layers.InputLayer([None,2])
-    
+    layer = InputLayer(shape=(None,output_size))
     layer_temp = LinearFlowLayer(layer)
     layer = IndexLayer(layer_temp,0)
     logdets_layers.append(IndexLayer(layer_temp,1))
     
+    if layers > 0:
+        if flow == 'RealNVP':
+            layer, ld_layers = NVP_dense_layer(layer, hidden_size,
+                                               layers, **kargs)                        
+        elif flow == 'IAF':
+            layer, ld_layers = IAF_dense_layer(layer, hidden_size,
+                                               layers, **kargs)        
+        logdets_layers = logdets_layers + ld_layers
+        
+    return layer, ElemwiseSumLayer(logdets_layers), output_size
     
-    if 0:    
-        layer_temp = CoupledDenseLayer(layer,100)
-        layer = IndexLayer(layer_temp,0)
-        logdets_layers.append(IndexLayer(layer_temp,1))
+
+def slicing(params, start_index, size):
+    end_index = start_index + size
+    return params[:,start_index:end_index], end_index
+    
+def N_get_output(layer_or_layers, inputs, hnet, input_h, 
+                 deterministic=False, norm_type='BN', static_bias=None,
+                 nlb=nlb, **kwargs):
+
+
+    # check if the keys of the dictionary are valid
+    if isinstance(inputs, dict):
+        for input_key in inputs.keys():
+            if (input_key is not None) and (not isinstance(input_key, Layer)):
+                raise TypeError("The inputs dictionary keys must be"
+                                " lasagne layers not %s." %
+                                type(input_key))
+    # track accepted kwargs used by get_output_for
+    accepted_kwargs = {'deterministic'}
+    # obtain topological ordering of all layers the output layer(s) depend on
+    treat_as_input = inputs.keys() if isinstance(inputs, dict) else []
+    all_layers = get_all_layers(layer_or_layers, treat_as_input)
+    # initialize layer-to-expression mapping from all input layers
+    all_outputs = dict((layer, layer.input_var)
+                       for layer in all_layers
+                       if isinstance(layer, InputLayer) and
+                       layer not in treat_as_input)
+    # update layer-to-expression mapping from given input(s), if any
+    if isinstance(inputs, dict):
+        all_outputs.update((layer, utils.as_theano_expression(expr))
+                           for layer, expr in inputs.items())
+    elif inputs is not None:
+        if len(all_outputs) > 1:
+            raise ValueError("get_output() was called with a single input "
+                             "expression on a network with multiple input "
+                             "layers. Please call it with a dictionary of "
+                             "input expressions instead.")
+        for input_layer in all_outputs:
+            all_outputs[input_layer] = utils.as_theano_expression(inputs)
+            
+            
+    N_params = lasagne.layers.get_output(hnet,input_h)
+    index = 0
+    if static_bias is not None:
+        index_b = 0
+        if static_bias.ndim == 1:
+            static_bias = static_bias.dimshuffle('x',0)
+            
+    # update layer-to-expression mapping by propagating the inputs
+    #last_layer = all_layers[-1]
+    for layer in all_layers:
         
-        layer = PermuteLayer(layer,2)
-        
-        layer_temp = CoupledDenseLayer(layer,100)
-        layer = IndexLayer(layer_temp,0)
-        logdets_layers.append(IndexLayer(layer_temp,1))
+        if layer not in all_outputs:
+            try:
+                if isinstance(layer, MergeLayer):
+                    layer_inputs = [all_outputs[input_layer]
+                                    for input_layer in layer.input_layers]
+                else:
+                    layer_inputs = all_outputs[layer.input_layer]
+            except KeyError:
+                # one of the input_layer attributes must have been `None`
+                raise ValueError("get_output() was called without giving an "
+                                 "input expression for the free-floating "
+                                 "layer %r. Please call it with a dictionary "
+                                 "mapping this layer to an input expression."
+                                 % layer)
+
+            #if layer is not last_layer and not isinstance(layer,
+            #                                              ElemwiseSumLayer):
+            if not isinstance(layer, ElemwiseSumLayer) and \
+               nlb(layer):
+                
+                nonlinearity = getattr(layer, 'nonlinearity', None)
+                if nonlinearity is not None:
+                    layer.nonlinearity = lambda x: x
+                else:
+                    nonlinearity = lambda x: x
+                    
+                size = layer.output_shape[1]
+                print size
+                if norm_type == 'BN':
+                    N_layer = BatchNormLayer(layer,beta=None,gamma=None)
+                elif norm_type == 'WN':
+                    N_layer = WeightNormLayer(layer,b=None,g=None)
+                else:
+                    raise Exception('normalization method {} not ' \
+                                    'supported.'.format(norm_type))
+                                    
+                layer_output = layer.get_output_for(layer_inputs, **kwargs)
+                N_output = N_layer.get_output_for(layer_output,deterministic)
+                gamma, index = slicing(N_params,index,size)
+                if static_bias is None:
+                    beta, index = slicing(N_params,index,size)
+                else:
+                    beta, index_b = slicing(static_bias,index_b,size)
+                if len(layer.output_shape) == 4:
+                    gamma = gamma.dimshuffle(0,1,'x','x')
+                    beta = beta.dimshuffle(0,1,'x','x')
+    
+                CN_output = gamma * N_output + beta
+                    
+                all_outputs[layer] = nonlinearity(CN_output)
+                layer.nonlinearity = nonlinearity
+            else:
+                all_outputs[layer] = layer.get_output_for(layer_inputs, 
+                                                          **kwargs)
+            try:
+                accepted_kwargs |= set(utils.inspect_kwargs(
+                        layer.get_output_for))
+            except: # TypeError:
+                # If introspection is not possible, skip it
+                pass
+            accepted_kwargs |= set(layer.get_output_kwargs)
+    
+    hs = hnet.output_shape[1]
+    errmsg = 'mismatch: hnet output ({}) cbn params ({})'.format(hs,index)
+    assert hs == index, errmsg
+    unused_kwargs = set(kwargs.keys()) - accepted_kwargs
+    if unused_kwargs:
+        suggestions = []
+        for kwarg in unused_kwargs:
+            suggestion = get_close_matches(kwarg, accepted_kwargs)
+            if suggestion:
+                suggestions.append('%s (perhaps you meant %s)'
+                                   % (kwarg, suggestion[0]))
+            else:
+                suggestions.append(kwarg)
+        warn("get_output() was called with unused kwargs:\n\t%s"
+             % "\n\t".join(suggestions))
+    # return the output(s) of the requested layer(s) only
+    try:
+        return [all_outputs[layer] for layer in layer_or_layers]
+    except TypeError:
+        return all_outputs[layer_or_layers]
+
+
+def get_elbo(pred,
+             targ,
+             weights,
+             logdets,
+             weight,
+             dataset_size,
+             prior=log_normal,
+             lbda=0,
+             output_type = 'categorical'):
+    """
+    negative elbo, an upper bound on NLL
+    """
+
+    logqw = - logdets
+    """
+    originally...
+    logqw = - (0.5*(ep**2).sum(1)+0.5*T.log(2*np.pi)*num_params+logdets)
+        --> constants are neglected in this wrapperfrom utils import log_laplace
+    """
+    logpw = prior(weights,0.,-T.log(lbda)).sum(1)
+    """
+    using normal prior centered at zero, with lbda being the inverse 
+    of the variance
+    """
+    kl = (logqw - logpw).mean()
+    if output_type == 'categorical':
+        logpyx = - cc(pred,targ).mean()
+    elif output_type == 'real':
+        logpyx = - se(pred,targ).mean()
     else:
-        layer_temp = IAFDenseLayer(layer,100,1,
-                                   L=2,cond_bias=False)
+        assert False
+    loss = - (logpyx - weight * kl/T.cast(dataset_size,floatX))
+
+    return loss, (logpyx, logpw, logqw)
+    
+        
+
+if __name__ == '__main__':
+
+    if 0:
+        """
+        an example of using invertible transformation to fit a complicated 
+        density function that is hard to sample from
+        """
+        
+        def U(Z):
+            """ Toroid """
+            z1 = Z[:, 0]
+            z2 = Z[:, 1]
+            R = 5.0
+            return - 2*(R-(z1**2+.5*z2**2)**0.5)**2 
+            
+        
+        print 'building model'
+        logdets_layers = []
+        layer = lasagne.layers.InputLayer([None,2])
+        
+        layer_temp = LinearFlowLayer(layer)
         layer = IndexLayer(layer_temp,0)
         logdets_layers.append(IndexLayer(layer_temp,1))
+        
+        
+        if 0:    
+            layer_temp = CoupledDenseLayer(layer,100)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+            
+            layer = PermuteLayer(layer,2)
+            
+            layer_temp = CoupledDenseLayer(layer,100)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            layer_temp = IAFDenseLayer(layer,100,1,
+                                       L=2,cond_bias=False)
+            layer = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        
+        ep = T.matrix('ep')
+        z = lasagne.layers.get_output(layer,ep)
+        logdets = sum([get_output(logdet,ep) for logdet in logdets_layers])
+        
+        logq = - logdets
+        logp = U(z)
+        losses = logq - logp
+        loss = losses.mean()
+        
+        params = lasagne.layers.get_all_params(layer)
+        updates = lasagne.updates.adam(loss,params,0.001)
+        
+        train = theano.function([ep],loss,updates=updates)
+        
+        z0 = (ep - params[1]) / T.exp(params[0])
+        logq_ = sum([get_output(logdet,z0) for logdet in logdets_layers])
+        samples = theano.function([ep],z)
     
-    ep = T.matrix('ep')
-    z = lasagne.layers.get_output(layer,ep)
-    logdets = sum([get_output(logdet,ep) for logdet in logdets_layers])
+        print 'starting training'
+        for i in range(20000):
+            spl = np.random.randn(128,2).astype(floatX)
+            l = train(spl)
+        
+            if i%1000==0:
+                print l
+        
+        print "\nvisualizing"
+        prior_noise = T.matrix('prior_noise')
+        density = U(prior_noise)
+        f0 = theano.function([prior_noise],density)
+        
+        fig = plt.figure()
+        
+        ax = fig.add_subplot(1,2,1)
+        x = np.linspace(-10,10,1000)
+        y = np.linspace(-10,10,1000)
+        xx,yy = np.meshgrid(x,y)
+        X = np.concatenate((xx.reshape(1000000,1),yy.reshape(1000000,1)),1)
+        X = X.astype(floatX)
+        Z = f0(X).reshape(1000,1000)
+        ax.pcolormesh(xx,yy,np.exp(Z))
+        ax.axis('off')
+        
+        ax = fig.add_subplot(1,2,2)
+        Z0 = spl = np.random.randn(100000,2).astype(floatX)
+        Zs = samples(Z0)
+        XX = Zs[:,0]
+        YY = Zs[:,1]
+        plot = ax.hist2d(XX,YY,100)
+        plt.xlim((-10,10))
+        plt.ylim((-10,10))
+        plt.axis('off')
+        
+        
+        #plt.savefig('autoregressive_ex_toroid.jpg')
     
-    logq = - logdets
-    logp = U(z)
-    losses = logq - logp
-    loss = losses.mean()
     
-    params = lasagne.layers.get_all_params(layer)
-    updates = lasagne.updates.adam(loss,params,0.001)
-    
-    train = theano.function([ep],loss,updates=updates)
-    
-    z0 = (ep - params[1]) / T.exp(params[0])
-    logq_ = sum([get_output(logdet,z0) for logdet in logdets_layers])
-    samples = theano.function([ep],z)
+    if 1:
+        DIM_C=3
+        DIM_X=16
+        DIM_Y=16
+        
+        
+        X_in = InputLayer(shape=(None, DIM_C, DIM_X, DIM_Y))
+        layer = Conv2DLayer(incoming=X_in, num_filters=128, filter_size=4, 
+                            stride=2, pad=1, nonlinearity=rectify)
+        print layer.output_shape
+        layer = Conv2DLayer(incoming=layer, num_filters=64, filter_size=4, 
+                            stride=2, pad=1, nonlinearity=rectify)
+        print layer.output_shape
+        layer = Conv2DLayer(incoming=layer, num_filters=32, filter_size=4, 
+                            stride=2, pad=1, nonlinearity=rectify)
 
-    print 'starting training'
-    for i in range(20000):
-        spl = np.random.randn(128,2).astype(floatX)
-        l = train(spl)
+        print layer.output_shape
+        layer = DenseLayer(layer, 32, 
+                           nonlinearity=rectify)
+        print layer.output_shape
+        layer = DenseLayer(layer, 2, 
+                           nonlinearity=lasagne.nonlinearities.softmax)
+        print layer.output_shape
+        
+        
+        
     
-        if i%1000==0:
-            print l
+        #input_var = T.tensor4('input_var')
+        input_var = T.as_tensor_variable(
+            np.random.rand(5,3,16,16).astype(np.float32)    
+        )
+
+        
+        from theano.tensor.shared_randomstreams import RandomStreams
+        srng = RandomStreams(seed=427)
+
+
+        if 0:
+            print 'example: conditioning bias'        
+            hnet, ld, num_params = hypernet(layer, 100, 2, copies = 2)
+        
+            ep = srng.normal(size=(1,num_params),dtype=floatX)
+            output_var = N_get_output(layer,input_var,hnet,ep)
+            print output_var.eval().shape
+
+        else:    
+            print 'example: not conditioning bias'  
+            hnet, ld, num_params = hypernet(layer, 100, 2, copies = 1)
     
-    print "\nvisualizing"
-    prior_noise = T.matrix('prior_noise')
-    density = U(prior_noise)
-    f0 = theano.function([prior_noise],density)
-    
-    fig = plt.figure()
-    
-    ax = fig.add_subplot(1,2,1)
-    x = np.linspace(-10,10,1000)
-    y = np.linspace(-10,10,1000)
-    xx,yy = np.meshgrid(x,y)
-    X = np.concatenate((xx.reshape(1000000,1),yy.reshape(1000000,1)),1)
-    X = X.astype(floatX)
-    Z = f0(X).reshape(1000,1000)
-    ax.pcolormesh(xx,yy,np.exp(Z))
-    ax.axis('off')
-    
-    ax = fig.add_subplot(1,2,2)
-    Z0 = spl = np.random.randn(100000,2).astype(floatX)
-    Zs = samples(Z0)
-    XX = Zs[:,0]
-    YY = Zs[:,1]
-    plot = ax.hist2d(XX,YY,100)
-    plt.xlim((-10,10))
-    plt.ylim((-10,10))
-    plt.axis('off')
-    
-    
-    #plt.savefig('autoregressive_ex_toroid.jpg')
+            ep = srng.normal(size=(1,num_params),dtype=floatX)        
+            static_bias = theano.shared(np.zeros((num_params)).astype('float32'))
+            ### remember to concatenate this with params ### 
+            
+            output_var = N_get_output(layer,input_var,hnet,ep,
+                                      static_bias=static_bias)
+            print output_var.eval().shape
 
 
 
-
-
-
-
+        print 'example: getting loss'
+        
+        #target_var = T.matrix('target_var')
+        target_var = T.as_tensor_variable(
+            np.ones((5,2)).astype(np.float32)    
+        )
+        weight = 0
+        dataset_size = 10000
+        weights = get_output(hnet,ep)
+        logdets = get_output(ld,ep)
+        
+        loss, _ = get_elbo(output_var,
+                           target_var,
+                           weights,
+                           logdets,
+                           weight,
+                           dataset_size,
+                           prior=log_normal,
+                           lbda=0,
+                           output_type = 'categorical')
+        print loss.eval()
+        
