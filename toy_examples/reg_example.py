@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # Ryan Turner (turnerry@iro.umontreal.ca)
-
 from collections import OrderedDict
 import cPickle as pkl
 import lasagne

@@ -416,6 +416,7 @@ class HyperWN_CNN(Base_BHN):
                  pad='valid',
                  nonl=rectify,
                  pool_per=1,
+                 n_units_h=200,
                  **kargs):
         
         
@@ -449,7 +450,8 @@ class HyperWN_CNN(Base_BHN):
         self.num_classes = n_classes
         self.num_mlp_layers = n_mlplayers
         self.num_hids = n_units
-        
+        self.num_hids_h = n_units_h
+
         self.n_kernels = np.array(self.weight_shapes)[:,1].sum()
         self.kernel_shape = self.weight_shapes[0][:1]+self.weight_shapes[0][2:]
         print "kernel_shape", self.kernel_shape
@@ -489,18 +491,18 @@ class HyperWN_CNN(Base_BHN):
         
         if self.flow == 'RealNVP':
             if self.coupling:
-                layer_temp = CoupledWNDenseLayer(h_net,200)
+                layer_temp = CoupledWNDenseLayer(h_net,self.num_hids_h)
                 h_net = IndexLayer(layer_temp,0)
                 logdets_layers.append(IndexLayer(layer_temp,1))
                  
                 for c in range(self.coupling-1):
                     h_net = PermuteLayer(h_net,self.num_params)
                     
-                    layer_temp = CoupledWNDenseLayer(h_net,200)
+                    layer_temp = CoupledWNDenseLayer(h_net,self.num_hids_h)
                     h_net = IndexLayer(layer_temp,0)
                     logdets_layers.append(IndexLayer(layer_temp,1))
         elif self.flow == 'IAF':
-            layer_temp = IAFDenseLayer(h_net,200,1,
+            layer_temp = IAFDenseLayer(h_net,self.num_hids_h,1,
                                        L=self.coupling,cond_bias=False)
             h_net = IndexLayer(layer_temp,0)
             logdets_layers.append(IndexLayer(layer_temp,1))

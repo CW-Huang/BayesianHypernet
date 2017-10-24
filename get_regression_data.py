@@ -16,83 +16,87 @@ TODO: figure out how to do cross-validation here!
 
 def get_dataset(data, test_inds=None):
 
-	X = data[ :, range(data.shape[ 1 ] - 1) ]
-	y = data[ :, data.shape[ 1 ] - 1 ]
-	permutation = np.asarray(random.sample(range(0,X.shape[0]), X.shape[0]))
+    X = data[ :, range(data.shape[ 1 ] - 1) ]
+    y = data[ :, data.shape[ 1 ] - 1 ]
+    permutation = np.asarray(random.sample(range(0,X.shape[0]), X.shape[0]))
 
-	size_train = int(round(np.round(X.shape[ 0 ] * 0.7)))
-	size_valid = int(round(np.round(X.shape[ 0 ] * 0.2)))
-	size_test = int(round(np.round(X.shape[ 0 ] * 0.1)))
+    size_train = int(round(np.round(X.shape[ 0 ] * 0.7)))
+    size_valid = int(round(np.round(X.shape[ 0 ] * 0.2)))
+    size_test = int(round(np.round(X.shape[ 0 ] * 0.1)))
 
-	# index_train = permutation[ 0 : size_train ]
-	# index_valid = permutation[ size_valid : size_test]
-	# index_test = permutation[ size_valid : ]
+    # index_train = permutation[ 0 : size_train ]
+    # index_valid = permutation[ size_valid : size_test]
+    # index_test = permutation[ size_valid : ]
 
-	index_train = permutation[0:size_train]
-	index_valid = permutation[size_train+1 : size_train+1+size_valid]
-	index_test = permutation[ size_train+1+size_valid : ]
+    index_train = permutation[0:size_train]
+    index_valid = permutation[size_train+1 : size_train+1+size_valid]
+    index_test = permutation[ size_train+1+size_valid : ]
 
-	# index_valid = permutation[355:455]
-	# index_test = permutation[455:]
+    # index_valid = permutation[355:455]
+    # index_test = permutation[455:]
 
-	X_train = X[ index_train, : ]
-	y_train = y[ index_train ]
+    X_train = X[ index_train, : ]
+    y_train = y[ index_train ]
 
-	X_valid = X[index_valid, :]
-	y_valid = y[index_valid]
+    X_valid = X[index_valid, :]
+    y_valid = y[index_valid]
 
-	X_test = X[ index_test, : ]
-	y_test = y[ index_test ]
+    X_test = X[ index_test, : ]
+    y_test = y[ index_test ]
 
-	return X_train, y_train, X_valid, y_valid, X_test, y_test
+    return X_train, y_train, X_valid, y_valid, X_test, y_test
 
 
 # TODO: proper path!
 def get_regression_dataset(dataset, data_path='./'):#$HOME/BayesianHypernetCW/'):
     if dataset == "airfoil":
-    	data = np.load(data_path + 'regression_datasets/airfoil_train.npy')
+        data = np.load(data_path + 'regression_datasets/airfoil_train.npy')
+
+    elif dataset == "parkinsons":
+        data = np.load(data_path + 'regression_datasets/parkinsons.npy')
 
     elif dataset == "boston":
-    	#(506, 14)
-    	data = np.loadtxt(data_path + 'regression_datasets/boston_housing.txt')
+        #(506, 14)
+        data = np.loadtxt(data_path + 'regression_datasets/boston_housing.txt')
 
     elif dataset == "concrete":
-    	#(1029, 9)
-    	data = pd.read_csv(data_path + "regression_datasets/Concrete_Data.csv")
-    	data = np.array(data)
+        #(1029, 9)
+        data = np.loadtxt(data_path + 'regression_datasets/Concrete_Data.txt')
+        # data = pd.read_csv(data_path + "regression_datasets/Concrete_Data.csv")
+        # data = np.array(data)
 
     elif dataset == "energy":
-    	data = pd.read_csv(data_path + "regression_datasets/energy_efficiency.csv")
-    	data = np.array(data)
-    	data = data[0:766, 0:8]	#### only used this portion of data in related papers (others : NaN)
+        data = pd.read_csv(data_path + "regression_datasets/energy_efficiency.csv")
+        data = np.array(data)
+        data = data[0:766, 0:8] #### only used this portion of data in related papers (others : NaN)
 
     elif dataset == "kin8nm":
-    	data = pd.read_csv(data_path + "regression_datasets/kin8nm.csv")
-    	data = np.array(data)
+        data = pd.read_csv(data_path + "regression_datasets/kin8nm.csv")
+        data = np.array(data)
 
     elif dataset == "naval":
-    	data = np.loadtxt(data_path + 'regression_datasets/naval_propulsion.txt')
+        data = np.loadtxt(data_path + 'regression_datasets/naval_propulsion.txt')
 
     elif dataset == "power":
-    	data = pd.read_csv(data_path + 'regression_datasets/power_plant.csv')
-    	data = np.array(data)
+        data = pd.read_csv(data_path + 'regression_datasets/power_plant.csv')
+        data = np.array(data)
 
     elif dataset == "protein":
-    	data = pd.read_csv(data_path + 'regression_datasets/protein_structure.csv')
-    	data = np.array(data)
+        data = pd.read_csv(data_path + 'regression_datasets/protein_structure.csv')
+        data = np.array(data)
 
     elif dataset == "wine":
-    	data = pd.read_csv(data_path + 'regression_datasets/wineQualityReds.csv')
-    	data = np.array(data)
+        data = pd.read_csv(data_path + 'regression_datasets/wineQualityReds.csv')
+        data = np.array(data)
 
     elif dataset == "yacht":
-    	data = np.loadtxt(data_path + 'regression_datasets/yach_data.txt')
+        data = np.loadtxt(data_path + 'regression_datasets/yach_data.txt')
 
     elif dataset == "year":
-    	raise Exception('Need to process data - convert .txt to .csv')
+        raise Exception('Need to process data - convert .txt to .csv')
 
     else:
-    	raise Exception('Need a valid dataset')
+        raise Exception('Need a valid dataset')
 
     data = data.astype("float32")
 
@@ -121,6 +125,10 @@ def get_regression_dataset(dataset, data_path='./'):#$HOME/BayesianHypernetCW/')
     if dataset == 'airfoil':
         test_x = (test_x - test_x.mean(axis=0)) / test_x.std(axis=0)
         test_y = (test_y - test_y.mean()) / test_y.std()
+
+    elif dataset == 'parkinsons':
+        test_x = (test_x - test_x.mean(axis=0)) / test_x.std(axis=0)
+        test_y = (test_y - test_y.mean()) / test_y.std()        
 
 
     return input_dim, train_x, train_y, valid_x, valid_y, test_x , test_y

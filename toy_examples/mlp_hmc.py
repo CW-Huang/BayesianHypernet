@@ -142,6 +142,99 @@ def primary_net_pm(X_train, Y_train, weight_shapes,
         pm.Normal('out', mu=yp_train, tau=y_prec, observed=Y_train)
     return neural_network
 
+# Version for product network example
+
+
+def prod_net_pred(X, theta_dict, lib=T):
+    a, b, c = theta_dict['a'], theta_dict['b'], theta_dict['c']
+
+    yp = a * b * X
+    log_var = a * c * X
+    y_prec = lib.exp(-log_var)
+    return yp, y_prec
+
+
+def prod_net_loglik_np(X, y, theta):
+    yp, y_prec = prod_net_pred(X, theta, lib=np)
+    std_dev = np.sqrt(1.0 / y_prec)
+    assert(std_dev.ndim == 0)
+    assert(yp.shape == y.shape)
+
+    loglik = norm.logpdf(y, loc=yp, scale=std_dev)
+    assert(loglik.shape == y.shape)
+    return np.sum(loglik)
+
+
+def prod_net_pm(X_train, Y_train, weight_shapes,
+                build_priors=make_normal_vars_pm):
+    '''Assume input data are shared variables.'''
+    N, D = X_train.get_value().shape
+    assert(Y_train.get_value().shape == (N, D))
+    # Only considering specific case in paper now, check that is all
+    assert(weight_shapes == {'a': (), 'b': ()})
+
+    with pm.Model() as prod_network:
+        theta_dict = build_priors(weight_shapes)
+
+        yp_train, y_prec = prod_net_pred(X_train, theta_dict, lib=T)
+
+        assert(y_prec.ndim == 0)
+        assert(yp_train.ndim == 2)
+        assert(Y_train.ndim == 2)
+        pm.Normal('out', mu=yp_train, tau=y_prec, observed=Y_train)
+    return prod_network
+
+
+def prod_net_hmc(X_train, Y_train, X_test, Y_test, init_samples, weight_shapes,
+                 restarts=100, n_iter=500, n_tune=500, init_scale_iter=1000,
+                 build_model=prod_net_pm,
+                 logprior_np=logprior_np, loglik_np=prod_net_loglik_np):
+    '''Y_test only used to monitor loglik'''
+    num_params = get_num_params(weight_shapes)
+    assert(init_samples.ndim == 2 and init_samples.shape[1] == num_params)
+    assert(init_samples.shape[0] >= restarts)
+
+    model_input = theano.shared(X_train)
+    model_output = theano.shared(Y_train)
+    model = build_model(model_input, model_output, weight_shapes)
+
+    var_estimate = np.var(init_samples, axis=0)
+    assert(var_estimate.shape == (num_params,))
+
+    tr = [None] * restarts
+    logprior = np.nan + np.zeros((n_tune + n_iter, restarts))
+    loglik_train = np.nan + np.zeros((n_tune + n_iter, restarts))
+    loglik_test = np.nan + np.zeros((n_tune + n_iter, restarts))
+    logp_chk = np.nan + np.zeros((n_tune + n_iter, restarts))
+    for rr in xrange(restarts):
+        print 'HMC run', str(rr)
+
+        # Cast to ordinary dict to be safe, for now
+        start = dict(unpack(init_samples[rr, :], weight_shapes))
+
+        print 'starting to sample'
+        t = time()
+        with model:
+            step = pm.NUTS(scaling=var_estimate, is_cov=True)
+            tr[rr] = pm.sampling.sample(draws=n_iter, step=step, start=start,
+                                        progressbar=False, tune=n_tune,
+                                        discard_tuned_samples=False)
+        print (time() - t), 's'
+
+        assert(len(tr[rr]) == n_tune + n_iter)
+        for ii, theta in enumerate(tr[rr]):
+            logp_chk[ii, rr] = model.logp(theta)
+            # We could also allow these to be None to skip checks
+            logprior[ii, rr] = logprior_np(theta)
+            loglik_train[ii, rr] = loglik_np(X_train, Y_train, theta)
+            loglik_test[ii, rr] = loglik_np(X_test, Y_test, theta)
+    err = np.max(np.abs(logp_chk - (logprior + loglik_train)))
+    print 'nrg log10 err %f' % np.log10(err)
+    # Could use merge traces but prob not worth trouble
+    return tr, (logprior, loglik_train, loglik_test)
+
+# General pymc3 stuff
+
 
 def hmc_net(X_train, Y_train, X_test, Y_test, initializer_f, weight_shapes,
             restarts=100, n_iter=500, n_tune=500, init_scale_iter=1000,
@@ -155,6 +248,7 @@ def hmc_net(X_train, Y_train, X_test, Y_test, initializer_f, weight_shapes,
     ann_output = theano.shared(Y_train)
     ann_model = build_model(ann_input, ann_output, weight_shapes)
 
+    # TODO deal with False
     theta0 = [initializer_f(np.random.randn(num_params), False)
               for _ in xrange(init_scale_iter)]
     assert(np.shape(theta0) == (init_scale_iter, num_params))
@@ -195,8 +289,6 @@ def hmc_net(X_train, Y_train, X_test, Y_test, initializer_f, weight_shapes,
     print 'nrg log10 err %f' % np.log10(err)
     # Could use merge traces but prob not worth trouble
     return tr, (logprior, loglik_train, loglik_test)
-
-# Post-process pymc3 traces
 
 
 def hmc_pred(tr_list, X_test, y_test=None, p=(0.025, 0.5, 0.975)):
