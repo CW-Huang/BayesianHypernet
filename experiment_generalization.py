@@ -386,3 +386,12 @@ if __name__ == '__main__':
                             test_x,test_y,n_mc=200)
     print 'test acc: {}'.format(te_acc)         
                  
+
+    if args.totrain == 1:
+        # report the best valid-model's test acc
+        e0 = model.load(save_path)
+        te_acc = evaluate_model(model.predict_proba,
+                                test_x,test_y,n_mc=200)
+        print 'test acc (best valid): {}'.format(te_acc)
+
+
