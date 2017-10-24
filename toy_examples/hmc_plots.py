@@ -58,7 +58,7 @@ def plot_dump(D):
 if __name__ == '__main__':
     fname = 'reg_example_dump.pkl'
     print fname
-    with open('reg_example_dump.pkl', 'rb') as f:
+    with open(fname, 'rb') as f:
         D = pkl.load(f)
     fig, (ax1, ax2, ax3) = plot_dump(D)
     print 'done'
