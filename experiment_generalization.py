@@ -34,6 +34,7 @@ class MLP(object):
                  n_inputs=784,
                  dropout=False, 
                  flow='IAF', 
+                 norm_type='WN',
                  coupling=0, 
                  n_units_h=200, 
                  static_bias=True,
@@ -71,6 +72,7 @@ class MLP(object):
         self.weight_shapes.append((n_units,10))
         self.num_params = sum(ws[1] for ws in self.weight_shapes)
         self.flow = flow
+        self.norm_type = norm_type
         self.coupling = coupling
         self.dropout = dropout
         self.static_bias = static_bias
@@ -120,6 +122,7 @@ class MLP(object):
                                             n_units_h, 
                                             coupling, 
                                             flow,
+                                            norm_type=norm_type,
                                             copies=copies)
             static_bias = theano.shared(
                 np.zeros((num_params)).astype(floatX)
@@ -231,6 +234,7 @@ if __name__ == '__main__':
     parser.add_argument('--flow',default='RealNVP',type=str, 
                         choices=['RealNVP', 'IAF'])
     parser.add_argument('--n_units_h',default=200, type=int)
+    parser.add_argument('--norm_type',default='WN', type=str)
     parser.add_argument('--static_bias',default=1,type=int)
     parser.add_argument('--alpha',default=2, type=float)
     parser.add_argument('--beta',default=1, type=float)
@@ -238,6 +242,13 @@ if __name__ == '__main__':
     
     
     args = parser.parse_args()
+    
+    if args.flow == '0':
+        args.flow = None
+    elif args.flow == 'IAF 'or args.flow == 'RealNVP':
+        pass
+    else:
+        raise Exception('flow type {} not supported'.format(args.flow))
     print args
     
     
@@ -257,6 +268,11 @@ if __name__ == '__main__':
         dp = 1
     else:
         dp = 0
+        
+    if args.flow is None:
+        fl = '0'
+    else:
+        fl = args.flow
     
     if args.static_bias:
         sb = 1
@@ -271,7 +287,7 @@ if __name__ == '__main__':
         path,
         args.n_hiddens,
         args.n_units,
-        args.flow,
+        fl,
         args.n_units_h,
         args.static_bias,
         args.coupling,
@@ -325,6 +341,7 @@ if __name__ == '__main__':
                  n_inputs=n_inputs,
                  dropout=args.dropout, 
                  flow=args.flow, 
+                 norm_type=args.norm_type,
                  coupling=coupling, 
                  n_units_h=args.n_units_h, 
                  static_bias=args.static_bias,
