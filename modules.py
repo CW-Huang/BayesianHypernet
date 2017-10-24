@@ -903,6 +903,10 @@ def N_get_output(layer_or_layers, inputs, hnet, input_h,
                 else:
                     nonlinearity = lambda x: x
                     
+                if hasattr(layer, 'b') and layer.b is not None:
+                    del layer.params[layer.b]
+                    layer.b = None
+
                 size = layer.output_shape[1]
                 print size
                 if norm_type == 'BN':
@@ -1143,14 +1147,16 @@ if __name__ == '__main__':
 
         else:    
             print 'example: not conditioning bias'  
-            hnet, ld, num_params = hypernet(layer, 100, 2, copies = 1, flow='RealNVP')
+            hnet, ld, num_params = hypernet(layer, 100, 2, copies = 1, 
+                                            flow='RealNVP')
     
             ep = srng.normal(size=(1,num_params),dtype=floatX)        
             static_bias = theano.shared(np.zeros((num_params)).astype('float32'))
             ### remember to concatenate this with params ### 
             
             output_var = N_get_output(layer,input_var,hnet,ep,
-                                      static_bias=static_bias)
+                                      static_bias=static_bias,
+                                      norm_type='WN')
             print output_var.eval().shape
 
 
