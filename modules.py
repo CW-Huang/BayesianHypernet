@@ -96,7 +96,7 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
 
 class CoupledWNDenseLayer(lasagne.layers.base.Layer):    
     def __init__(self, incoming, num_units,
-                 W=init.Normal(1),
+                 W=init.Normal(0.0001),
                  r=init.Normal(0.0001),
                  b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
                  **kwargs):
@@ -755,7 +755,7 @@ from warnings import warn
 def NVP_dense_layer(incoming, 
                     num_units=200,
                     L=2,
-                    W=init.Normal(1),
+                    W=init.Normal(0.0001),
                     r=init.Normal(0.0001),
                     b=init.Constant(0.), 
                     nonlinearity=nonlinearities.rectify,):
@@ -777,7 +777,7 @@ def IAF_dense_layer(incoming,
                     num_units=200,
                     L=2,
                     num_hids=1,
-                    W=init.Normal(1),
+                    W=init.Normal(0.0001),
                     r=init.Normal(0.0001),
                     b=init.Constant(0.), 
                     nonlinearity=nonlinearities.rectify):
