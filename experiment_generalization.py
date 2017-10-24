@@ -22,6 +22,7 @@ from lasagne.layers import get_output
 from theano.tensor.shared_randomstreams import RandomStreams
 
 from modules import hypernet, N_get_output, get_elbo
+from utils import stable_grad
 
 # TODO: add all LCS
 
@@ -40,7 +41,9 @@ class MLP(object):
                  static_bias=True,
                  prior=log_normal,
                  lbda=1,
-                 srng=RandomStreams(seed=427)):
+                 srng=RandomStreams(seed=427),
+                 max_norm=10,
+                 clip_grad=5):
         """
         flow: 
             if None, then just regular MLE estimate of parameters
@@ -78,6 +81,8 @@ class MLP(object):
         self.static_bias = static_bias
         self.prior = prior
         self.lbda = lbda
+        self.max_norm = max_norm
+        self.clip_grad = clip_grad
         
         
         for j,ws in enumerate(self.weight_shapes):
@@ -122,7 +127,6 @@ class MLP(object):
                                             n_units_h, 
                                             coupling, 
                                             flow,
-                                            norm_type=norm_type,
                                             copies=copies)
             static_bias = theano.shared(
                 np.zeros((num_params)).astype(floatX)
@@ -133,6 +137,7 @@ class MLP(object):
    
             output_var = N_get_output(layer,
                                       self.input_var,hnet,ep,
+                                      norm_type=norm_type,
                                       static_bias=static_bias)
             weights = get_output(hnet,ep)
             logdets = get_output(ld,ep)
@@ -145,7 +150,9 @@ class MLP(object):
             self.weights = weights
             self.logdets = logdets
             
-            loss, prints = get_elbo(self.output_var,
+            loss, prints = get_elbo(T.clip(output_var, 
+                                           0.001, 
+                                           0.999), # stability
                                     self.target_var,
                                     self.weights,
                                     self.logdets,
@@ -159,11 +166,17 @@ class MLP(object):
             
         
         
-        self.params = lasagne.layers.get_all_params(self.layer)
+        self.params = lasagne.layers.get_all_params(self.layer) + \
+                      lasagne.layers.get_all_params(self.hnet)
         if hasattr(self,'N_bias'):
-            self.params.append(self.N_bias)
-            
-        self.updates = lasagne.updates.adam(self.loss,self.params,
+            if self.N_bias is not None:
+                self.params.append(self.N_bias)
+        
+        self.grads = stable_grad(self.loss,
+                                 self.params,
+                                 self.clip_grad,
+                                 self.max_norm)
+        self.updates = lasagne.updates.adam(self.grads,self.params,
                                             self.learning_rate)
 
         print '\tgetting train_func'
@@ -242,14 +255,14 @@ if __name__ == '__main__':
     
     
     args = parser.parse_args()
+    print args
     
     if args.flow == '0':
         args.flow = None
-    elif args.flow == 'IAF 'or args.flow == 'RealNVP':
+    elif args.flow == 'IAF' or args.flow == 'RealNVP':
         pass
     else:
         raise Exception('flow type {} not supported'.format(args.flow))
-    print args
     
     
     set_rng(np.random.RandomState(args.seed))
@@ -385,3 +398,12 @@ if __name__ == '__main__':
                             test_x,test_y,n_mc=200)
     print 'test acc: {}'.format(te_acc)         
                  
+
+    if args.totrain == 1:
+        # report the best valid-model's test acc
+        e0 = model.load(save_path)
+        te_acc = evaluate_model(model.predict_proba,
+                                test_x,test_y,n_mc=200)
+        print 'test acc (best valid): {}'.format(te_acc)
+
+

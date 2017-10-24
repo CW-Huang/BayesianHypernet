@@ -96,7 +96,7 @@ class CoupledDenseLayer(lasagne.layers.base.Layer):
 
 class CoupledWNDenseLayer(lasagne.layers.base.Layer):    
     def __init__(self, incoming, num_units,
-                 W=init.Normal(1),
+                 W=init.Normal(0.0001),
                  r=init.Normal(0.0001),
                  b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
                  **kwargs):
@@ -755,13 +755,14 @@ from warnings import warn
 def NVP_dense_layer(incoming, 
                     num_units=200,
                     L=2,
-                    W=init.Normal(1),
+                    W=init.Normal(0.0001),
                     r=init.Normal(0.0001),
                     b=init.Constant(0.), 
                     nonlinearity=nonlinearities.rectify,):
     
     layer = incoming
-    shape = layer.output_shape
+    shape = layer.output_shape[1]
+    logdets_layers = list()
     
     for c in range(L):
        layer = PermuteLayer(layer,shape)
@@ -776,7 +777,7 @@ def IAF_dense_layer(incoming,
                     num_units=200,
                     L=2,
                     num_hids=1,
-                    W=init.Normal(1),
+                    W=init.Normal(0.0001),
                     r=init.Normal(0.0001),
                     b=init.Constant(0.), 
                     nonlinearity=nonlinearities.rectify):
@@ -902,6 +903,10 @@ def N_get_output(layer_or_layers, inputs, hnet, input_h,
                 else:
                     nonlinearity = lambda x: x
                     
+                if hasattr(layer, 'b') and layer.b is not None:
+                    del layer.params[layer.b]
+                    layer.b = None
+
                 size = layer.output_shape[1]
                 print size
                 if norm_type == 'BN':
@@ -988,12 +993,12 @@ def get_elbo(pred,
     if output_type == 'categorical':
         logpyx = - cc(pred,targ).mean()
     elif output_type == 'real':
-        logpyx = - se(pred,targ).mean()
+        logpyx = - se(pred,targ).mean() # assume output is a vector !
     else:
         assert False
     loss = - (logpyx - weight * kl/T.cast(dataset_size,floatX))
 
-    return loss, (logpyx, logpw, logqw)
+    return loss, [logpyx, logpw, logqw]
     
         
 
@@ -1142,14 +1147,16 @@ if __name__ == '__main__':
 
         else:    
             print 'example: not conditioning bias'  
-            hnet, ld, num_params = hypernet(layer, 100, 2, copies = 1)
+            hnet, ld, num_params = hypernet(layer, 100, 2, copies = 1, 
+                                            flow='RealNVP')
     
             ep = srng.normal(size=(1,num_params),dtype=floatX)        
             static_bias = theano.shared(np.zeros((num_params)).astype('float32'))
             ### remember to concatenate this with params ### 
             
             output_var = N_get_output(layer,input_var,hnet,ep,
-                                      static_bias=static_bias)
+                                      static_bias=static_bias,
+                                      norm_type='WN')
             print output_var.eval().shape
 
 
