@@ -993,7 +993,7 @@ def get_elbo(pred,
         assert False
     loss = - (logpyx - weight * kl/T.cast(dataset_size,floatX))
 
-    return loss, (logpyx, logpw, logqw)
+    return loss, [logpyx, logpw, logqw]
     
         
 
