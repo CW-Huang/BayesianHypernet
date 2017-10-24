@@ -48,7 +48,7 @@ def get_dataset(data, test_inds=None):
 
 
 # TODO: proper path!
-def get_regression_dataset(dataset, data_path='./'):#$HOME/BayesianHypernetCW/'):
+def get_regression_dataset(dataset, data_path='./', normalization='each_set'):#by_train_set'):#$HOME/BayesianHypernetCW/'):
     if dataset == "airfoil":
         data = np.load(data_path + 'regression_datasets/airfoil_train.npy')
 
@@ -114,21 +114,31 @@ def get_regression_dataset(dataset, data_path='./'):#$HOME/BayesianHypernetCW/')
     
 
     ###normalizing dataset
-    train_x = (train_x - train_x.mean(axis=0)) / train_x.std(axis=0)
-    valid_x = (valid_x - valid_x.mean(axis=0)) / valid_x.std(axis=0)
+    if normalization == 'each_set':
+        train_x = (train_x - train_x.mean(axis=0)) / train_x.std(axis=0)
+        train_y = (train_y - train_y.mean()) / train_y.std()
 
-    train_y = (train_y - train_y.mean()) / train_y.std()
-    valid_y = (valid_y - valid_y.mean()) / valid_y.std()
+        valid_x = (valid_x - valid_x.mean(axis=0)) / valid_x.std(axis=0)
+        valid_y = (valid_y - valid_y.mean()) / valid_y.std()
 
+        ## normally we would NOT normalize test data and test labels
+        if dataset in ['airfoil', 'parkinsons']:
+            test_x = (test_x - test_x.mean(axis=0)) / test_x.std(axis=0)
+            test_y = (test_y - test_y.mean()) / test_y.std()
 
-    ## DO NOT normalize test data and test labels
-    if dataset == 'airfoil':
-        test_x = (test_x - test_x.mean(axis=0)) / test_x.std(axis=0)
-        test_y = (test_y - test_y.mean()) / test_y.std()
+    elif normalization == 'by_train_set':
+        x_mean = train_x.mean(axis=0)
+        x_std = train_x.std(axis=0)
+        y_mean = train_y.mean()
+        y_std = train_y.std()
 
-    elif dataset == 'parkinsons':
-        test_x = (test_x - test_x.mean(axis=0)) / test_x.std(axis=0)
-        test_y = (test_y - test_y.mean()) / test_y.std()        
+        train_x = (train_x - x_mean) / x_std
+        valid_x = (valid_x - x_mean) / x_std
+        test_x = (test_x - x_mean) / x_std
+
+        train_y = (train_y - y_mean) / y_std
+        valid_y = (valid_y - y_mean) / y_std
+        test_y = (test_y - y_mean) / y_std
 
 
     return input_dim, train_x, train_y, valid_x, valid_y, test_x , test_y
