@@ -988,12 +988,12 @@ def get_elbo(pred,
     if output_type == 'categorical':
         logpyx = - cc(pred,targ).mean()
     elif output_type == 'real':
-        logpyx = - se(pred,targ).mean()
+        logpyx = - se(pred,targ).mean() # assume output is a vector !
     else:
         assert False
     loss = - (logpyx - weight * kl/T.cast(dataset_size,floatX))
 
-    return loss, (logpyx, logpw, logqw)
+    return loss, [logpyx, logpw, logqw]
     
         
 
