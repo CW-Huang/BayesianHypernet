@@ -761,7 +761,8 @@ def NVP_dense_layer(incoming,
                     nonlinearity=nonlinearities.rectify,):
     
     layer = incoming
-    shape = layer.output_shape
+    shape = layer.output_shape[1]
+    logdets_layers = list()
     
     for c in range(L):
        layer = PermuteLayer(layer,shape)
@@ -1142,7 +1143,7 @@ if __name__ == '__main__':
 
         else:    
             print 'example: not conditioning bias'  
-            hnet, ld, num_params = hypernet(layer, 100, 2, copies = 1)
+            hnet, ld, num_params = hypernet(layer, 100, 2, copies = 1, flow='RealNVP')
     
             ep = srng.normal(size=(1,num_params),dtype=floatX)        
             static_bias = theano.shared(np.zeros((num_params)).astype('float32'))
