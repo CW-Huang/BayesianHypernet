@@ -8,6 +8,7 @@ Created on Fri Mar 31 21:39:54 2017
 import theano.tensor as T
 import numpy as np
 
+from lasagne.updates import total_norm_constraint as tnc
 from lasagne.init import Normal
 from lasagne.init import Initializer, Orthogonal
 
@@ -119,6 +120,13 @@ class DanNormal(Initializer):
         return self.initializer(std=std).sample(shape)
 
 
+def stable_grad(loss,params,clip_grad=1e10,max_norm=1e10):
+    grads = T.grad(loss, params)
+    mgrads = tnc(grads,max_norm=max_norm)
+    cgrads = [T.clip(g, -clip_grad, clip_grad) for g in mgrads]
+    return cgrads
+        
+        
 def train_model(model,X,Y,Xv,Yv,
                 lr0=0.001,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
                 e0=0,rec=0,print_every=100,v_mc=20,n_classes=10):
