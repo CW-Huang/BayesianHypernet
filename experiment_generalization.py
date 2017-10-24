@@ -122,7 +122,6 @@ class MLP(object):
                                             n_units_h, 
                                             coupling, 
                                             flow,
-                                            norm_type=norm_type,
                                             copies=copies)
             static_bias = theano.shared(
                 np.zeros((num_params)).astype(floatX)
@@ -133,6 +132,7 @@ class MLP(object):
    
             output_var = N_get_output(layer,
                                       self.input_var,hnet,ep,
+                                      norm_type=norm_type,
                                       static_bias=static_bias)
             weights = get_output(hnet,ep)
             logdets = get_output(ld,ep)
@@ -159,7 +159,8 @@ class MLP(object):
             
         
         
-        self.params = lasagne.layers.get_all_params(self.layer)
+        self.params = lasagne.layers.get_all_params(self.layer) + \
+                      lasagne.layers.get_all_params(self.hnet)
         if hasattr(self,'N_bias'):
             self.params.append(self.N_bias)
             
@@ -242,14 +243,14 @@ if __name__ == '__main__':
     
     
     args = parser.parse_args()
+    print args
     
     if args.flow == '0':
         args.flow = None
-    elif args.flow == 'IAF 'or args.flow == 'RealNVP':
+    elif args.flow == 'IAF' or args.flow == 'RealNVP':
         pass
     else:
         raise Exception('flow type {} not supported'.format(args.flow))
-    print args
     
     
     set_rng(np.random.RandomState(args.seed))
