@@ -162,7 +162,8 @@ class MLP(object):
         self.params = lasagne.layers.get_all_params(self.layer) + \
                       lasagne.layers.get_all_params(self.hnet)
         if hasattr(self,'N_bias'):
-            self.params.append(self.N_bias)
+            if self.N_bias is not None:
+                self.params.append(self.N_bias)
             
         self.updates = lasagne.updates.adam(self.loss,self.params,
                                             self.learning_rate)
