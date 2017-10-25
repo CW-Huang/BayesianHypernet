@@ -306,7 +306,7 @@ class MLPWeightNorm_BHN(Base_BHN):
                                                 perdatapoint=perdatapoint,
                                                 srng=srng,
                                                 prior=prior,
-                 output_type = output_type,
+                                                output_type = output_type,
                                                 **kargs)
     
     
