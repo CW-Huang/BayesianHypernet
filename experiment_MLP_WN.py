@@ -18,6 +18,7 @@ import theano.tensor as T
 import os
 from lasagne.random import set_rng
 from theano.tensor.shared_randomstreams import RandomStreams
+from FGS_eval import evaluate as adv_evaluate
 
 
 # TODO: add all LCS
@@ -57,7 +58,8 @@ class MCdropout_MLP(object):
         self.y = lasagne.layers.get_output(layer,self.input_var)
         self.y_det = lasagne.layers.get_output(layer,self.input_var,
                                                deterministic=True)
-        
+        self.output_var = self.y # aliasing
+
         losses = lasagne.objectives.categorical_crossentropy(self.y,
                                                              self.target_var)
         self.loss = losses.mean()
@@ -125,6 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
     parser.add_argument('--totrain',default=1,type=int)
+    parser.add_argument('--adv_eval',default=1,type=int)
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
@@ -290,3 +293,14 @@ if __name__ == '__main__':
                                 test_x,test_y,n_mc=200)
         print 'test acc (best valid): {}'.format(te_acc)
 
+        
+    if args.adv_eval == 1:
+        results = adv_evaluate(test_x,
+                               test_y,
+                               model.predict_proba,
+                               model.input_var,
+                               model.target_var,
+                               model.output_var)
+        
+        np.save(name+'_adv',results)
+        

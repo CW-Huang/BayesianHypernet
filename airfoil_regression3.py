@@ -230,7 +230,7 @@ if __name__ == '__main__':
     if grid_search:
         # TODO: better grid...
         length_scales = 1000.**np.arange(-3,1)#length_scales = [.1, .01,  .001] # length scale should be smaller!
-        taus = 3.**np.arange(4,7)#taus = [.01, .1, 1, 10., 100.] # tau should be larger!
+        taus = 3.**np.arange(4,7)# tau should be larger (still)!
         lr0s = [.01, .003, .001]#lr0s = [.01, .001, .0001]
         drop_probs = [.01]#[.1, .05, .02, .01, .005, .002, .001]
 

@@ -151,6 +151,7 @@ if __name__ == '__main__':
     parser.add_argument('--model',default='HyperWN_CNN',type=str) 
     parser.add_argument('--anneal',default=0,type=int)
     parser.add_argument('--totrain',default=1,type=int)
+    parser.add_argument('--toshuffle',default=0,type=int)
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
@@ -192,7 +193,7 @@ if __name__ == '__main__':
         os.makedirs(path)
 
     name = '{}/WNCNN_md{}ds{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}' \
-           'reinit{}alpha{}beta{}flow{}{}'.format(
+           'reinit{}alpha{}beta{}flow{}{}sh{}'.format(
         path,
         md,
         ds,
@@ -208,7 +209,8 @@ if __name__ == '__main__':
         args.alpha,
         args.beta,
         args.flow,
-        args.n_units_h
+        args.n_units_h,
+        args.toshuffle
     )
     
     
@@ -340,7 +342,8 @@ if __name__ == '__main__':
                     valid_x,valid_y,
                     lr0,lrdecay,bs,epochs,anneal,name,e0,rec,
                     print_every=999999,
-                    n_classes=n_classes)
+                    n_classes=n_classes,
+                    toshuffle=args.toshuffle)
     
 
     tr_acc = evaluate_model(model.predict_proba,

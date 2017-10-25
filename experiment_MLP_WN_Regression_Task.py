@@ -2,6 +2,11 @@
 # -*- coding: utf-8 -*-
 """@author: Riashat Islam
 """
+import argparse
+import os
+import sys
+import numpy 
+np = numpy
 
 import math
 import numpy
@@ -121,7 +126,7 @@ def evaluate_model(predict,X,Y,n_mc=100,max_n=100):
 
 
 
-def plot_rmse(stats1, stats2, save_results, dataset_name, smoothing_window=1, noshow=False):
+def plot_rmse(stats1, stats2, save_results, dataset, smoothing_window=1, noshow=False):
 
     fig = plt.figure(figsize=(16, 8))
     ax = plt.subplot()
@@ -145,7 +150,7 @@ def plot_rmse(stats1, stats2, save_results, dataset_name, smoothing_window=1, no
     plt.title("Training and Validation RMSE", **axis_font)
     plt.show()
 
-    fig.savefig(save_results + dataset_name + '_train_valid_rmse.png')
+    fig.savefig(save_results + dataset + '_train_valid_rmse.png')
     
     return fig
 
@@ -163,7 +168,7 @@ if __name__ == '__main__':
     
     parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--lrdecay',default=0.1,type=int)      
-    parser.add_argument('--lr0',default=0.1,type=float)  
+    parser.add_argument('--lr0',default=0.001,type=float) # .1
     parser.add_argument('--coupling',default=4,type=int) 
     parser.add_argument('--lbda',default=1,type=float)  
     parser.add_argument('--size',default=200,type=int)      
@@ -172,20 +177,41 @@ if __name__ == '__main__':
     parser.add_argument('--prior',default='log_normal',type=str)
     parser.add_argument('--model',default='BHN',type=str, choices=['BHN', 'MCDropout', 'Backprop'])
     parser.add_argument('--anneal',default=0,type=int)
-    parser.add_argument('--n_hiddens',default=1,type=int)
-    parser.add_argument('--n_units',default=50,type=int)
+    parser.add_argument('--n_hiddens',default=2,type=int) # 1
+    parser.add_argument('--n_units',default=200,type=int) # 50
     parser.add_argument('--totrain',default=1,type=int)
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=0,type=int)
-    parser.add_argument('--dataset_name',default='boston',type=str, choices=['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year'])
-    parser.add_argument('--flow',default='IAF',type=str, choices=['RealNVP', 'IAF'])
+    parser.add_argument('--dataset',default='airfoil',type=str, choices=['airfoil', 'boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year'])
+    parser.add_argument('--flow',default='RealNVP',type=str, choices=['RealNVP', 'IAF'])
     parser.add_argument('--save_dir',default=None, type=str)
+    parser.add_argument('--cross_validate',default=0, type=int)
+    parser.add_argument('--drop_prob',default=0.005, type=float)
     #parser.add_argument('--save_results',default='./results/',type=str)
     
     
     args = parser.parse_args()
     print args
+    args_dict = args.__dict__
+
+    if args_dict['save_dir'] is None:
+        print "\n\n\n\t\t\t\t WARNING: save_dir is None! Results will not be saved! \n\n\n"
+    else:
+        # save_dir = filename + PROVIDED parser arguments
+        flags = [flag.lstrip('--') for flag in sys.argv[1:] if not flag.startswith('save_dir')]
+        save_dir = os.path.join(args_dict.pop('save_dir'), os.path.basename(__file__) + '___' + '_'.join(flags))
+        print("\t\t save_dir=",  save_dir)
+
+        # make directory for results
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        # save ALL parser arguments
+        with open (os.path.join(save_dir,'exp_settings.txt'), 'w') as f:
+            for key in sorted(args_dict):
+                f.write(key+'\t'+str(args_dict[key])+'\n')
+
+    locals().update(args_dict)
     
     
     set_rng(np.random.RandomState(args.seed))
@@ -202,7 +228,7 @@ if __name__ == '__main__':
     if args.model == 'Backprop':
         md = 2
     
-    path = args.save_dir
+    path = save_dir
     name = '{}/regressionWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}flow{}'.format(
         path,
         md,
@@ -231,7 +257,7 @@ if __name__ == '__main__':
     n_units = args.n_units
     anneal = args.anneal
 
-    dataset_name = args.dataset_name
+    dataset = args.dataset
 
     if args.prior=='log_normal':
         prior = log_normal
@@ -241,95 +267,86 @@ if __name__ == '__main__':
         raise Exception('no prior named `{}`'.format(args.prior))
     size = max(10,min(50000,args.size))
     
-    input_dim, train_x, train_y, valid_x, valid_y, test_x , test_y = get_regression_dataset(dataset_name)
 
-    if args.reinit:
-        init_batch_size = 64
-        init_batch = train_x[:size][-init_batch_size:]
+    if cross_validate:
+        va_lcs = []
+        vs_bests = []
+        for exp in range(cross_validate):
+                
+            # TODO: make sure this is set-up properly!
+            input_dim, train_x, train_y, valid_x, valid_y, test_x , test_y = get_regression_dataset(dataset, data_path=os.environ['HOME'] + '/BayesianHypernetCW/')
 
+            if args.reinit:
+                init_batch_size = 64
+                init_batch = train_x[:size][-init_batch_size:]
+
+            else:
+                init_batch = None
+                
+            if args.model == 'BHN':
+                model = MLPWeightNorm_BHN(lbda=lbda,
+                                          perdatapoint=perdatapoint,
+                                          srng = RandomStreams(seed=args.seed+2000),
+                                          prior=prior,
+                                          coupling=coupling,
+                                          n_hiddens=n_hiddens,
+                                          n_units=n_units,
+                                          input_dim=input_dim,
+                                          flow=args.flow,
+                                          init_batch=init_batch)
+            elif args.model == 'MCDropout':
+                model = MCdropout_MLP(n_hiddens=n_hiddens,
+                                      n_units=n_units,
+                                      lbda=lbda,
+                                      input_dim=input_dim)
+            elif args.model =='Backprop':
+                model = Backprop_MLP(n_hiddens=n_hiddens,
+                                      n_units=n_units,
+                                      lbda=lbda,
+                                      input_dim=input_dim)
+            else:
+                raise Exception('no model named `{}`'.format(args.model))
+
+            va_rec_name = name+'_recs'
+            save_path = name + '.params.npy'
+
+            e0 = 0
+            rec = 0
+            if args.totrain:
+                print '\nstart training from epoch {}'.format(e0)
+                all_trainining_rmse, all_validation_rmse = train_model(model.train_func,model.predict,
+                            train_x[:size],train_y[:size],
+                            valid_x,valid_y,
+                            lr0,lrdecay,bs,epochs,anneal,name,
+                            e0,rec)
+            else:
+                print '\nno training'
+            
+            va_lcs.append(all_validation_rmse)
+            va_bests.append(min(all_validation_rmse))
+            if save_dir is not None:
+                np.save(name + "_va_lcs.npy", va_lcs)
+                np.save(name + "_va_bests.npy", va_bests)
+
+
+            
+            ##### for test accuracy
+            # te_rmse = evaluate_model(model.predict_proba,
+            #                         test_x,test_y)
+            # print 'test acc: {}'.format(te_rmse)
+            #
+            # print ("TEST ACCURACY", te_rmse)
+            # for plotting
+            # plot_rmse(all_trainining_rmse, all_validation_rmse, args.save_results, args.dataset)
+            
+
+            """
+            if save_dir is not None:
+                np.save(name + "_all_training_rmse.npy", all_trainining_rmse)
+                np.save(name + "_all_validation_rmse.npy", all_validation_rmse)
+                np.save(name + "_training_rmse.npy", tr_rmse)
+                np.save(name + "_validation_rmse.npy", va_rmse)
+            """
+                    
     else:
-        init_batch = None
-        
-    if args.model == 'BHN':
-        model = MLPWeightNorm_BHN(lbda=lbda,
-                                  perdatapoint=perdatapoint,
-                                  srng = RandomStreams(seed=args.seed+2000),
-                                  prior=prior,
-                                  coupling=coupling,
-                                  n_hiddens=n_hiddens,
-                                  n_units=n_units,
-                                  input_dim=input_dim,
-                                  flow=args.flow,
-                                  init_batch=init_batch)
-    elif args.model == 'MCDropout':
-        model = MCdropout_MLP(n_hiddens=n_hiddens,
-                              n_units=n_units,
-                              input_dim=input_dim)
-
-
-    elif args.model =='Backprop':
-        model = Backprop_MLP(n_hiddens=n_hiddens,
-                              n_units=n_units,
-                              input_dim=input_dim)
-
-    else:
-        raise Exception('no model named `{}`'.format(args.model))
-
-
-
-    va_rec_name = name+'_recs'
-    tr_rec_name = name+'_recs_train' # TODO (we're already saving the valid_recs!)
-    save_path = name + '.params.npy'
-    if os.path.isfile(save_path) and not args.override:
-        print 'load best model'
-        e0 = model.load(save_path)
-        va_recs = open(va_rec_name,'r').read().split('\n')[:e0]
-        #tr_recs = open(tr_rec_name,'r').read().split('\n')[:e0]
-        rec = max([float(r) for r in va_recs])
-        
-    else:
-        e0 = 0
-        rec = 0
-
-    if args.totrain:
-        print '\nstart training from epoch {}'.format(e0)
-        all_trainining_rmse, all_validation_rmse = train_model(model.train_func,model.predict,
-                    train_x[:size],train_y[:size],
-                    valid_x,valid_y,
-                    lr0,lrdecay,bs,epochs,anneal,name,
-                    e0,rec)
-    else:
-        print '\nno training'
-    
-
-    tr_rmse = evaluate_model(model.predict_proba,
-                            train_x[:size],train_y[:size])
-    print 'train rmse: {}'.format(tr_rmse)
-                   
-    va_rmse = evaluate_model(model.predict_proba,
-                            valid_x,valid_y)
-    print 'valid acc: {}'.format(va_rmse)
-    
-    ##### for test accuracy
-    # te_rmse = evaluate_model(model.predict_proba,
-    #                         test_x,test_y)
-    # print 'test acc: {}'.format(te_rmse)
-    #
-    # print ("TEST ACCURACY", te_rmse)
-    # for plotting
-    # plot_rmse(all_trainining_rmse, all_validation_rmse, args.save_results, args.dataset_name)
-	
-
-    if save_dir is not None:
-        np.save(name + "_all_training_rmse.npy", all_trainining_rmse)
-        np.save(name + "_all_validation_rmse.npy", all_validation_rmse)
-        np.save(name + "_training_rmse.npy", tr_rmse)
-        np.save(name + "_validation_rmse.npy", va_rmse)
-
-
-
-
-
-
-
-
+        print '\nno training' # TODO

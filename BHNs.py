@@ -373,10 +373,18 @@ class MLPWeightNorm_BHN(Base_BHN):
             assert False
         
     def _get_useful_funcs(self):
+        """
+        # FIXME
+        self.predict_proba = theano.function([self.input_var],self.y, allow_input_downcast=True)
+        self.predict = theano.function([self.input_var],self.y.argmax(1), allow_input_downcast=True)
+        self.predict_fixed_mask = theano.function([self.input_var, self.weights],self.y, allow_input_downcast=True)
+        self.sample_weights = theano.function([], self.weights, allow_input_downcast=True)
+        """
         self.predict_proba = theano.function([self.input_var],self.y)
         self.predict = theano.function([self.input_var],self.y.argmax(1))
         self.predict_fixed_mask = theano.function([self.input_var, self.weights],self.y)
         self.sample_weights = theano.function([], self.weights)
+        #"""
     
     def sample_qyx(self):
         """ return a function that will make predictions with a fixed random mask"""
