@@ -18,6 +18,7 @@ import theano.tensor as T
 import os
 from lasagne.random import set_rng
 from theano.tensor.shared_randomstreams import RandomStreams
+from FGS_eval import evaluate as adv_evaluate
 
 
 # TODO: add all LCS
@@ -288,3 +289,14 @@ if __name__ == '__main__':
                                 test_x,test_y,n_mc=200)
         print 'test acc (best valid): {}'.format(te_acc)
 
+        
+    if args.adv_eval == 1:
+        results = adv_evaluate(test_x,
+                               test_y,
+                               model.predict_proba,
+                               model.input_var,
+                               model.target_var,
+                               model.output_var)
+        
+        np.save(name+'_adv',results)
+        
