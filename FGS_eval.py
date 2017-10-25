@@ -80,7 +80,7 @@ def evaluate(X,Y,predict_proba,
     erd_stds.append(roc_auc_score(err0,Y_mstd0))
     
     for ep in eps:
-        acc, Y_entropy, Y_max, Y_mstd, err = per_ep(0.0)
+        acc, Y_entropy, Y_max, Y_mstd, err = per_ep(ep)
         accs.append(acc.mean())
         ents.append(Y_entropy.mean())
         maxs.append(Y_max.mean())
