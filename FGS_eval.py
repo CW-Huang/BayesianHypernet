@@ -8,27 +8,44 @@ Created on Mon Oct 23 20:11:43 2017
 
 
 import numpy as np
-from cleverhans import attacks_th
+#from cleverhans import attacks_th
 import theano
+import theano.tensor as T
 
 from sklearn.metrics import roc_auc_score
 from acquisition_functions import bald, max_ent, var_ratio, mean_std
 score_fs = [bald, max_ent, var_ratio, mean_std]
 eval_scores = lambda sps: [f(sps) for f in score_fs]
 
+                           
+                           
+                           
+def fgm_grad(x, predictions, y):
+    loss = T.nnet.categorical_crossentropy(predictions,y)    
+    grad = T.grad(loss.mean(), x)
+    return grad
 
+    
 def evaluate(X,Y,predict_proba,
              input_var,target_var,prediction,
-             eps=[0.02,0.05,0.10,0.15,0.2,0.25,0.3,0.4,0.5],
+             eps=[0.001,0.002,0.003,0.004,0.005,0.008,0.01,0.012,0.015,
+                  0.02,0.025,0.03,0.04,0.05,0.075,0.1,0.15,0.2,0.3,0.5],
              max_n=100,n_mc=20,n_classes=10,
              avg = 10):
     
     print 'compiling attacker ...'
     
-    attack = attacks_th.fgm(input_var,prediction,target_var,1.0) - input_var
-    att_ = theano.function([input_var,target_var],attack)
-    att = lambda x,y,ep: x + ep * \
-                             sum([att_(x,y) for i in range(avg)]) / float(avg)
+    #attack = attacks_th.fgm(input_var,prediction,target_var,1.0) - input_var
+    grad_ = fgm_grad(input_var,prediction,target_var)
+    grad = theano.function([input_var,target_var],grad_)
+    def att(x,y,ep):
+        grads = sum([grad(x,y) for i in range(avg)]) / float(avg)
+        signed = np.sign(grads)
+        return x + ep * signed
+        
+    #att_ = theano.function([input_var,target_var],attack)
+    #att = lambda x,y,ep: x + ep * \
+    #                         sum([att_(x,y) for i in range(avg)]) / float(avg)
     
     N = X.shape[0]
     num_batches = np.ceil(N / float(max_n)).astype(int)
