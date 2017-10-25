@@ -241,6 +241,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
     parser.add_argument('--totrain',default=1,type=int)
+    parser.add_argument('--toshuffle',default=0,type=int)
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
@@ -296,7 +297,7 @@ if __name__ == '__main__':
     if not os.path.exists(path):
         os.makedirs(path)
 
-    name = '{}/MLP_nh{}nu{}flow{}{}sb{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}dp{}'.format(
+    name = '{}/MLP_nh{}nu{}flow{}{}sb{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}dp{}sh{}'.format(
         path,
         args.n_hiddens,
         args.n_units,
@@ -314,7 +315,8 @@ if __name__ == '__main__':
         args.reinit,
         args.alpha,
         args.beta,
-        dp
+        dp,
+        args.toshuffle
     )
 
     coupling = args.coupling
@@ -382,7 +384,7 @@ if __name__ == '__main__':
                     train_x[:size],train_y[:size],
                     valid_x,valid_y,
                     lr0,lrdecay,bs,epochs,anneal,name,
-                    e0,rec)
+                    e0,rec,toshuffle=args.toshuffle)
     else:
         print '\nno training'
     

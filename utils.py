@@ -126,10 +126,16 @@ def stable_grad(loss,params,clip_grad=1e10,max_norm=1e10):
     cgrads = [T.clip(g, -clip_grad, clip_grad) for g in mgrads]
     return cgrads
         
-        
+    
+def shuffle(X,Y):
+    p1 = X.shape[1]
+    data = np.concatenate([X,Y],1)
+    np.random.shuffle(data)
+    return data[:,:p1], data[:,p1:]
+    
 def train_model(model,X,Y,Xv,Yv,
                 lr0=0.001,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
-                e0=0,rec=0,print_every=100,v_mc=20,n_classes=10):
+                e0=0,rec=0,print_every=100,v_mc=20,n_classes=10,toshuffle=False):
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
@@ -186,8 +192,9 @@ def train_model(model,X,Y,Xv,Yv,
             va_recs = list()
             
         print '\n\n'
-    
-
+        
+        if toshuffle:
+            X, Y = shuffle(X,Y)
 
 
 def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100,n_classes=10):
