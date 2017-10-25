@@ -25,7 +25,6 @@ def evaluate(X,Y,predict_proba,
     att_ = theano.function([input_var,target_var],attack)
     att = lambda x,y,ep: x + ep * att_(x,y)
     
-    MCt = np.zeros((n_mc,X.shape[0],n_classes),dtype='float32')
     N = X.shape[0]
     num_batches = np.ceil(N / float(max_n)).astype(int)
     
@@ -37,7 +36,7 @@ def evaluate(X,Y,predict_proba,
             xa = att(x,y,ep)
             Xa[j*max_n:(j+1)*max_n] = xa
         
-        
+        MCt = np.zeros((n_mc,X.shape[0],n_classes),dtype='float32')    
         for i in range(n_mc):
             for j in range(num_batches):
                 x = Xa[j*max_n:(j+1)*max_n]
@@ -72,9 +71,9 @@ def evaluate(X,Y,predict_proba,
     
     acc0, Y_entropy0, Y_max0, Y_mstd0, err0 = per_ep(0.0)
     accs.append(acc0)
-    ents.append(Y_entropy0)
-    maxs.append(Y_max0)
-    stds.append(Y_mstd0)
+    ents.append(Y_entropy0.mean())
+    maxs.append(Y_max0.mean())
+    stds.append(Y_mstd0.mean())
     
     erd_ents.append(roc_auc_score(err0,Y_entropy0))
     erd_maxs.append(roc_auc_score(err0,Y_max0))
@@ -82,10 +81,10 @@ def evaluate(X,Y,predict_proba,
     
     for ep in eps:
         acc, Y_entropy, Y_max, Y_mstd, err = per_ep(0.0)
-        accs.append(acc)
-        ents.append(Y_entropy)
-        maxs.append(Y_max)
-        stds.append(Y_mstd)
+        accs.append(acc.mean())
+        ents.append(Y_entropy.mean())
+        maxs.append(Y_max.mean())
+        stds.append(Y_mstd.mean())
         
         # entropy
         predn = np.concatenate([Y_entropy0,Y_entropy])
