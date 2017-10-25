@@ -16,7 +16,7 @@ from sklearn.metrics import roc_auc_score, roc_curve
 
 def evaluate(X,Y,predict_proba,
              input_var,target_var,prediction,
-             eps=[0.02,0.5,0.10,0.15,0.2,0.25,0.3,0.4,0.5],
+             eps=[0.02,0.05,0.10,0.15,0.2,0.25,0.3,0.4,0.5],
              max_n=100,n_mc=20,n_classes=10):
     
     print 'compiling attacker ...'
