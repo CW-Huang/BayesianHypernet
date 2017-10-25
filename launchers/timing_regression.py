@@ -90,11 +90,11 @@ model_strs += [" --model=BHN --flow=RealNVP --coupling=8"]
 
 
 grid = [] 
-grid += [["lr0", ['.01', '.001']]]
-grid += [["lbda", 10.**np.arange(-9,1)]]
-#grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
-grid += [['dataset', ['airfoil', 'parkinsons']]]
-grid += [['split', range(20)]]
+grid += [["lr0", ['.01']]]
+grid += [["lbda", [1]]]
+grid += [["split", [0]]]
+grid += [["epochs", [100]]]
+grid += [['dataset', ['airfoil', 'parkinsons'] + ['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year --epochs=10']]]
 
 #
 launcher_name = os.path.basename(__file__)
