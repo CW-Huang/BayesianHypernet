@@ -58,7 +58,8 @@ class MCdropout_MLP(object):
         self.y = lasagne.layers.get_output(layer,self.input_var)
         self.y_det = lasagne.layers.get_output(layer,self.input_var,
                                                deterministic=True)
-        
+        self.output_var = self.y # aliasing
+
         losses = lasagne.objectives.categorical_crossentropy(self.y,
                                                              self.target_var)
         self.loss = losses.mean()
