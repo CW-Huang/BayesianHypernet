@@ -63,7 +63,7 @@ if subprocess.check_output("hostname").startswith("hades"):
     #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
     job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
 elif subprocess.check_output("hostname").startswith("helios"):
-    job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=12:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
+    job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=1:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
 else: # TODO: SLURM
     assert False
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
@@ -84,9 +84,8 @@ job_prefix += exp_script
 
 
 model_strs = []
-model_strs += [" --model=MCD --drop_prob=" + str(p) for p in [.05, .01, .005]]
-model_strs += [" --model=BHN --flow=IAF --coupling=4",
-               " --model=BHN --flow=RealNVP --coupling=8"]
+model_strs += [" --model=MCD --drop_prob=.01"]
+model_strs += [" --model=BHN --flow=RealNVP --coupling=8"]
         #--drop_prob=" + str(p) for p in [.05, .01, .005]]
 
 
@@ -94,13 +93,13 @@ grid = []
 grid += [["lr0", ['.01', '.001']]]
 grid += [["lbda", 10.**np.arange(-9,1)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
-grid += [['dataset', ['protein']]]
-grid += [['n_units', ['100']]]
-grid += [['split', range(5)]]
+grid += [['dataset', ['airfoil', 'parkinsons']]]
+grid += [['split', range(20)]]
 
 #
 launcher_name = os.path.basename(__file__)
 
+# FIXME!
 job_strs = []
 for settings in grid_search(grid):
     job_str = job_prefix + settings
@@ -111,6 +110,7 @@ for settings in grid_search(grid):
         job_strs.append(_job_str)
 
 print "njobs", len(job_strs)
+
 
 if launch:
     for job_str in job_strs:

@@ -2,6 +2,12 @@
 # -*- coding: utf-8 -*-
 """@author: David Krueger
 """
+
+import time
+t0 = time.time()
+times = {}
+#times['start'] = t0
+
 import argparse
 import os
 import sys
@@ -29,8 +35,9 @@ import matplotlib.pyplot as plt
 
 import scipy
 
-import time
-t0 = time.time()
+t1 = time.time()
+times['imports'] = t1 - t0
+
 
 # TODO:
 n_mc = 20
@@ -69,9 +76,14 @@ def train_model(model, save_,save_path,
                 Xt, Yt, # TODO: default to None
                 y_mean, y_std,
                 lr0,lrdecay,bs,epochs,anneal,
-                e0=0, rec=0, taus=None):
+                e0=0, rec=0, taus=None,
+                timing=True):
                 #save_=True):
     
+    if timing:
+        start_time = time.time()
+        eval_time = 0
+
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
 
@@ -103,9 +115,14 @@ def train_model(model, save_,save_path,
             y = Y[i*bs:(i+1)*bs]
             loss = model.train_func(x,y,N,lr,w)
 
+         
+        if timing:
+            eval_start = time.time()
         tr_rmse, tr_LL = evaluate_model(model.predict, X, Y, n_mc=n_mc, taus=taus)  
         va_rmse, va_LL = evaluate_model(model.predict,Xv,Yv, n_mc=n_mc, taus=taus, y_mean=y_mean, y_std=y_std)
         te_rmse, te_LL = evaluate_model(model.predict,Xt,Yt, n_mc=n_mc, taus=taus, y_mean=y_mean, y_std=y_std)
+        if timing:
+            eval_time += time.time() - eval_start
 
         if e % 5 == 0:
             if 0: #verbose
@@ -129,8 +146,12 @@ def train_model(model, save_,save_path,
                 if save_:
                     model.save(save_path + '_best_tau=' + str(tau))
 
-    # TODO
-    return tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs
+
+    if timing:
+        train_time = time.time() - start_time - eval_time
+        return tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs, train_time, eval_time
+    else:
+        return tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs
     
 
 
@@ -223,7 +244,7 @@ if __name__ == '__main__':
         # save_dir = filename + PROVIDED parser arguments
         save_dir = os.path.join(args_dict.pop('save_dir'), fname)
         save_path = save_dir + '___' + '_'.join(flags)
-        print("\t\t save_dir=",  save_dir)
+        print"\t\t save_dir=",  save_dir
         # make directory for results
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -242,6 +263,9 @@ if __name__ == '__main__':
     if data_path is None:
         data_path = os.path.join(os.environ['HOME'], 'BayesianHypernetCW/')
     
+    t2 = time.time()
+    times['setup'] = t2 - t1
+
     # 
     if 1:
         input_dim, tr_x, tr_y, va_x, va_y, te_x, te_y, y_mean, y_std = get_regression_dataset(dataset, split, data_path=data_path)
@@ -272,6 +296,9 @@ if __name__ == '__main__':
                                           flow=flow,
                                           init_batch=init_batch)
 
+        t3 = time.time()
+        times['compile'] = t3 - t2
+
         print "begin training"
         result = train_model(network, save_, save_path,
                         tr_x,tr_y,
@@ -280,13 +307,21 @@ if __name__ == '__main__':
                                                         y_mean, y_std,
                         lr0,lrdecay,bs,epochs,anneal,
                         taus=taus)
-        tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs = result
+        tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs, train_time, eval_time = result
+
+        t4 = time.time()
+        times['train'] = train_time
+        times['eval'] = eval_time
+
         print "done training, begin final evaluation"
         tr_RMSE, tr_LL = evaluate_model(network.predict, tr_x, tr_y, n_mc=10000, taus=taus)  
         va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=10000, taus=taus)  
         te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=10000, taus=taus)  
-        total_runtime = time.time() - t0 
-        print "total_runtime=", total_runtime 
+        #total_runtime = time.time() - t0 
+        #print "total_runtime=", total_runtime 
+
+        t5 = time.time()
+        times['final_eval'] = t5 - t4
         
         if save_:
             # final params
@@ -310,4 +345,25 @@ if __name__ == '__main__':
                 np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
                 np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
 
+            t6 = time.time()
+            times['saving'] = t6 - t5
+            total_runtime = t6 - t0
+        
+            print "total_runtime=", total_runtime
+            print "sum(times.values())", sum(times.values())
+            for k,v in times.items():
+                print k, np.round(v, 4)
+
+            # TODO: save times
             np.savetxt(save_path + "________________total_runtime=" + str(total_runtime), [total_runtime])
+
+            def to_str(times_dict):
+                rval = '____timing____'
+                for k, v in times_dict.items():
+                    rval += k + '_' + str(np.round(v, 3)) + '__'
+                return rval
+
+            np.save(save_path + to_str(times), times)
+
+
+

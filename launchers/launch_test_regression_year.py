@@ -106,9 +106,9 @@ for settings in grid_search(grid):
     job_str = job_prefix + settings
     job_str += " --save_dir=" + os.environ["SAVE_PATH"] + "/" + launcher_name
     for model_str in model_strs:
-        job_str += model_str
-        print job_str
-        job_strs.append(job_str)
+        _job_str = job_str + model_str
+        print _job_str
+        job_strs.append(_job_str)
 
 print "njobs", len(job_strs)
 
