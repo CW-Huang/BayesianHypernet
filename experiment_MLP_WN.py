@@ -127,6 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
     parser.add_argument('--totrain',default=1,type=int)
+    parser.add_argument('--adv_eval',default=1,type=int)
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
