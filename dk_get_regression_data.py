@@ -14,8 +14,8 @@ import pandas as pd
 def get_regression_dataset(dataset, split_count, data_path='./', valid_set=True, normalize=True):#$HOME/BayesianHypernetCW/'):
     # load data
     data = np.loadtxt(data_path + 'get_proper_regression_data/' + dataset + '/data/data.txt').astype('float32')
-    index_features = np.loadtxt('get_proper_regression_data/' + dataset + '/data/index_features.txt')
-    index_target = np.loadtxt('get_proper_regression_data/' + dataset + '/data/index_target.txt')
+    index_features = np.loadtxt(data_path + 'get_proper_regression_data/' + dataset + '/data/index_features.txt')
+    index_target = np.loadtxt(data_path + 'get_proper_regression_data/' + dataset + '/data/index_target.txt')
     index_train = np.loadtxt(data_path + "get_proper_regression_data/" + dataset + "/data/index_train_{}.txt".format(split_count))
     index_test = np.loadtxt(data_path + "get_proper_regression_data/" + dataset + "/data/index_test_{}.txt".format(split_count))
 
