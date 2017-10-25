@@ -1,0 +1,60 @@
+
+
+
+./YearPredictionMSD/net/net_BO/net.py:77:        lengthscale = 1e-4
+tau (powers of 10)    -3,0
+./bostonHousing/net/net_BO/net.py:77:        lengthscale = 1e-2
+    tau (powers of ten) -2,2
+./energy/net/net_BO/net.py:77:        lengthscale = 1e-2
+    tau (powers of ten) -2,2
+./concrete/net/net_BO/net.py:77:        lengthscale = 1e-2
+    tau (powers of ten) -3,1
+./yacht/net/net_BO/net.py:77:        lengthscale = 1e-1
+    tau (powers of ten) -2,2
+./power-plant/net/net_BO/net.py:77:        lengthscale = 1e-2
+    tau (powers of ten) -2,2
+./wine-quality-red/net/net_BO/net.py:77:        lengthscale = 1e-2
+    tau (powers of ten) -2,2
+./kin8nm/net/net_BO/net.py:77:        lengthscale = 1e-2
+    tau (powers of ten) 1,3
+./protein-tertiary-structure/net/net_BO/net.py:77:        lengthscale = 1e-2
+    tau (powers of ten) -2,2
+./naval-propulsion-plant/net/net_BO/net.py:77:        lengthscale = 1e0
+    tau (powers of ten) 4,5
+
+    ./YearPredictionMSD/net/net_BO/net.py:75:        dropout = 0.05
+    ./YearPredictionMSD/net/net/net.py:75:        dropout = 0.05
+    ./bostonHousing/net/net_BO/net.py:75:        dropout = 0.05
+    ./bostonHousing/net/net/net.py:75:        dropout = 0.05
+    ./energy/net/net_BO/net.py:75:        dropout = 0.05
+    ./energy/net/net/net.py:75:        dropout = 0.05
+    ./concrete/net/net_BO/net.py:75:        dropout = 0.01
+    ./concrete/net/net/net.py:75:        dropout = 0.01
+    ./yacht/net/net_BO/net.py:75:        dropout = 0.01
+    ./yacht/net/net/net.py:75:        dropout = 0.01
+    ./power-plant/net/net_BO/net.py:75:        dropout = 0.005
+    ./power-plant/net/net/net.py:75:        dropout = 0.005
+    ./wine-quality-red/net/net_BO/net.py:75:        dropout = 0.05
+    ./wine-quality-red/net/net/net.py:75:        dropout = 0.05
+    ./kin8nm/net/net_BO/net.py:75:        dropout = 0.05
+    ./kin8nm/net/net/net.py:75:        dropout = 0.05
+    ./protein-tertiary-structure/net/net_BO/net.py:75:        dropout = 0.005
+    ./protein-tertiary-structure/net/net/net.py:75:        dropout = 0.005
+    ./naval-propulsion-plant/net/net_BO/net.py:75:        dropout = 0.05
+    ./naval-propulsion-plant/net/net/net.py:75:        dropout = 0.05
+
+
+
+
+
+
+
+
+
+
+
+Riashat: IGNORE THIS 
+
+Gal's range of lbda: 10.**(-6,0) 
+my range of lbda: 10.**(-15, -2) (???)
+

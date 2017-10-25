@@ -12,7 +12,6 @@ parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_ru
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
 
-# TODO: move these elsewhere?
 def grid_search(args_vals):
     """ arg_vals: a list of lists, each one of format (argument, list of possible values) """
     lists = []
@@ -57,18 +56,9 @@ def test():
 
 job_prefix = ""
 
-# TODO: tensorflow...
-# Check which cluster we're using
+# TODO
 if subprocess.check_output("hostname").startswith("hades"):
-    #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
     job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
-elif subprocess.check_output("hostname").startswith("helios"):
-    job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=1:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
-else: # TODO: SLURM
-    assert False
-    print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
-    #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
-    job_prefix += 'sbatch --gres=gpu --mem=4000 -t 0-' + str(hours_per_job)
 
 
 # --------------------------------------------------
@@ -79,16 +69,18 @@ else: # TODO: SLURM
 
 
 
+# TODO
 exp_script = ' $HOME/BayesianHypernetCW/regression.py '
 job_prefix += exp_script
 
 
 model_strs = []
-model_strs += [" --model=MCD --drop_prob=.01"]
-model_strs += [" --model=BHN --flow=RealNVP --coupling=8"]
+model_strs += [" --model=MCD --drop_prob=.01"] # TODO: dataset-specific
+model_strs += [" --model=BHN --flow=IAF --coupling=4"]
         #--drop_prob=" + str(p) for p in [.05, .01, .005]]
 
 
+# TODO
 grid = [] 
 grid += [["lr0", ['.01']]]
 grid += [["lbda", [1]]]
@@ -99,10 +91,10 @@ grid += [['dataset', ['airfoil', 'parkinsons'] + ['boston', 'concrete', 'energy'
 #
 launcher_name = os.path.basename(__file__)
 
-# FIXME!
 job_strs = []
 for settings in grid_search(grid):
     job_str = job_prefix + settings
+    # TODO
     job_str += " --save_dir=" + os.environ["SAVE_PATH"] + "/" + launcher_name
     for model_str in model_strs:
         _job_str = job_str + model_str
