@@ -187,6 +187,9 @@ if __name__ == '__main__':
     parser.add_argument('--length_scale',default=1e-3, type=float)
     parser.add_argument('--tau',default=1e2, type=float)
     parser.add_argument('--grid_search',default=0, type=int)
+    parser.add_argument('--normalization',default='by_train_set', type=str)
+    parser.add_argument('--fname',default=None, type=str) # override this for launching with SLURM!!!
+
     #parser.add_argument('--save_results',default='./results/',type=str)
     
     
@@ -196,13 +199,17 @@ if __name__ == '__main__':
     flags = [flag.lstrip('--') for flag in sys.argv[1:] if not flag.startswith('--save_dir')]
     exp_description = '_'.join(flags)
 
+    fname = args_dict.pop('fname')
+    if fname is None:
+        fname = os.path.basename(__file__)
+
     if args_dict['save_dir'] is None:
         save_ = False
         print "\n\n\n\t\t\t\t WARNING: save_dir is None! Results will not be saved! \n\n\n"
     else:
         save_ = True
         # save_dir = filename + PROVIDED parser arguments
-        save_dir = os.path.join(args_dict.pop('save_dir'), os.path.basename(__file__) + '___' + '_'.join(flags))
+        save_dir = os.path.join(args_dict.pop('save_dir'), fname + '___' + '_'.join(flags))
         print("\t\t save_dir=",  save_dir)
 
         # make directory for results
@@ -223,15 +230,15 @@ if __name__ == '__main__':
     set_rng(np.random.RandomState(seed))
     np.random.seed(seed+1000)
     
-    input_dim, train_x, train_y, valid_x, valid_y, test_x , test_y = get_regression_dataset(dataset, data_path=os.environ['HOME'] + '/BayesianHypernetCW/')
+    input_dim, train_x, train_y, valid_x, valid_y, test_x , test_y = get_regression_dataset(dataset, data_path=os.environ['HOME'] + '/BayesianHypernetCW/', normalization=normalization)
     datasets = [get_regression_dataset(dataset, data_path=os.environ['HOME'] + '/BayesianHypernetCW/') for _ in range(n_trials)]
 
     # SET HPARAMS FOR SEARCH (override grid search if provided as flag)
     if grid_search:
         # TODO: better grid...
         length_scales = 1000.**np.arange(-3,1)#length_scales = [.1, .01,  .001] # length scale should be smaller!
-        taus = 3.**np.arange(4,7)# tau should be larger (still)!
-        lr0s = [.01, .003, .001]#lr0s = [.01, .001, .0001]
+        taus = 3.**np.arange(5,9)# tau should be larger (still)!
+        lr0s = [.01, .001]#lr0s = [.01, .001, .0001]
         drop_probs = [.01]#[.1, .05, .02, .01, .005, .002, .001]
 
         for trial, dataset in enumerate(datasets):

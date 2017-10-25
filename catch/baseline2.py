@@ -1,23 +1,44 @@
-
-
-
-import json
-import numpy as np
+#import json
 
 #from keras.models_trial import Sequential
-from keras.models import Sequential
-from keras.layers.core import Dense
-from keras.optimizers import sgd
-from keras import backend as K
-from keras.layers.core import Lambda
+#from keras.models import Sequential
+#from keras.layers.core import Dense
+#from keras.optimizers import sgd
+#from keras import backend as K
+#from keras.layers.core import Lambda
 
 from catch.dropout import MCdropout_MLP
+from BHNs import MLPWeightNorm_BHN
+from theano.tensor.shared_randomstreams import RandomStreams
 
 #import theano
 #theano.config.floatX='float32'
 
 # model.predict
 # model.train_on_batch
+# ---------------------------------------------------------------
+import argparse
+import os
+import sys
+import numpy 
+np = numpy
+seed = np.random.randint(2**32-1)
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--drop_prob', type=float, default=.0)
+#parser.add_argument('--bs', type=int, default=50)
+parser.add_argument('--exploration', type=str, default='epsilon_greedy', choices=['epsilon_greedy', 'RLSVI', 'TS'])
+parser.add_argument('--lr', type=float, default=.2)
+parser.add_argument('--model', type=str, default='BHN', choices=['BHN', 'MCD'])
+#parser.add_argument('--n_epochs', type=int, default=1000)
+#parser.add_argument('--n_layers', type=int, default=2)
+#parser.add_argument('--n_hids', type=int, default=100)
+#
+#parser.add_argument('--opt', type=str, default='momentum', choices=['adam', 'momentum', 'sgd'])
+#parser.add_argument('--save_dir', type=str, default=None, help="save_dir must be set in order to save results!")
+#parser.add_argument('--seed', type=int, default=1337)
+#parser.add_argument('--verbose', type=int, default=1)
+locals().update(parser.parse_args().__dict__)
 
 class Catch(object):
     def __init__(self, grid_size=10):
@@ -80,8 +101,7 @@ class Catch(object):
         return self.observe(), reward, game_over
 
 
-    def mc_dropout_act(self, model, input_tm):
-        mc_samples = 50
+    def mc_dropout_act(self, model, input_tm, mc_samples=50):
         q_value = model.predict(input_tm)
         all_q_values = np.zeros(shape=(mc_samples, q_value.shape[1]))
 
@@ -146,7 +166,11 @@ if __name__ == "__main__":
     hidden_size = 100
     batch_size = 50
     grid_size = 10
-    dropout=0.
+    dropout=0.1
+
+    exploration = 'RLSVI'
+    #exploration = 'TS'
+    #exploration = 'epsilon_greedy'
 
     if 0:
         model = Sequential()
@@ -160,7 +184,7 @@ if __name__ == "__main__":
         if dropout: # TODO: rm this! (no dropout at the output, brah!
             model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
         model.compile(sgd(lr=.2), "mse")
-    else:
+    elif model == 'MCD':
         model = MCdropout_MLP(drop_prob=dropout,
                 opt='momentum', # TODO: try others?
                               n_inputs=grid_size**2,
@@ -169,8 +193,24 @@ if __name__ == "__main__":
                               n_units=hidden_size,
                               output_type='real')
         model.predict = model.predict_proba
-        # TODO: n=??
-        model.train_on_batch = lambda x,y: model.train_func(x,y,n=1000, lr=.2)
+        # FIXME: n=??
+        model.train_on_batch = lambda x,y: model.train_func(x,y,n=1000, lr=lr)
+    elif model == 'BHN':
+        model = MLPWeightNorm_BHN(lbda=10.,
+                opt='momentum',
+                                  n_inputs=grid_size**2,
+                                  n_classes=num_actions,
+                                  srng = RandomStreams(seed=seed),
+                                  coupling=0,
+                                  n_hiddens=2,
+                                  n_units=hidden_size,
+                                  flow='IAF',
+                                  output_type='real')
+        model.predict = model.predict_proba
+        # FIXME: n=??
+        model.train_on_batch = lambda x,y: model.train_func(x,y,n=1000, lr=lr)
+    else: 
+        assert False
 
 
     # If you want to continue training from a previous model, just uncomment the line bellow
@@ -191,16 +231,36 @@ if __name__ == "__main__":
         # get initial input
         input_t = env.observe()
 
+        # TODO: TESTING    
+        if exploration == 'epsilon_greedy':
+            def policy(state):
+                if np.random.rand() <= epsilon:
+                    return  np.random.randint(0, num_actions)
+                else:
+                    return  env.mc_dropout_act(model, state, mc_samples=50) # TODO: hardcoded
+        elif exploration == 'RLSVI':
+            # sample a q-network for the entire episode
+            policy = lambda x: model.sample_qyx()(x).argmax()
+        elif exploration == 'TS':
+            # sample a q-network for each action
+            policy = lambda state: env.mc_dropout_act(model, state, mc_samples=1)
+        else:
+            assert False
+
         while not game_over:
-            input_tm1 = input_t
+            input_tm1 = input_t.astype("float32")
             # get next action
-            if np.random.rand() <= epsilon:
-                action = np.random.randint(0, num_actions, size=1)
-            else:
-                action = env.mc_dropout_act(model, input_tm1)
+            action = policy(input_tm1)
+            if 0:
+                if np.random.rand() <= epsilon:
+                    action = np.random.randint(0, num_actions, size=1)
+                else:
+                    action = env.mc_dropout_act(model, input_tm1)
 
             # apply action, get rewards and new state
             input_t, reward, game_over = env.act(action)
+            input_t = input_t.astype("float32")#, reward, game_over = env.act(action)
+             #= input_t.astype("float32")#, reward, game_over = env.act(action)
             if reward == 1:
                 win_cnt += 1
 
@@ -210,7 +270,7 @@ if __name__ == "__main__":
             # adapt model
             inputs, targets = exp_replay.get_batch(model, batch_size=batch_size)
 
-            loss += model.train_on_batch(inputs, targets)
+            loss += model.train_on_batch(inputs.astype("float32"), targets.astype("float32"))
         print("Epoch {:03d}/999 | Loss {:.4f} | Win count {}".format(e, loss, win_cnt))
 
     if 0:

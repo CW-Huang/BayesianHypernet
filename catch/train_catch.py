@@ -166,6 +166,8 @@ for e in range(n_epochs):
     else:
         assert False
 
+    #import ipdb; ipdb.set_trace()
+
     # play one episode
     while not game_over:
         input_tm1 = (input_t).astype("float32")
