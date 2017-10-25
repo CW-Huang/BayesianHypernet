@@ -8,10 +8,7 @@ import subprocess
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
-parser.add_argument('--hours_per_job', type=int, default=1, help="expected run time, in hours")
-parser.add_argument('--n_splits', type=int, default=20, help="number of train/valid splits, for cross-validation")
-parser.add_argument('--n_hopt', type=int, default=100, help="number of random hparam settings to try")
-
+parser.add_argument('--hours_per_job', type=int, default=3, help="expected run time, in hours")
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
 
@@ -49,11 +46,9 @@ job_str: complete bash command
 
 """
 
-
 # TODO: move these elsewhere?
 def grid_search(args_vals):
     """ arg_vals: a list of lists, each one of format (argument, list of possible values) """
-    args_vals = args_vals[::-1] # reverse the order; least important grid dimensions go last!
     lists = []
     for arg_vals in args_vals:
         arg, vals = arg_vals
@@ -71,8 +66,8 @@ def line_search(args_vals):
             search.append(" --" + arg + "=" + str(val))
     return search
 
-def list_outer_product(list1, list2):
-    return ["".join(item) for item in itertools.product(list1, list2)]
+def combine_grid_line_search(grid, line):
+    return ["".join(item) for item in itertools.product(grid, line)]
 
 def test():
     test_args_vals = []
@@ -81,12 +76,12 @@ def test():
     gs, ls, gls = grid_search(test_args_vals), line_search(test_args_vals), 0#, grid_search([line_search(test_args, test_values)
     print gs
     print ls
-    print len(list_outer_product(gs, ls))
+    print len(combine_grid_line_search(gs, ls))
 
 #test()
 
 
-print list_outer_product(["model=1", "m=2"], ['a', 'b', 'c'])
+
 
 # --------------------------------------------------
 # --------------------------------------------------
@@ -100,9 +95,9 @@ job_prefix = ""
 # Check which cluster we're using
 if subprocess.check_output("hostname").startswith("hades"):
     #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
-    job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
+    job_prefix += "smart-dispatch --walltime="+str(hours_per_job)+":00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
 elif subprocess.check_output("hostname").startswith("helios"):
-    job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=12:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
+    job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree="+str(hours_per_job)+":00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
 else: # TODO: SLURM
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
     #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
@@ -117,19 +112,23 @@ else: # TODO: SLURM
 
 
 
-exp_script = ' $HOME/BayesianHypernetCW/experiment_MLP_WN_Regression_Task.py '
+exp_script = ' $HOME/BayesianHypernetCW/experiment_MLP_WN.py '
 job_prefix += exp_script
 
 
 grid = [] 
-grid += [['model', ['MCdropout', 'MLE', 'BHN_WN']]]
-grid += [['exploration', ['epsilon_greedy', 'RLSVI', 'TS']]]
-grid += [["lr", ['.1', '.01', '.001', '.0001']]]
-grid += [['seed', range(1,6)]]
+grid += [["coupling", ['4', '8', '12', '16']]]
+grid += [["lr0", ['.001', '.0001']]]
+grid += [["reinit", ['0', '1']]]
+#grid += [["seed", ['1', '2']]]
 
-
-#settings = list_outer_product(models, grid_search(grid))
-
+# not really a grid...
+grid += [["epochs", ['13']]]
+grid += [["flow", ['IAF']]]
+#grid += [["save", ['1']]]
+grid += [["n_units", ['800']]]
+grid += [["size", ['5000']]]
+grid += [["totrain", ['1']]]
 
 # TODO: savepath should also contain exp_script? 
 #   (actually, we should make a log of everything in a text file or something...)
@@ -142,54 +141,16 @@ launcher_name = os.path.basename(__file__)
 
 
 job_strs = []
-
-args = []
-# RANDOM SEARCH: (maybe we should start with a grid, though...)
-for seed in [np.random.randint(2**32 - 1)) for _ in range(n_hopt)]:
-    arg += " --seed="+str(seed)
-    for data_name in ['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year']: # TODO: year
-        for model in ['BHN', 'MCDropout', 'Backprop']:
-            arg += " --model="+str(model)
-            # all methods
-            arg += " --lr=" + str(np.exp(np.random.uniform(-1.5,-4.5)))
-            arg += ' --n_hiddens=' + str(np.random.choice([1,2,4])) # n_layers
-            arg += " --n_units=" + str(np.random.choice(range(50,1000)))
-            arg += " --lbda=" + str( np.exp(np.random.normal(-1, 1.5))) # precision: lower = more variance!
-            # MCdropout
-            if model == 'MCDropout':
-                arg += " --drop_prob=" + str(np.random.uniform(.005, .05))
-            # BHNs
-            if model == "BHN":
-                coupling = np.random.choice([2,4,8])
-                flow = np.random.choice(['IAF', 'RealNVP'])
-                if flow == 'RealNVP':
-                    coupling *= 2
-                arg += " --flow="+flow
-                arg += " --coupling="+str(coupling)
-
-            args += arg
-
-
-# TODO: below
-
-
-
-
-job_strs += 
-
-
-
-for args in grid_search(grid):
-    job_str = job_prefix + args
+for settings in grid_search(grid):
+    job_str = job_prefix + settings
     job_str += " --save_dir=" + os.environ["SAVE_PATH"] + "/" + launcher_name
     print job_str
     job_strs.append(job_str)
 
-print "njobs", len(job_strs)
 
 
 if launch:
-    for job_str in job_strs:
+    for job_str in job_strs[:1]:
         os.system(job_str)
 
 

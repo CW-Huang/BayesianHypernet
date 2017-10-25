@@ -58,7 +58,8 @@ class MCdropout_MLP(object):
         self.y = lasagne.layers.get_output(layer,self.input_var)
         self.y_det = lasagne.layers.get_output(layer,self.input_var,
                                                deterministic=True)
-        
+        self.output_var = self.y # aliasing
+
         losses = lasagne.objectives.categorical_crossentropy(self.y,
                                                              self.target_var)
         self.loss = losses.mean()
@@ -204,6 +205,8 @@ if __name__ == '__main__':
         filename = '/data/lisa/data/mnist.pkl.gz'
     elif os.path.isfile(r'./data/mnist.pkl.gz'):
         filename = r'./data/mnist.pkl.gz'
+    elif os.path.isfile(os.path.join(os.environ['DATA_PATH'], 'mnist.pkl.gz')):
+        filename = os.path.join(os.environ['DATA_PATH'], 'mnist.pkl.gz')
     else:        
         print '\n\tdownloading mnist'
         import download_datasets.mnist
