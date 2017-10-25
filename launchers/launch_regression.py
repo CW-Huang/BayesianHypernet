@@ -185,6 +185,7 @@ for args in grid_search(grid):
     print job_str
     job_strs.append(job_str)
 
+print "njobs", len(job_strs)
 
 
 if launch:

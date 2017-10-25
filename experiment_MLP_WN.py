@@ -206,6 +206,8 @@ if __name__ == '__main__':
         filename = '/data/lisa/data/mnist.pkl.gz'
     elif os.path.isfile(r'./data/mnist.pkl.gz'):
         filename = r'./data/mnist.pkl.gz'
+    elif os.path.isfile(os.path.join(os.environ['DATA_PATH'], 'mnist.pkl.gz')):
+        filename = os.path.join(os.environ['DATA_PATH'], 'mnist.pkl.gz')
     else:        
         print '\n\tdownloading mnist'
         import download_datasets.mnist
