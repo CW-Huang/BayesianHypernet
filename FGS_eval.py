@@ -16,7 +16,7 @@ from sklearn.metrics import roc_auc_score, roc_curve
 
 def evaluate(X,Y,predict_proba,
              input_var,target_var,prediction,
-             eps=[0.02,0.5,0.10,0.15,0.2,0.25,0.3,0.4,0.5],
+             eps=[0.02,0.05,0.10,0.15,0.2,0.25,0.3,0.4,0.5],
              max_n=100,n_mc=20,n_classes=10):
     
     print 'compiling attacker ...'
@@ -25,7 +25,6 @@ def evaluate(X,Y,predict_proba,
     att_ = theano.function([input_var,target_var],attack)
     att = lambda x,y,ep: x + ep * att_(x,y)
     
-    MCt = np.zeros((n_mc,X.shape[0],n_classes),dtype='float32')
     N = X.shape[0]
     num_batches = np.ceil(N / float(max_n)).astype(int)
     
@@ -37,7 +36,7 @@ def evaluate(X,Y,predict_proba,
             xa = att(x,y,ep)
             Xa[j*max_n:(j+1)*max_n] = xa
         
-        
+        MCt = np.zeros((n_mc,X.shape[0],n_classes),dtype='float32')    
         for i in range(n_mc):
             for j in range(num_batches):
                 x = Xa[j*max_n:(j+1)*max_n]
@@ -72,20 +71,20 @@ def evaluate(X,Y,predict_proba,
     
     acc0, Y_entropy0, Y_max0, Y_mstd0, err0 = per_ep(0.0)
     accs.append(acc0)
-    ents.append(Y_entropy0)
-    maxs.append(Y_max0)
-    stds.append(Y_mstd0)
+    ents.append(Y_entropy0.mean())
+    maxs.append(Y_max0.mean())
+    stds.append(Y_mstd0.mean())
     
     erd_ents.append(roc_auc_score(err0,Y_entropy0))
     erd_maxs.append(roc_auc_score(err0,Y_max0))
     erd_stds.append(roc_auc_score(err0,Y_mstd0))
     
     for ep in eps:
-        acc, Y_entropy, Y_max, Y_mstd, err = per_ep(0.0)
-        accs.append(acc)
-        ents.append(Y_entropy)
-        maxs.append(Y_max)
-        stds.append(Y_mstd)
+        acc, Y_entropy, Y_max, Y_mstd, err = per_ep(ep)
+        accs.append(acc.mean())
+        ents.append(Y_entropy.mean())
+        maxs.append(Y_max.mean())
+        stds.append(Y_mstd.mean())
         
         # entropy
         predn = np.concatenate([Y_entropy0,Y_entropy])

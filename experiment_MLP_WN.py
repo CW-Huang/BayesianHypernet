@@ -55,7 +55,8 @@ class MCdropout_MLP(object):
         self.learning_rate = T.scalar('leanring_rate')
         
         self.layer = layer
-        self.y = lasagne.layers.get_output(layer,self.input_var)
+        self.y = T.clip(lasagne.layers.get_output(layer,self.input_var),
+                        0.001, 0.999)
         self.y_det = lasagne.layers.get_output(layer,self.input_var,
                                                deterministic=True)
         self.output_var = self.y # aliasing
@@ -269,7 +270,7 @@ if __name__ == '__main__':
                     train_x[:size],train_y[:size],
                     valid_x,valid_y,
                     lr0,lrdecay,bs,epochs,anneal,name,
-                    e0,rec)
+                    e0,rec,print_every=999999)
     else:
         print '\nno training'
     
@@ -300,7 +301,7 @@ if __name__ == '__main__':
                                model.predict_proba,
                                model.input_var,
                                model.target_var,
-                               model.output_var)
+                               model.y)
         
         np.save(name+'_adv',results)
         
