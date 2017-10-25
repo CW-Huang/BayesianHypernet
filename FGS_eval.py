@@ -9,10 +9,13 @@ Created on Mon Oct 23 20:11:43 2017
 
 import numpy as np
 from cleverhans import attacks_th
-import theano.tensor as T
 import theano
 
-from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.metrics import roc_auc_score
+from acquisition_functions import bald, max_ent, var_ratio, mean_std
+score_fs = [bald, max_ent, var_ratio, mean_std]
+eval_scores = lambda sps: [f(sps) for f in score_fs]
+
 
 def evaluate(X,Y,predict_proba,
              input_var,target_var,prediction,
@@ -52,39 +55,51 @@ def evaluate(X,Y,predict_proba,
         acc = corr.mean()
         
         #score function
-        Y_entropy = np.sum(Y_proba * np.log(Y_proba),1)
-        Y_max = Y_proba.max(1)
-        Y_mstd = MCt.std(0).mean(1)
-        
-        return acc, Y_entropy, Y_max, Y_mstd, err
+        #Y_entropy = np.sum(Y_proba * np.log(Y_proba),1)
+        #Y_max = Y_proba.max(1)
+        #Y_mstd = MCt.std(0).mean(1)
+        Y_bald, Y_entropy, Y_max, Y_mstd = eval_scores(MCt)
+        return acc, Y_bald, Y_entropy, Y_max, Y_mstd, err
     
     accs = list()
+    ood_blds = list()
     ood_ents = list()
     ood_maxs = list()
     ood_stds = list()
+    erd_blds = list()
     erd_ents = list()
     erd_maxs = list()
     erd_stds = list()
+    blds = list()
     ents = list()
     maxs = list()
     stds = list()
     
-    acc0, Y_entropy0, Y_max0, Y_mstd0, err0 = per_ep(0.0)
+    acc0, Y_bald0, Y_entropy0, Y_max0, Y_mstd0, err0 = per_ep(0.0)
     accs.append(acc0)
+    blds.append(Y_bald0.mean())
     ents.append(Y_entropy0.mean())
     maxs.append(Y_max0.mean())
     stds.append(Y_mstd0.mean())
     
+    erd_blds.append(roc_auc_score(err0,Y_bald0))
     erd_ents.append(roc_auc_score(err0,Y_entropy0))
     erd_maxs.append(roc_auc_score(err0,Y_max0))
     erd_stds.append(roc_auc_score(err0,Y_mstd0))
     
     for ep in eps:
-        acc, Y_entropy, Y_max, Y_mstd, err = per_ep(ep)
+        acc, Y_bald, Y_entropy, Y_max, Y_mstd, err = per_ep(ep)
         accs.append(acc.mean())
+        blds.append(Y_bald.mean())
         ents.append(Y_entropy.mean())
         maxs.append(Y_max.mean())
         stds.append(Y_mstd.mean())
+        
+        # entropy
+        predn = np.concatenate([Y_bald0,Y_bald])
+        truth = np.ones((Y_bald0.shape[0]*2))
+        truth[:Y_bald0.shape[0]] = 0
+        sc_bld = roc_auc_score(truth,predn)
         
         # entropy
         predn = np.concatenate([Y_entropy0,Y_entropy])
@@ -104,17 +119,19 @@ def evaluate(X,Y,predict_proba,
         truth[:Y_entropy0.shape[0]] = 0
         sc_std = roc_auc_score(truth,predn)
         
-        print ep, sc_ent, sc_max, sc_std
+        print ep, sc_bld, sc_ent, sc_max, sc_std
+        ood_blds.append(sc_bld)
         ood_ents.append(sc_ent)
         ood_maxs.append(sc_max)
         ood_stds.append(sc_std)
+        erd_blds.append(roc_auc_score(err0,Y_bald))
         erd_ents.append(roc_auc_score(err,Y_entropy))
         erd_maxs.append(roc_auc_score(err,Y_max))
         erd_stds.append(roc_auc_score(err,Y_mstd))
         
-    return accs, ents, maxs, stds, \
-           ood_ents, ood_maxs, ood_stds, \
-           erd_ents, erd_maxs, erd_stds
+    return accs, blds, ents, maxs, stds, \
+           ood_blds, ood_ents, ood_maxs, ood_stds, \
+           erd_blds, erd_ents, erd_maxs, erd_stds
 
     
         
