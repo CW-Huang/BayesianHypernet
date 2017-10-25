@@ -231,6 +231,7 @@ class Base_BHN(object):
 
         return notes
 
+    # TODO: make sure init of subclass doesn't undo this!?
     def _init_pnet(self,init_batch):
         init_output = init_batch.copy()
         all_layers = lasagne.layers.get_all_layers(self.p_net)
