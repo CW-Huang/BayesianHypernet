@@ -8,7 +8,7 @@ import subprocess
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
-parser.add_argument('--hours_per_job', type=int, default=4, help="expected run time, in hours")
+#parser.add_argument('--hours_per_job', type=int, default=4, help="expected run time, in hours")
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
 
@@ -59,7 +59,12 @@ job_prefix = ""
 
 # TODO: tensorflow...
 # Check which cluster we're using
-if subprocess.check_output("hostname").startswith("hades"):
+#if subprocess.check_output("hostname").startswith("lg-1r17-n04"):
+if os.path.exists('/home/capybara/this_is_guillimin'):
+    #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
+    #job_prefix += "smart-dispatch --walltime=10:00:00 --queue=@guillimin launch THEANO_FLAGS=floatX=float32 python "
+    job_prefix += "smart-dispatch --walltime=10:00:00 launch THEANO_FLAGS=floatX=float32 python "
+elif subprocess.check_output("hostname").startswith("hades"):
     #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
     job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
 elif subprocess.check_output("hostname").startswith("helios"):

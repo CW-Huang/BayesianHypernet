@@ -59,7 +59,11 @@ job_prefix = ""
 
 # TODO: tensorflow...
 # Check which cluster we're using
-if subprocess.check_output("hostname").startswith("hades"):
+if os.path.exists('/home/capybara/this_is_guillimin'):
+    #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
+    #job_prefix += "smart-dispatch --walltime=10:00:00 --queue=@guillimin launch THEANO_FLAGS=floatX=float32 python "
+    job_prefix += "smart-dispatch --walltime=10:00:00 launch THEANO_FLAGS=floatX=float32 python "
+elif subprocess.check_output("hostname").startswith("hades"):
     #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
     job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
 elif subprocess.check_output("hostname").startswith("helios"):
@@ -84,15 +88,12 @@ job_prefix += exp_script
 
 
 model_strs = []
-model_strs += [" --model=MCD --drop_prob=" + str(p) for p in [.05, .01, .005]]
-model_strs += [" --model=BHN --flow=IAF --coupling=4",
-               " --model=BHN --flow=RealNVP --coupling=8"]
-        #--drop_prob=" + str(p) for p in [.05, .01, .005]]
+model_strs += [" --model=MCD --drop_prob=.01", "--model=BHN --flow=IAF --coupling=4"]
 
 
 grid = [] 
 grid += [["lr0", ['.01', '.001']]]
-grid += [["lbda", 10.**np.arange(-9,1)]]
+grid += [["lbda", 100.**np.arange(-3,2)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
 grid += [['dataset', ['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'wine', 'yacht']]]
 grid += [['split', range(20)]]
