@@ -1,6 +1,9 @@
 ###################
 # DEFAULT GITIGNORE
 
+get_proper_regression_data/year/data/*
+
+
 # ignore these
 *.swn
 *.swo

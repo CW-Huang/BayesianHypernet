@@ -18,6 +18,7 @@ import theano.tensor as T
 import os
 from lasagne.random import set_rng
 from theano.tensor.shared_randomstreams import RandomStreams
+from FGS_eval import evaluate as adv_evaluate
 
 
 # TODO: add all LCS
@@ -54,10 +55,12 @@ class MCdropout_MLP(object):
         self.learning_rate = T.scalar('leanring_rate')
         
         self.layer = layer
-        self.y = lasagne.layers.get_output(layer,self.input_var)
+        self.y = T.clip(lasagne.layers.get_output(layer,self.input_var),
+                        0.001, 0.999)
         self.y_det = lasagne.layers.get_output(layer,self.input_var,
                                                deterministic=True)
-        
+        self.output_var = self.y # aliasing
+
         losses = lasagne.objectives.categorical_crossentropy(self.y,
                                                              self.target_var)
         self.loss = losses.mean()
@@ -125,6 +128,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
     parser.add_argument('--totrain',default=1,type=int)
+    parser.add_argument('--adv_eval',default=1,type=int)
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
@@ -202,6 +206,8 @@ if __name__ == '__main__':
         filename = '/data/lisa/data/mnist.pkl.gz'
     elif os.path.isfile(r'./data/mnist.pkl.gz'):
         filename = r'./data/mnist.pkl.gz'
+    elif os.path.isfile(os.path.join(os.environ['DATA_PATH'], 'mnist.pkl.gz')):
+        filename = os.path.join(os.environ['DATA_PATH'], 'mnist.pkl.gz')
     else:        
         print '\n\tdownloading mnist'
         import download_datasets.mnist
@@ -264,7 +270,7 @@ if __name__ == '__main__':
                     train_x[:size],train_y[:size],
                     valid_x,valid_y,
                     lr0,lrdecay,bs,epochs,anneal,name,
-                    e0,rec)
+                    e0,rec,print_every=999999)
     else:
         print '\nno training'
     
@@ -288,3 +294,14 @@ if __name__ == '__main__':
                                 test_x,test_y,n_mc=200)
         print 'test acc (best valid): {}'.format(te_acc)
 
+        
+    if args.adv_eval == 1:
+        results = adv_evaluate(test_x,
+                               test_y,
+                               model.predict_proba,
+                               model.input_var,
+                               model.target_var,
+                               model.y)
+        
+        np.save(name+'_adv',results)
+        
