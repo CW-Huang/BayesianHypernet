@@ -59,7 +59,9 @@ job_prefix = ""
 
 # TODO: tensorflow...
 # Check which cluster we're using
-if subprocess.check_output("hostname").startswith("hades"):
+if os.path.exists('/home/capybara/this_is_guillimin'):
+    job_prefix += "smart-dispatch --walltime=10:00:00 --queue=guillimin --coresPerNode=1 launch THEANO_FLAGS=floatX=float32 python "
+elif subprocess.check_output("hostname").startswith("hades"):
     #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
     job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
 elif subprocess.check_output("hostname").startswith("helios"):
