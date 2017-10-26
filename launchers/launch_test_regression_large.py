@@ -97,7 +97,8 @@ grid = []
 grid += [["lr0", ['.01', '.001']]]
 grid += [["lbda", 100.**np.arange(-3,2)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
-grid += [['dataset', ['kin8nm', 'naval', 'power']]]
+#grid += [['dataset', ['kin8nm', 'power', 'naval']]] # 'naval' is getting NaNs! (why??)
+grid += [['dataset', ['naval']]] # 'naval' is getting NaNs! (why??)
 grid += [['split', range(20)]]
 grid += [['epochs', [400]]]
 
