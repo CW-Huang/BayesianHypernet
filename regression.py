@@ -336,46 +336,56 @@ if __name__ == '__main__':
         times['final_eval'] = t5 - t4
         
         if save_:
-            # final params
-            network.save(save_path + '_final')
+            if eval_only: 
+                # we only overwrite the _FINAL_ results
+                np.savetxt(save_path + "_FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
+                np.savetxt(save_path + "_FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
+                for n, tau in enumerate(taus):
+                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
+                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
 
-            # learning curves
-            save_list(save_path + "_tr_RMSEs", tr_RMSEs)
-            save_list(save_path + "_va_RMSEs", va_RMSEs)
-            save_list(save_path + "_te_RMSEs", te_RMSEs)
-            for n, tau in enumerate(taus):
-                save_list(save_path + '_tau=' + str(tau) + "_tr_LLs", tr_LLs[n])
-                save_list(save_path + '_tau=' + str(tau) + "_va_LLs", va_LLs[n])
-                save_list(save_path + '_tau=' + str(tau) + "_te_LLs", te_LLs[n])
 
-            # final results (with full evaluation) TODO: EARLY STOPPING!!!
-            #np.savetxt(save_path + "_FINAL_tr_RMSE=" + str(np.round(tr_RMSE, 3)), [tr_RMSE])
-            np.savetxt(save_path + "_FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
-            np.savetxt(save_path + "_FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
-            for n, tau in enumerate(taus):
-                #np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_tr_LL=" + str(np.round(tr_LL[n], 3)), [tr_LL[n]])
-                np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
-                np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
+            else:
+                # final params
+                network.save(save_path + '_final')
 
-            t6 = time.time()
-            times['saving'] = t6 - t5
-            total_runtime = t6 - t0
-        
-            print "total_runtime=", total_runtime
-            print "sum(times.values())", sum(times.values())
-            for k,v in times.items():
-                print k, np.round(v, 4)
+                # learning curves
+                save_list(save_path + "_tr_RMSEs", tr_RMSEs)
+                save_list(save_path + "_va_RMSEs", va_RMSEs)
+                save_list(save_path + "_te_RMSEs", te_RMSEs)
+                for n, tau in enumerate(taus):
+                    save_list(save_path + '_tau=' + str(tau) + "_tr_LLs", tr_LLs[n])
+                    save_list(save_path + '_tau=' + str(tau) + "_va_LLs", va_LLs[n])
+                    save_list(save_path + '_tau=' + str(tau) + "_te_LLs", te_LLs[n])
 
-            # TODO: save times
-            np.savetxt(save_path + "________________total_runtime=" + str(total_runtime), [total_runtime])
+                # final results (with full evaluation) TODO: EARLY STOPPING!!!
+                #np.savetxt(save_path + "_FINAL_tr_RMSE=" + str(np.round(tr_RMSE, 3)), [tr_RMSE])
+                np.savetxt(save_path + "_FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
+                np.savetxt(save_path + "_FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
+                for n, tau in enumerate(taus):
+                    #np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_tr_LL=" + str(np.round(tr_LL[n], 3)), [tr_LL[n]])
+                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
+                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
 
-            def to_str(times_dict):
-                rval = '____timing____'
-                for k, v in times_dict.items():
-                    rval += k + '_' + str(np.round(v, 3)) + '__'
-                return rval
+                t6 = time.time()
+                times['saving'] = t6 - t5
+                total_runtime = t6 - t0
+            
+                print "total_runtime=", total_runtime
+                print "sum(times.values())", sum(times.values())
+                for k,v in times.items():
+                    print k, np.round(v, 4)
 
-            np.save(save_path + to_str(times), times)
+                # TODO: save times
+                np.savetxt(save_path + "________________total_runtime=" + str(total_runtime), [total_runtime])
+
+                def to_str(times_dict):
+                    rval = '____timing____'
+                    for k, v in times_dict.items():
+                        rval += k + '_' + str(np.round(v, 3)) + '__'
+                    return rval
+
+                np.save(save_path + to_str(times), times)
 
 
 
