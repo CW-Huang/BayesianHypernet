@@ -8,7 +8,7 @@ import subprocess
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
-#parser.add_argument('--hours_per_job', type=int, default=3, help="expected run time, in hours")
+parser.add_argument('--hours_per_job', type=int, default=2, help="expected run time, in hours")
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
 
@@ -71,10 +71,10 @@ elif subprocess.check_output("hostname").startswith("hades"):
 elif subprocess.check_output("hostname").startswith("helios"):
     job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=1:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
 else: # TODO: SLURM
-    assert False
+    #assert False
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
     #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
-    job_prefix += 'sbatch --gres=gpu --mem=4000 -t 0-' + str(hours_per_job)
+    job_prefix += 'sbatch --mem=4000 -t 0-' + str(hours_per_job)
 
 
 # --------------------------------------------------
@@ -99,7 +99,7 @@ grid += [["lbda", 100.**np.arange(-3,2)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
 grid += [['dataset', ['kin8nm', 'naval', 'power']]]
 grid += [['split', range(20)]]
-grid += [['epochs', 400]]]
+grid += [['epochs', [400]]]
 
 #
 launcher_name = os.path.basename(__file__)
