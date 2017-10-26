@@ -17,8 +17,10 @@ from acquisition_functions import bald, max_ent, var_ratio, mean_std
 score_fs = [bald, max_ent, var_ratio, mean_std]
 eval_scores = lambda sps: [f(sps) for f in score_fs]
 
+import scipy
                            
-                           
+
+rank = lambda x: scipy.stats.rankdata(x) / len(x)
                            
 def fgm_grad(x, prediction, y):
     loss = T.nnet.categorical_crossentropy(prediction,y)    
@@ -154,35 +156,35 @@ def evaluate(X,Y,predict_proba,
         predn = np.concatenate([Y_bald0,Y_bald])
         truth = np.ones((Y_bald0.shape[0]*2))
         truth[:Y_bald0.shape[0]] = 0
-        sc_bld = roc_auc_score(truth,predn)
+        sc_bld = roc_auc_score(truth,rank(predn))
         
         # entropy
         predn = np.concatenate([Y_entropy0,Y_entropy])
         truth = np.ones((Y_entropy0.shape[0]*2))
         truth[:Y_entropy0.shape[0]] = 0
-        sc_ent = roc_auc_score(truth,predn)
+        sc_ent = roc_auc_score(truth,rank(predn))
         
         # max softmax
         predn = np.concatenate([Y_max0,Y_max])
         truth = np.ones((Y_entropy0.shape[0]*2))
         truth[:Y_entropy0.shape[0]] = 0
-        sc_max = roc_auc_score(truth,predn)
+        sc_max = roc_auc_score(truth,rank(predn))
         
         # entropy
         predn = np.concatenate([Y_mstd0,Y_mstd])
         truth = np.ones((Y_entropy0.shape[0]*2))
         truth[:Y_entropy0.shape[0]] = 0
-        sc_std = roc_auc_score(truth,predn)
+        sc_std = roc_auc_score(truth,rank(predn))
         
         print ep, sc_bld, sc_ent, sc_max, sc_std
         ood_blds.append(sc_bld)
         ood_ents.append(sc_ent)
         ood_maxs.append(sc_max)
         ood_stds.append(sc_std)
-        erd_blds.append(roc_auc_score(err0,Y_bald))
-        erd_ents.append(roc_auc_score(err,Y_entropy))
-        erd_maxs.append(roc_auc_score(err,Y_max))
-        erd_stds.append(roc_auc_score(err,Y_mstd))
+        erd_blds.append(roc_auc_score(err0,rank(Y_bald)))
+        erd_ents.append(roc_auc_score(err,rank(Y_entropy)))
+        erd_maxs.append(roc_auc_score(err,rank(Y_max)))
+        erd_stds.append(roc_auc_score(err,rank(Y_mstd)))
         
     return accs, blds, ents, maxs, stds, \
            ood_blds, ood_ents, ood_maxs, ood_stds, \
