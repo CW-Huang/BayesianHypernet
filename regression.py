@@ -219,6 +219,7 @@ if __name__ == '__main__':
     #parser.add_argument('--normalization',default='by_train_set', type=str)
     parser.add_argument('--fname',default=None, type=str) # override this for launching with SLURM!!!
     parser.add_argument('--split',default=0, type=str) # TODO: , help="defaults to None, in which case this script will launch a copy of itself on ALL of the available splits")
+    parser.add_argument('--eval_only',default=0, type=int, help="just run the final evaluation, NO training!")
 
     #parser.add_argument('--save_results',default='./results/',type=str)
     
@@ -229,8 +230,11 @@ if __name__ == '__main__':
     # moved from below!
     locals().update(args_dict)
 
+    eval_only = int(args_dict.pop('eval_only'))
+
     flags = [flag.lstrip('--') for flag in sys.argv[1:] if not flag.startswith('--save_dir')]
     exp_description = '_'.join(flags)
+
 
     fname = args_dict.pop('fname')
     if fname is None:
@@ -301,24 +305,30 @@ if __name__ == '__main__':
         t3 = time.time()
         times['compile'] = t3 - t2
 
-        print "begin training"
-        result = train_model(network, save_, save_path,
-                        tr_x,tr_y,
-                        va_x,va_y,
-                                                        te_x, te_y,
-                                                        y_mean, y_std,
-                        lr0,lrdecay,bs,epochs,anneal,
-                        taus=taus)
-        tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs, train_time, eval_time = result
+        if eval_only:
+            network.load(save_path + '_final.npy')
+            print "skipping training (eval_only=1)"
 
-        t4 = time.time()
-        times['train'] = train_time
-        times['eval'] = eval_time
+        else:
+            print "begin training"
+            result = train_model(network, save_, save_path,
+                            tr_x,tr_y,
+                            va_x,va_y,
+                                                            te_x, te_y,
+                                                            y_mean, y_std,
+                            lr0,lrdecay,bs,epochs,anneal,
+                            taus=taus)
+            tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs, train_time, eval_time = result
+
+            t4 = time.time()
+            times['train'] = train_time
+            times['eval'] = eval_time
 
         print "done training, begin final evaluation"
         #tr_RMSE, tr_LL = evaluate_model(network.predict, tr_x, tr_y, n_mc=10000, taus=taus)  
-        va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=10000, taus=taus)  
-        te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=10000, taus=taus)  
+        # FIXME: undo normalization!!
+        va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=10000, taus=taus, y_mean=y_mean, y_std=y_std) 
+        te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=10000, taus=taus, y_mean=y_mean, y_std=y_std) 
         #total_runtime = time.time() - t0 
         #print "total_runtime=", total_runtime 
 
