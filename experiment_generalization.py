@@ -150,11 +150,12 @@ class MLP(object):
             
             if norm_type == 'BN' and flow is not None:
                 print 'BN test time uses running avg'
-                self.output_var = N_get_output(layer,
-                                               self.input_var,hnet,ep,
-                                               norm_type=norm_type,
-                                               static_bias=static_bias,
-                                               test_time=True)
+                #self.output_var = N_get_output(layer,
+                #                               self.input_var,hnet,ep,
+                #                               norm_type=norm_type,
+                #                               static_bias=static_bias,
+                #                               test_time=True)
+                self.output_var = self.output_var
             else:
                 self.output_var = self.output_var
             
