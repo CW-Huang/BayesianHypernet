@@ -27,7 +27,8 @@ lrdefault = 1e-3
     
 class MCdropout_MLP(object):
 
-    def __init__(self,n_hiddens,n_units, n_inputs=784):
+    def __init__(self,n_hiddens,n_units, n_inputs=784,
+                 clip_output=True):
         
         layer = lasagne.layers.InputLayer([None,n_inputs])
         
@@ -55,8 +56,12 @@ class MCdropout_MLP(object):
         self.learning_rate = T.scalar('leanring_rate')
         
         self.layer = layer
-        self.y = T.clip(lasagne.layers.get_output(layer,self.input_var),
-                        0.001, 0.999)
+        if clip_output:
+            self.y = T.clip(lasagne.layers.get_output(layer,self.input_var),
+                            0.001, 0.999)
+        else:
+            self.y = lasagne.layers.get_output(layer,self.input_var)
+            
         self.y_det = lasagne.layers.get_output(layer,self.input_var,
                                                deterministic=True)
         self.output_var = self.y # aliasing
@@ -122,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs',default=10,type=int)
     parser.add_argument('--prior',default='log_normal',type=str)
     parser.add_argument('--model',default='BHN_MLPWN',type=str, 
-                        choices=['BHN_MLPWN', 'BHN_MLPCD', 'MCdropout_MLP']) 
+                        choices=['BHN_MLPWN', 'BHN_MLPCD', 'MCdropout_MLP','MCdropout_MLP_NC']) 
                         # TODO: concrete dropout
     parser.add_argument('--anneal',default=0,type=int)
     parser.add_argument('--n_hiddens',default=1,type=int)
@@ -159,6 +164,8 @@ if __name__ == '__main__':
         md = 0
     if args.model == 'MCdropout_MLP':
         md = 1
+    if args.model == 'MCdropout_MLP_NC':
+        md = 3
     
     
     path = args.save_dir
@@ -246,6 +253,9 @@ if __name__ == '__main__':
     elif args.model == 'MCdropout_MLP':
         model = MCdropout_MLP(n_hiddens=n_hiddens,
                               n_units=n_units)
+    elif args.model == 'MCdropout_MLP_NC':
+        model = MCdropout_MLP(n_hiddens=n_hiddens,
+                              n_units=n_units,clip_output=False)
     else:
         raise Exception('no model named `{}`'.format(args.model))
 
