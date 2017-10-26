@@ -8,7 +8,6 @@ import subprocess
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
-#parser.add_argument('--hours_per_job', type=int, default=4, help="expected run time, in hours")
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
 
@@ -69,6 +68,9 @@ elif subprocess.check_output("hostname").startswith("hades"):
     job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
 elif subprocess.check_output("hostname").startswith("helios"):
     job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=12:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
+elif subprocess.check_output("hostname").startswith("ip05"):
+    # TODO: mp2
+    job_prefix += "smart-dispatch -t 00:04:29:00 -q qwork@mp2 launch python "
 else: # TODO: SLURM
     #assert False
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
