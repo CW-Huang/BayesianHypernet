@@ -8,7 +8,7 @@ import subprocess
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
-#parser.add_argument('--hours_per_job', type=int, default=3, help="expected run time, in hours")
+parser.add_argument('--hours_per_job', type=int, default=2, help="expected run time, in hours")
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
 
@@ -60,17 +60,21 @@ job_prefix = ""
 # TODO: tensorflow...
 # Check which cluster we're using
 if os.path.exists('/home/capybara/this_is_guillimin'):
-    job_prefix += "smart-dispatch --walltime=10:00:00 --queue=guillimin --coresPerNode=1 launch THEANO_FLAGS=floatX=float32 python "
+    #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
+    #job_prefix += "smart-dispatch --walltime=10:00:00 --queue=@guillimin launch THEANO_FLAGS=floatX=float32 python "
+    job_prefix += "smart-dispatch --walltime=10:00:00 launch THEANO_FLAGS=floatX=float32 python "
+elif subprocess.check_output("hostname").startswith("briaree"):
+    job_prefix += "jobdispatch --duree=2:50:0 --mem=4G --env=THEANO_FLAGS=floatX=float32 python "
 elif subprocess.check_output("hostname").startswith("hades"):
     #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
     job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
 elif subprocess.check_output("hostname").startswith("helios"):
     job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=1:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
 else: # TODO: SLURM
-    assert False
+    #assert False
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
     #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
-    job_prefix += 'sbatch --gres=gpu --mem=4000 -t 0-' + str(hours_per_job)
+    job_prefix += 'sbatch --mem=4000 -t 0-' + str(hours_per_job)
 
 
 # --------------------------------------------------
@@ -86,22 +90,21 @@ job_prefix += exp_script
 
 
 model_strs = []
-model_strs += [" --model=MCD --drop_prob=.01"]
-model_strs += [" --model=BHN --flow=RealNVP --coupling=8"]
-        #--drop_prob=" + str(p) for p in [.05, .01, .005]]
+model_strs += [" --model=MCD --drop_prob=.01", "--model=BHN --flow=IAF --coupling=4"]
 
 
 grid = [] 
-grid += [["lr0", ['.01']]]
-grid += [["lbda", [1]]]
-grid += [["split", [0]]]
-grid += [["epochs", [100]]]
-grid += [['dataset', ['airfoil', 'parkinsons'] + ['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year --epochs=10']]]
+grid += [["lr0", ['.01', '.001']]]
+grid += [["lbda", 100.**np.arange(-3,2)]]
+#grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
+#grid += [['dataset', ['kin8nm', 'power', 'naval']]] # 'naval' is getting NaNs! (why??)
+grid += [['dataset', ['naval']]] # 'naval' is getting NaNs! (why??)
+grid += [['split', range(20)]]
+grid += [['epochs', [400]]]
 
 #
 launcher_name = os.path.basename(__file__)
 
-# FIXME!
 job_strs = []
 for settings in grid_search(grid):
     job_str = job_prefix + settings
@@ -112,7 +115,6 @@ for settings in grid_search(grid):
         job_strs.append(_job_str)
 
 print "njobs", len(job_strs)
-
 
 if launch:
     for job_str in job_strs:

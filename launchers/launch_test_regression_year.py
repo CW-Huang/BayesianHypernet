@@ -8,7 +8,7 @@ import subprocess
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
-#parser.add_argument('--hours_per_job', type=int, default=3, help="expected run time, in hours")
+parser.add_argument('--hours_per_job', type=int, default=10, help="expected run time, in hours")
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
 
@@ -65,10 +65,10 @@ if subprocess.check_output("hostname").startswith("hades"):
 elif subprocess.check_output("hostname").startswith("helios"):
     job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=12:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
 else: # TODO: SLURM
-    assert False
+    #assert False
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
     #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
-    job_prefix += 'sbatch --gres=gpu --mem=4000 -t 0-' + str(hours_per_job)
+    job_prefix += 'sbatch --gres=gpu --mem=4000 --qos=high -t 0-' + str(hours_per_job)
 
 
 # --------------------------------------------------
@@ -84,18 +84,16 @@ job_prefix += exp_script
 
 
 model_strs = []
-model_strs += [" --model=MCD --drop_prob=" + str(p) for p in [.05, .01, .005]]
-model_strs += [" --model=BHN --flow=IAF --coupling=4",
-               " --model=BHN --flow=RealNVP --coupling=8"]
-        #--drop_prob=" + str(p) for p in [.05, .01, .005]]
+model_strs += [" --model=MCD --drop_prob=.01", "--model=BHN --flow=IAF --coupling=4"]
 
 
 grid = [] 
 grid += [["lr0", ['.01', '.001']]]
-grid += [["lbda", 10.**np.arange(-9,1)]]
+grid += [["lbda", 100.**np.arange(-3,2)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
 grid += [['dataset', ['year']]]
 grid += [['n_units', ['100']]]
+grid += [['epochs', ['200']]]
 grid += [['split', range(1)]]
 
 #
