@@ -27,7 +27,7 @@ lrdefault = 1e-3
 class MLP(object):
 
     def __init__(self,n_hiddens,n_units, n_inputs=784,
-                 clip_output=True):
+                 clip_output=False):
         
         layer = lasagne.layers.InputLayer([None,n_inputs])
         
