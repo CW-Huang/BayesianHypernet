@@ -20,10 +20,39 @@ eval_scores = lambda sps: [f(sps) for f in score_fs]
                            
                            
                            
-def fgm_grad(x, predictions, y):
-    loss = T.nnet.categorical_crossentropy(predictions,y)    
+def fgm_grad(x, prediction, y):
+    loss = T.nnet.categorical_crossentropy(prediction,y)    
     grad = T.grad(loss.mean(), x)
     return grad
+    
+
+                               
+def fgm_grad2(x, prediction, y, predict_proba):
+    
+    jac = T.concatenate(
+        [T.grad(T.sum(prediction[:,i]),x).dimshuffle('x',0,1) for \
+                 i in range(10)],
+        axis=0
+    )
+    # k x n x d
+    
+    
+    jacobian_per_sample = theano.function([x],jac)
+    
+    avg_output = T.matrix('avg_output')
+    loss = T.nnet.categorical_crossentropy(avg_output,y)
+    grad_avg_y_ = T.grad(loss.mean(),avg_output)
+    grad_avg_y = theano.function([avg_output,y],grad_avg_y_)
+    # n x k
+    
+    jacobian_avg = lambda x, n: sum([jacobian_per_sample(x) for \
+                                     _ in range(n)]).transpose(1,0,2)/float(n)
+    pred_avg = lambda x, n: sum([predict_proba(x) for _ in range(n)])/float(n)
+    grad_avg = lambda x, y, n: grad_avg_y(pred_avg(x,n),y)
+    grad_x = lambda x, y, n: (grad_avg(x,y,n)[:,:,None] * \
+                              jacobian_avg(x,n)).sum(1)
+    
+    return grad_x
 
     
 def evaluate(X,Y,predict_proba,
@@ -36,13 +65,20 @@ def evaluate(X,Y,predict_proba,
     print 'compiling attacker ...'
     
     #attack = attacks_th.fgm(input_var,prediction,target_var,1.0) - input_var
-    grad_ = fgm_grad(input_var,prediction,target_var)
-    grad = theano.function([input_var,target_var],grad_)
+    #grad_ = fgm_grad(input_var,prediction,target_var)
+    #grad = theano.function([input_var,target_var],grad_)
+    #def att(x,y,ep):
+    #    grads = sum([grad(x,y) for i in range(avg)]) / float(avg)
+    #    signed = np.sign(grads)
+    #    return x + ep * signed
+    
+    grad = fgm_grad2(input_var,prediction,target_var,predict_proba)
     def att(x,y,ep):
-        grads = sum([grad(x,y) for i in range(avg)]) / float(avg)
+        grads = grad(x,y,avg)
         signed = np.sign(grads)
         return x + ep * signed
-        
+    
+    
     #att_ = theano.function([input_var,target_var],attack)
     #att = lambda x,y,ep: x + ep * \
     #                         sum([att_(x,y) for i in range(avg)]) / float(avg)
