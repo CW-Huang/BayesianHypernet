@@ -7,7 +7,6 @@ np = numpy
 np.random.seed(1) # TODO
 import os
 import random
-import pandas as pd
 
 
 
@@ -37,6 +36,8 @@ def get_regression_dataset(dataset, split_count, data_path='./', valid_set=True,
             x_std = train_x.std(axis=0)
             y_mean = train_y.mean()
             y_std = train_y.std()
+
+            x_std[ x_std == 0 ] = 1 # avoid divide by 0!
 
             train_x = (train_x - x_mean) / x_std
             valid_x = (valid_x - x_mean) / x_std
