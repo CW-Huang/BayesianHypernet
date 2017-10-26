@@ -170,7 +170,7 @@ def evaluate_model(predict,X,Y,
             MCt[i,j*max_n:(j+1)*max_n] = predict(x)
 
     if y_std is not None:
-        MCt *= y_mean
+        MCt *= y_std
     if y_mean is not None:
         MCt += y_mean
 

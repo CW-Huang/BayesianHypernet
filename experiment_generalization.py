@@ -146,7 +146,18 @@ class MLP(object):
             self.N_bias = static_bias
             self.hnet = hnet
             self.ep = ep
-            self.output_var = output_var
+            self.output_var_ = output_var
+            
+            if norm_type == 'BN' and flow is not None:
+                print 'BN test time uses running avg'
+                self.output_var = N_get_output(layer,
+                                               self.input_var,hnet,ep,
+                                               norm_type=norm_type,
+                                               static_bias=static_bias,
+                                               test_time=True)
+            else:
+                self.output_var = self.output_var
+            
             self.weights = weights
             self.logdets = logdets
             
@@ -243,12 +254,13 @@ if __name__ == '__main__':
     parser.add_argument('--totrain',default=1,type=int)
     parser.add_argument('--toshuffle',default=0,type=int)
     parser.add_argument('--seed',default=427,type=int)
+    
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
     parser.add_argument('--flow',default='RealNVP',type=str, 
                         choices=['RealNVP', 'IAF'])
     parser.add_argument('--n_units_h',default=200, type=int)
-    parser.add_argument('--norm_type',default='WN', type=str)
+    parser.add_argument('--norm_type',default='BN', type=str)
     parser.add_argument('--static_bias',default=1,type=int)
     parser.add_argument('--alpha',default=2, type=float)
     parser.add_argument('--beta',default=1, type=float)
