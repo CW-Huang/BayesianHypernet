@@ -132,6 +132,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_units',default=200,type=int)
     parser.add_argument('--totrain',default=1,type=int)
     parser.add_argument('--adv_eval',default=1,type=int)
+    parser.add_argument('--avg',default=1,type=int)
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
     parser.add_argument('--reinit',default=1,type=int)
@@ -309,7 +310,8 @@ if __name__ == '__main__':
                                model.predict_proba,
                                model.input_var,
                                model.target_var,
-                               model.y_unclipped)
+                               model.y_unclipped,
+                               avg=args.avg)
         
         np.save(name+'_adv',results)
         
