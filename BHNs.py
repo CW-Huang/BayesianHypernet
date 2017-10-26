@@ -564,6 +564,7 @@ class HyperWN_CNN(Base_BHN):
         
         self.p_net = p_net
         self.y = y
+        self.y_unclipped = get_output(p_net,inputs)
         
     def _get_useful_funcs(self):
         self.predict_proba = theano.function([self.input_var],self.y)
