@@ -831,8 +831,10 @@ def slicing(params, start_index, size):
     return params[:,start_index:end_index], end_index
     
 def N_get_output(layer_or_layers, inputs, hnet, input_h, 
-                 deterministic=False, norm_type='BN', static_bias=None,
-                 nlb=nlb, **kwargs):
+                 deterministic=False, norm_type='BN', 
+                 static_bias=None, nlb=nlb, 
+                 test_time=False,
+                 **kwargs):
 
 
     # check if the keys of the dictionary are valid
@@ -911,14 +913,24 @@ def N_get_output(layer_or_layers, inputs, hnet, input_h,
                 print size
                 if norm_type == 'BN':
                     N_layer = BatchNormLayer(layer,beta=None,gamma=None)
+                    layer_output = layer.get_output_for(layer_inputs, **kwargs)
+                    if test_time:
+                        N_output = N_layer.get_output_for(layer_output,
+                                                          True)
+                    else:
+                        N_output = N_layer.get_output_for(layer_output,
+                                                          deterministic)
+                        
                 elif norm_type == 'WN':
                     N_layer = WeightNormLayer(layer,b=None,g=None)
+                    layer_output = layer.get_output_for(layer_inputs, **kwargs)
+                    N_output = N_layer.get_output_for(layer_output,
+                                                      deterministic)
                 else:
                     raise Exception('normalization method {} not ' \
                                     'supported.'.format(norm_type))
                                     
-                layer_output = layer.get_output_for(layer_inputs, **kwargs)
-                N_output = N_layer.get_output_for(layer_output,deterministic)
+                
                 gamma, index = slicing(N_params,index,size)
                 if static_bias is None:
                     beta, index = slicing(N_params,index,size)
@@ -1156,7 +1168,7 @@ if __name__ == '__main__':
             
             output_var = N_get_output(layer,input_var,hnet,ep,
                                       static_bias=static_bias,
-                                      norm_type='WN')
+                                      norm_type='BN')
             print output_var.eval().shape
 
 
@@ -1182,4 +1194,11 @@ if __name__ == '__main__':
                            lbda=0,
                            output_type = 'categorical')
         print loss.eval()
+        
+        output_var = N_get_output(layer,input_var,hnet,ep,
+                                  static_bias=static_bias,
+                                  norm_type='BN',test_time=True)
+        output_var.eval()
+        
+        
         
