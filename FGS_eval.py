@@ -8,27 +8,82 @@ Created on Mon Oct 23 20:11:43 2017
 
 
 import numpy as np
-from cleverhans import attacks_th
+#from cleverhans import attacks_th
 import theano
+import theano.tensor as T
 
 from sklearn.metrics import roc_auc_score
 from acquisition_functions import bald, max_ent, var_ratio, mean_std
 score_fs = [bald, max_ent, var_ratio, mean_std]
 eval_scores = lambda sps: [f(sps) for f in score_fs]
 
+import scipy
+                           
 
+rank = lambda x: scipy.stats.rankdata(x) / len(x)
+                           
+def fgm_grad(x, prediction, y):
+    loss = T.nnet.categorical_crossentropy(prediction,y)    
+    grad = T.grad(loss.mean(), x)
+    return grad
+    
+
+                               
+def fgm_grad2(x, prediction, y, predict_proba):
+    
+    jac = T.concatenate(
+        [T.grad(T.sum(prediction[:,i]),x).dimshuffle('x',0,1) for \
+                 i in range(10)],
+        axis=0
+    )
+    # k x n x d
+    
+    
+    jacobian_per_sample = theano.function([x],jac)
+    
+    avg_output = T.matrix('avg_output')
+    loss = T.nnet.categorical_crossentropy(avg_output,y)
+    grad_avg_y_ = T.grad(loss.mean(),avg_output)
+    grad_avg_y = theano.function([avg_output,y],grad_avg_y_)
+    # n x k
+    
+    jacobian_avg = lambda x, n: sum([jacobian_per_sample(x) for \
+                                     _ in range(n)]).transpose(1,0,2)/float(n)
+    pred_avg = lambda x, n: sum([predict_proba(x) for _ in range(n)])/float(n)
+    grad_avg = lambda x, y, n: grad_avg_y(pred_avg(x,n),y)
+    grad_x = lambda x, y, n: (grad_avg(x,y,n)[:,:,None] * \
+                              jacobian_avg(x,n)).sum(1)
+    
+    return grad_x
+
+    
 def evaluate(X,Y,predict_proba,
              input_var,target_var,prediction,
-             eps=[0.02,0.05,0.10,0.15,0.2,0.25,0.3,0.4,0.5],
+             eps=[0.001,0.002,0.003,0.004,0.005,0.008,0.01,0.012,0.015,
+                  0.02,0.025,0.03,0.04,0.05,0.075,0.1,0.15,0.2,0.3,0.5],
              max_n=100,n_mc=20,n_classes=10,
-             avg = 10):
+             avg = 50):
     
     print 'compiling attacker ...'
     
-    attack = attacks_th.fgm(input_var,prediction,target_var,1.0) - input_var
-    att_ = theano.function([input_var,target_var],attack)
-    att = lambda x,y,ep: x + ep * \
-                             sum([att_(x,y) for i in range(avg)]) / float(avg)
+    #attack = attacks_th.fgm(input_var,prediction,target_var,1.0) - input_var
+    #grad_ = fgm_grad(input_var,prediction,target_var)
+    #grad = theano.function([input_var,target_var],grad_)
+    #def att(x,y,ep):
+    #    grads = sum([grad(x,y) for i in range(avg)]) / float(avg)
+    #    signed = np.sign(grads)
+    #    return x + ep * signed
+    
+    grad = fgm_grad2(input_var,prediction,target_var,predict_proba)
+    def att(x,y,ep):
+        grads = grad(x,y,avg)
+        signed = np.sign(grads)
+        return x + ep * signed
+    
+    
+    #att_ = theano.function([input_var,target_var],attack)
+    #att = lambda x,y,ep: x + ep * \
+    #                         sum([att_(x,y) for i in range(avg)]) / float(avg)
     
     N = X.shape[0]
     num_batches = np.ceil(N / float(max_n)).astype(int)
@@ -101,35 +156,35 @@ def evaluate(X,Y,predict_proba,
         predn = np.concatenate([Y_bald0,Y_bald])
         truth = np.ones((Y_bald0.shape[0]*2))
         truth[:Y_bald0.shape[0]] = 0
-        sc_bld = roc_auc_score(truth,predn)
+        sc_bld = roc_auc_score(truth,rank(predn))
         
         # entropy
         predn = np.concatenate([Y_entropy0,Y_entropy])
         truth = np.ones((Y_entropy0.shape[0]*2))
         truth[:Y_entropy0.shape[0]] = 0
-        sc_ent = roc_auc_score(truth,predn)
+        sc_ent = roc_auc_score(truth,rank(predn))
         
         # max softmax
         predn = np.concatenate([Y_max0,Y_max])
         truth = np.ones((Y_entropy0.shape[0]*2))
         truth[:Y_entropy0.shape[0]] = 0
-        sc_max = roc_auc_score(truth,predn)
+        sc_max = roc_auc_score(truth,rank(predn))
         
         # entropy
         predn = np.concatenate([Y_mstd0,Y_mstd])
         truth = np.ones((Y_entropy0.shape[0]*2))
         truth[:Y_entropy0.shape[0]] = 0
-        sc_std = roc_auc_score(truth,predn)
+        sc_std = roc_auc_score(truth,rank(predn))
         
         print ep, sc_bld, sc_ent, sc_max, sc_std
         ood_blds.append(sc_bld)
         ood_ents.append(sc_ent)
         ood_maxs.append(sc_max)
         ood_stds.append(sc_std)
-        erd_blds.append(roc_auc_score(err0,Y_bald))
-        erd_ents.append(roc_auc_score(err,Y_entropy))
-        erd_maxs.append(roc_auc_score(err,Y_max))
-        erd_stds.append(roc_auc_score(err,Y_mstd))
+        erd_blds.append(roc_auc_score(err0,rank(Y_bald)))
+        erd_ents.append(roc_auc_score(err,rank(Y_entropy)))
+        erd_maxs.append(roc_auc_score(err,rank(Y_max)))
+        erd_stds.append(roc_auc_score(err,rank(Y_mstd)))
         
     return accs, blds, ents, maxs, stds, \
            ood_blds, ood_ents, ood_maxs, ood_stds, \

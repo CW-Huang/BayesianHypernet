@@ -23,7 +23,7 @@ import pandas as pd
 
 from BHNs_MLP_Regression import MLPWeightNorm_BHN, MCdropout_MLP, Backprop_MLP
 from dk_get_regression_data import get_regression_dataset
-from ops import load_mnist
+#from ops import load_mnist
 from utils import log_normal, log_laplace
 
 import lasagne
@@ -31,9 +31,11 @@ import theano
 import theano.tensor as T
 from lasagne.random import set_rng
 from theano.tensor.shared_randomstreams import RandomStreams
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 import scipy
+
+from logsumexp import logsumexp
 
 t1 = time.time()
 times['imports'] = t1 - t0
@@ -68,7 +70,7 @@ def get_LL(y_hat, y, tau):
     # this is eqn (8) from https://arxiv.org/pdf/1506.02142.pdf (Gal)
     n_mc = len(y_hat)
     #print "get_LL... n_mc=", n_mc
-    return scipy.misc.logsumexp(-.5*tau*(y_hat-y)**2) - np.log(n_mc) - .5*np.log(2*np.pi) - .5*np.log(tau**-1)
+    return logsumexp(-.5*tau*(y_hat-y)**2) - np.log(n_mc) - .5*np.log(2*np.pi) - .5*np.log(tau**-1)
 
 
 def train_model(model, save_,save_path,
@@ -167,10 +169,10 @@ def evaluate_model(predict,X,Y,
             x = X[j*max_n:(j+1)*max_n]
             MCt[i,j*max_n:(j+1)*max_n] = predict(x)
 
+    if y_std is not None:
+        MCt *= y_std
     if y_mean is not None:
         MCt += y_mean
-    if y_std is not None:
-        MCt *= y_mean
 
     LLs = [ get_LL(MCt, Y, tau) for tau in taus]
     y_hat = MCt.mean(0)
@@ -216,7 +218,7 @@ if __name__ == '__main__':
     #parser.add_argument('--tau',default=1e2, type=float) # search over 
     #parser.add_argument('--normalization',default='by_train_set', type=str)
     parser.add_argument('--fname',default=None, type=str) # override this for launching with SLURM!!!
-    parser.add_argument('--split',default=None, type=str) # TODO: , help="defaults to None, in which case this script will launch a copy of itself on ALL of the available splits")
+    parser.add_argument('--split',default=0, type=str) # TODO: , help="defaults to None, in which case this script will launch a copy of itself on ALL of the available splits")
 
     #parser.add_argument('--save_results',default='./results/',type=str)
     

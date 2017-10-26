@@ -131,6 +131,8 @@ def get_regression_dataset(dataset, data_path='./', normalization='each_set'):#b
         x_std = train_x.std(axis=0)
         y_mean = train_y.mean()
         y_std = train_y.std()
+        x_std[ x_std == 0 ] = 1 # avoid divide by zero!
+        y_std[ y_std == 0 ] = 1 # avoid divide by zero!
 
         train_x = (train_x - x_mean) / x_std
         valid_x = (valid_x - x_mean) / x_std
