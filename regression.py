@@ -317,8 +317,8 @@ if __name__ == '__main__':
 
         print "done training, begin final evaluation"
         #tr_RMSE, tr_LL = evaluate_model(network.predict, tr_x, tr_y, n_mc=10000, taus=taus)  
-        va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=10000, taus=taus)  
-        te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=10000, taus=taus)  
+        va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=1000, taus=taus)  
+        te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=1000, taus=taus)  
         #total_runtime = time.time() - t0 
         #print "total_runtime=", total_runtime 
 

@@ -68,7 +68,7 @@ else: # TODO: SLURM
     #assert False
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
     #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
-    job_prefix += 'sbatch --gres=gpu --mem=4000 --qos=high -t 0-' + str(hours_per_job)
+    job_prefix += 'sbatch --gres=gpu --mem=10000 --qos=high -t 0-' + str(hours_per_job)
 
 
 # --------------------------------------------------
