@@ -9,6 +9,9 @@ import subprocess
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
+parser.add_argument('--eval_only', type=int, default=0)
+
+# UNUSED BELOW
 # TODO: a better version of this (check which jobs have run... relaunch only those that crashed, etc....)
 parser.add_argument('--monitor', type=int, default=0, help="check which jobs have finished")
 parser.add_argument('--job_time', type=str, default="00:00:50:00", help="DD:HH:MM:SS")
@@ -114,6 +117,8 @@ job_strs = []
 for settings in grid_search(grid):
     job_str = job_prefix + settings
     job_str += " --save_dir=" + os.environ["SAVE_PATH"] + "/" + launcher_name
+    if eval_only:
+        job_str += ' --eval_only=1'
     for model_str in model_strs:
         _job_str = job_str + model_str
         print _job_str

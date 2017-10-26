@@ -37,6 +37,9 @@ import scipy
 
 from logsumexp import logsumexp
 
+#import shutil  # for eval_only
+
+
 t1 = time.time()
 times['imports'] = t1 - t0
 
@@ -326,9 +329,8 @@ if __name__ == '__main__':
 
         print "done training, begin final evaluation"
         #tr_RMSE, tr_LL = evaluate_model(network.predict, tr_x, tr_y, n_mc=10000, taus=taus)  
-        # FIXME: undo normalization!!
-        va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=10000, taus=taus, y_mean=y_mean, y_std=y_std) 
-        te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=10000, taus=taus, y_mean=y_mean, y_std=y_std) 
+        va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=1000, taus=taus, y_mean=y_mean, y_std=y_std) 
+        te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=1000, taus=taus, y_mean=y_mean, y_std=y_std) 
         #total_runtime = time.time() - t0 
         #print "total_runtime=", total_runtime 
 
@@ -338,11 +340,11 @@ if __name__ == '__main__':
         if save_:
             if eval_only: 
                 # we only overwrite the _FINAL_ results
-                np.savetxt(save_path + "_FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
-                np.savetxt(save_path + "_FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
+                np.savetxt(save_path + "__eval_only__FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
+                np.savetxt(save_path + "__eval_only__FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
                 for n, tau in enumerate(taus):
-                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
-                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
+                    np.savetxt(save_path + '_tau=' + str(tau) + "__eval_only__FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
+                    np.savetxt(save_path + '_tau=' + str(tau) + "__eval_only__FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
 
 
             else:
