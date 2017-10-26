@@ -31,7 +31,7 @@ def evaluate(X,Y,predict_proba,
              eps=[0.001,0.002,0.003,0.004,0.005,0.008,0.01,0.012,0.015,
                   0.02,0.025,0.03,0.04,0.05,0.075,0.1,0.15,0.2,0.3,0.5],
              max_n=100,n_mc=20,n_classes=10,
-             avg = 10):
+             avg = 50):
     
     print 'compiling attacker ...'
     
