@@ -210,15 +210,18 @@ class Base_BHN(object):
         pass
     
     
-    def save(self,save_path,notes=[]):
+    def save(self,save_path,notes=[None]):
         np.save(save_path, [p.get_value() for p in self.params]+notes)
 
     def load(self,save_path):
         values = np.load(save_path)
-        notes = values[-1]
-        values = values[:-1]
-
-        if len(self.params) != len(values):
+        # TODO: serious hacking here!
+        if len(self.params) == len(values) - 1:
+            notes = values[-1]
+            values = values[:-1]
+        elif len(self.params) == len(values):
+            notes = None
+        else:
             raise ValueError("mismatch: got %d values to set %d parameters" %
                              (len(values), len(self.params)))
 
