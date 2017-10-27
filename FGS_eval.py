@@ -139,10 +139,10 @@ def evaluate(X,Y,predict_proba,
     maxs.append(Y_max0.mean())
     stds.append(Y_mstd0.mean())
     
-    erd_blds.append(roc_auc_score(err0,Y_bald0))
-    erd_ents.append(roc_auc_score(err0,Y_entropy0))
-    erd_maxs.append(roc_auc_score(err0,Y_max0))
-    erd_stds.append(roc_auc_score(err0,Y_mstd0))
+    erd_blds.append(roc_auc_score(err0,rank(Y_bald0)))
+    erd_ents.append(roc_auc_score(err0,rank(Y_entropy0)))
+    erd_maxs.append(roc_auc_score(err0,rank(Y_max0)))
+    erd_stds.append(roc_auc_score(err0,rank(Y_mstd0)))
     
     for ep in eps:
         acc, Y_bald, Y_entropy, Y_max, Y_mstd, err = per_ep(ep)
@@ -181,7 +181,7 @@ def evaluate(X,Y,predict_proba,
         ood_ents.append(sc_ent)
         ood_maxs.append(sc_max)
         ood_stds.append(sc_std)
-        erd_blds.append(roc_auc_score(err0,rank(Y_bald)))
+        erd_blds.append(roc_auc_score(err,rank(Y_bald)))
         erd_ents.append(roc_auc_score(err,rank(Y_entropy)))
         erd_maxs.append(roc_auc_score(err,rank(Y_max)))
         erd_stds.append(roc_auc_score(err,rank(Y_mstd)))
