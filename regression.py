@@ -73,7 +73,7 @@ def get_LL(y_hat, y, tau):
     # this is eqn (8) from https://arxiv.org/pdf/1506.02142.pdf (Gal)
     n_mc = len(y_hat)
     #print "get_LL... n_mc=", n_mc
-    return logsumexp(-.5*tau*(y_hat-y)**2) - np.log(n_mc) - .5*np.log(2*np.pi) - .5*np.log(tau**-1)
+    return (logsumexp(-.5*tau*(y_hat-y)**2, axis=0) - np.log(n_mc) - .5*np.log(2*np.pi) - .5*np.log(tau**-1)).mean()
 
 
 def train_model(model, save_,save_path,
@@ -176,6 +176,8 @@ def evaluate_model(predict,X,Y,
         MCt *= y_std
     if y_mean is not None:
         MCt += y_mean
+
+    import ipbd; ipdb.set_trace()
 
     LLs = [ get_LL(MCt, Y, tau) for tau in taus]
     y_hat = MCt.mean(0)
