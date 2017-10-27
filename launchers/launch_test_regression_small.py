@@ -9,6 +9,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
 parser.add_argument('--eval_only', type=int, default=0)
+parser.add_argument('--train_on_valid', type=int, default=0)
 
 #parser.add_argument('--hours_per_job', type=int, default=3, help="expected run time, in hours")
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
@@ -109,7 +110,9 @@ for settings in grid_search(grid):
     job_str = job_prefix + settings
     job_str += " --save_dir=" + os.environ["SAVE_PATH"] + "/" + launcher_name
     if eval_only:
-        job_str += ' --eval_only=1'
+        job_str += ' --eval_only=1 '
+    if train_on_valid:
+        job_str += ' --train_on_valid'
     for model_str in model_strs:
         _job_str = job_str + model_str
         print _job_str

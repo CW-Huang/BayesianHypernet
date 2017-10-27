@@ -9,6 +9,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
 parser.add_argument('--hours_per_job', type=int, default=10, help="expected run time, in hours")
+parser.add_argument('--train_on_valid', type=int, default=0)
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
 
@@ -68,7 +69,7 @@ else: # TODO: SLURM
     #assert False
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
     #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
-    job_prefix += 'sbatch --gres=gpu --mem=4000 --qos=high -t 0-' + str(hours_per_job)
+    job_prefix += 'sbatch --gres=gpu --mem=10000 --qos=high -t 0-' + str(hours_per_job)
 
 
 # --------------------------------------------------
@@ -84,7 +85,7 @@ job_prefix += exp_script
 
 
 model_strs = []
-model_strs += [" --model=MCD --drop_prob=.01", "--model=BHN --flow=IAF --coupling=4"]
+model_strs += [" --model=MCD --drop_prob=.01", " --model=BHN --flow=IAF --coupling=4"]
 
 
 grid = [] 
@@ -93,7 +94,7 @@ grid += [["lbda", 100.**np.arange(-3,2)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
 grid += [['dataset', ['year']]]
 grid += [['n_units', ['100']]]
-grid += [['epochs', ['200']]]
+grid += [['epochs', ['100']]]
 grid += [['split', range(1)]]
 
 #
@@ -103,6 +104,10 @@ job_strs = []
 for settings in grid_search(grid):
     job_str = job_prefix + settings
     job_str += " --save_dir=" + os.environ["SAVE_PATH"] + "/" + launcher_name
+    if eval_only:
+        job_str += ' --eval_only=1 '
+    if train_on_valid:
+        job_str += ' --train_on_valid'
     for model_str in model_strs:
         _job_str = job_str + model_str
         print _job_str

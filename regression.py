@@ -37,6 +37,9 @@ import scipy
 
 from logsumexp import logsumexp
 
+#import shutil  # for eval_only
+
+
 t1 = time.time()
 times['imports'] = t1 - t0
 
@@ -208,6 +211,7 @@ if __name__ == '__main__':
     parser.add_argument('--reinit',default=1,type=int)
     # 
     parser.add_argument('--dataset',default='airfoil',type=str, choices=['airfoil', 'parkinsons'] + ['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year'])
+    parser.add_argument('--train_on_valid',default=0, type=int, help="whether to train on the validation set")
     parser.add_argument('--data_path',default=None, type=str)
     parser.add_argument('--flow',default='IAF',type=str, choices=['RealNVP', 'IAF'])
     parser.add_argument('--save_dir',default=None, type=str)
@@ -220,6 +224,7 @@ if __name__ == '__main__':
     parser.add_argument('--fname',default=None, type=str) # override this for launching with SLURM!!!
     parser.add_argument('--split',default=0, type=str) # TODO: , help="defaults to None, in which case this script will launch a copy of itself on ALL of the available splits")
     parser.add_argument('--eval_only',default=0, type=int, help="just run the final evaluation, NO training!")
+    #parser.add_argument('--analyze',default=0, type=int, help="just run the final evaluation, NO training!")
 
     #parser.add_argument('--save_results',default='./results/',type=str)
     
@@ -232,7 +237,7 @@ if __name__ == '__main__':
 
     eval_only = int(args_dict.pop('eval_only'))
 
-    flags = [flag.lstrip('--') for flag in sys.argv[1:] if not flag.startswith('--save_dir')]
+    flags = [flag.lstrip('--') for flag in sys.argv[1:] if (not flag.startswith('--save_dir') and not flag.startswith('--eval_only'))]
     exp_description = '_'.join(flags)
 
 
@@ -275,6 +280,11 @@ if __name__ == '__main__':
     # 
     if 1:
         input_dim, tr_x, tr_y, va_x, va_y, te_x, te_y, y_mean, y_std = get_regression_dataset(dataset, split, data_path=data_path)
+        if train_on_valid:
+            print tr_x.shape
+            tr_x = np.concatenate((tr_x, va_x), axis=0)
+            print tr_x.shape
+            tr_y = np.concatenate((tr_y, va_y), axis=0)
         if model == 'MCD':
             #lbda = get_lbda(tau, length_scale, drop_prob)
             #print drop_prob, lbda
@@ -308,6 +318,7 @@ if __name__ == '__main__':
         if eval_only:
             network.load(save_path + '_final.npy')
             print "skipping training (eval_only=1)"
+            t4 = time.time()
 
         else:
             print "begin training"
@@ -326,9 +337,8 @@ if __name__ == '__main__':
 
         print "done training, begin final evaluation"
         #tr_RMSE, tr_LL = evaluate_model(network.predict, tr_x, tr_y, n_mc=10000, taus=taus)  
-        # FIXME: undo normalization!!
-        va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=10000, taus=taus, y_mean=y_mean, y_std=y_std) 
-        te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=10000, taus=taus, y_mean=y_mean, y_std=y_std) 
+        va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=1000, taus=taus, y_mean=y_mean, y_std=y_std) 
+        te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=1000, taus=taus, y_mean=y_mean, y_std=y_std) 
         #total_runtime = time.time() - t0 
         #print "total_runtime=", total_runtime 
 
@@ -338,11 +348,11 @@ if __name__ == '__main__':
         if save_:
             if eval_only: 
                 # we only overwrite the _FINAL_ results
-                np.savetxt(save_path + "_FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
-                np.savetxt(save_path + "_FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
+                np.savetxt(save_path + "__eval_only__FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
+                np.savetxt(save_path + "__eval_only__FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
                 for n, tau in enumerate(taus):
-                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
-                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
+                    np.savetxt(save_path + '_tau=' + str(tau) + "__eval_only__FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
+                    np.savetxt(save_path + '_tau=' + str(tau) + "__eval_only__FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
 
 
             else:
