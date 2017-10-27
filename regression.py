@@ -235,7 +235,7 @@ if __name__ == '__main__':
 
     eval_only = int(args_dict.pop('eval_only'))
 
-    flags = [flag.lstrip('--') for flag in sys.argv[1:] if not flag.startswith('--save_dir')]
+    flags = [flag.lstrip('--') for flag in sys.argv[1:] if (not flag.startswith('--save_dir') and not flag.startswith('--eval_only'))]
     exp_description = '_'.join(flags)
 
 
