@@ -113,7 +113,7 @@ for settings in grid_search(grid):
     job_str = job_prefix + settings
     job_str += " --save_dir=" + os.environ["SAVE_PATH"] + "/" + launcher_name
     if eval_only:
-        job_str += ' --eval_only=1'
+        job_str += ' --eval_only=1 '
     for model_str in model_strs:
         _job_str = job_str + model_str
         print _job_str
