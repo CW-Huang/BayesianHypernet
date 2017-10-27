@@ -97,12 +97,12 @@ model_strs += [" --model=MCD --drop_prob=.01", "--model=BHN --flow=IAF --couplin
 
 
 grid = [] 
-grid += [["lr0", ['.01', '.001']]]
-grid += [["lbda", 100.**np.arange(-3,2)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
 grid += [['dataset', ['protein']]]
-grid += [['n_units', ['100']]]
-grid += [['epochs', ['200']]]
+grid += [['epochs', [200]]]
+grid += [["lbda", 100.**np.arange(-3,2)]]
+grid += [["lr0", [.01, .001]]]
+grid += [['n_units', [100]]]
 grid += [['split', range(5)]]
 
 #

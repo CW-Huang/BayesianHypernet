@@ -96,10 +96,12 @@ model_strs += [" --model=MCD --drop_prob=.01", " --model=BHN --flow=IAF --coupli
 
 
 grid = [] 
-grid += [["lr0", ['.01', '.001']]]
-grid += [["lbda", 100.**np.arange(-3,2)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
 grid += [['dataset', ['boston', 'concrete', 'energy', 'wine', 'yacht']]]
+grid += [['epochs', [400]]]
+grid += [["lbda", 100.**np.arange(-3,2)]]
+grid += [["lr0", [.01, .001]]]
+grid += [["n_units", [50]]]
 grid += [['split', range(20)]]
 
 #

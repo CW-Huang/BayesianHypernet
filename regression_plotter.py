@@ -2,7 +2,7 @@ from pylab import *
 import os
 
 
-taus = 10.**np.arange(-6,3)
+taus = 10.**np.arange(-3,6)
 lbdas = 100.**np.arange(-3,2)
 
 splits = range(20)
@@ -11,6 +11,7 @@ lrs = ['.01', '.001']
 models = ['BHN', 'MCD'] #TODO
 models = ['BHN_flow=IAF_coupling=4', 'MCD_drop_prob=.01'] #TODO
 dats = ['airfoil', 'parkinsons']
+dats = ['naval', 'kin8nm', 'power']#, 'parkinsons']
 
 
 """
@@ -21,14 +22,21 @@ algorithm:
 dd = '/home/capybara/BayesianHypernetCW/launchers/'
 dd = '/data/lisatmp4/kruegerd/CLUSTER_RESULTS/mp2/OLD/'
 dd += 'launch_dev_regression.py/'
+dd = '/data/lisatmp4/kruegerd/launch_test_regression_large.py'
 
 vap = [p for p in os.listdir(dd) if 'FINAL_va_LL' in p]
 var = {p: float(p.split('LL=')[1]) for p in vap}
 tep = [p for p in os.listdir(dd) if 'FINAL_te_LL' in p]
 ter = {p: float(p.split('LL=')[1]) for p in tep}
 
+pp = vap + tep
+
+print "done loading"
+
 #pp = [p for p in os.listdir(dd) if 'FINAL_va_LL' in p]
 
+import time
+t0 = time.time()
 
 bests = {} # for all splits
 avg_bests = {} # averaged across splits
@@ -51,15 +59,19 @@ for dat in dats:
                 for lbda in lbdas:
                     for lr in lrs:
                         #ss = '/home/capybara/BayesianHypernetCW/launchers/launch_dev_regression.py/'
-                        ss = 'regression.py___dataset=' + dat + '_split=' + str(split)+ '_lr0=' + str(lr) + '_epochs=400_lbda=' + str(lbda) + '_model=' + model + '_tau=' + str(tau) + '_FINAL_va_LL='
-                        strs = [p for p in vap if p.startswith(ss)]
+                        ss = 'slurm_script___dataset=' + dat + '_split=' + str(split)+ '_lr0=' + str(lr) + '_epochs=400_lbda=' + str(lbda) + '_model=' + model + '_tau=' + str(tau) + '_FINAL_va_LL='
+                        #ss = 'slurm_script___lr0=.01_lbda=1e-06_dataset=power_split=9_epochs=400_model=MCD_drop_prob=.01_tau=100.0_te_LLs'
+                        ss = 'slurm_script___lr0=' + str(lr) + '_lbda=' + str(lbda) + '_dataset=' + dat + '_split=' + str(split) + '_epochs=400' + '_model=' + model + '_tau=' + str(tau) #+ '_FINAL_va_LL='
+                        strs = [p for p in pp if p.startswith(ss)]
+                        strs = sorted(strs)#[p for p in vap if p.startswith(ss)]
                         if len(strs) > 0:
                             print strs
-                            va_LL = float(strs[0].split('FINAL_va_LL=')[1])
+                            va_LL = float(strs[1].split('FINAL_va_LL=')[1])
                             if va_LL > va_best:
                                 va_best = va_LL
                                 va_best_ss = ss
-                                te_best = float([p for p in tep if p.startswith(ss)][0].split('te_LL=')[1])
+                                te_best = float(strs[0].split('FINAL_te_LL=')[1])
+                                #te_best = float([p for p in tep if p.startswith(ss)][0].split('te_LL=')[1])
                         else:
                             print  ss
                         #res = float([p for p in vap if p.startswith(ss)][0].split('va_LL=')[1])
@@ -89,6 +101,7 @@ for dat in dats:
                         
 
 print avg_bests
+print time.time() - t0
 
 
 
