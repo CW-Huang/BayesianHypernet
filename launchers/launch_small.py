@@ -73,10 +73,7 @@ elif subprocess.check_output("hostname").startswith("hades"):
 elif subprocess.check_output("hostname").startswith("helios"):
     job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=1:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
 else: # TODO: SLURM
-    assert False
-    print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
-    #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
-    job_prefix += 'sbatch --gres=gpu --mem=4000 -t 0-' + str(hours_per_job)
+    job_prefix += 'sbatch --mem=4000 -t 0-1'
 
 
 # --------------------------------------------------

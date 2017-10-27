@@ -76,10 +76,10 @@ elif subprocess.check_output("hostname").startswith("ip05"):
     # TODO: mp2
     job_prefix += "smart-dispatch -t " + job_time + " -q qwork@mp2 launch python "
 else: # TODO: SLURM
-    assert False
-    print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
+    #assert False
+    #print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
     #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
-    job_prefix += 'sbatch --gres=gpu --mem=4000 -t 0-' + str(hours_per_job)
+    job_prefix += 'sbatch --mem=8000 -t 0-1'# + str(hours_per_job)
 
 
 # --------------------------------------------------
@@ -104,10 +104,11 @@ model_strs += [" --model=MCD --drop_prob=.01",
 
 grid = [] 
 grid += [['dataset', ['airfoil', 'parkinsons']]]
-grid += [['split', range(20)]]
-grid += [["lr0", ['.01', '.001']]]
 grid += [["epochs", ['400']]]
 grid += [["lbda", 100.**np.arange(-3,2)]]
+grid += [["lr0", ['.01', '.001']]]
+grid += [["n_units", [50]]]
+grid += [['split', range(20)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
 
 #
