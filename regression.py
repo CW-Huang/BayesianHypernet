@@ -37,6 +37,9 @@ import scipy
 
 from logsumexp import logsumexp
 
+#import shutil  # for eval_only
+
+
 t1 = time.time()
 times['imports'] = t1 - t0
 
@@ -219,6 +222,7 @@ if __name__ == '__main__':
     #parser.add_argument('--normalization',default='by_train_set', type=str)
     parser.add_argument('--fname',default=None, type=str) # override this for launching with SLURM!!!
     parser.add_argument('--split',default=0, type=str) # TODO: , help="defaults to None, in which case this script will launch a copy of itself on ALL of the available splits")
+    parser.add_argument('--eval_only',default=0, type=int, help="just run the final evaluation, NO training!")
 
     #parser.add_argument('--save_results',default='./results/',type=str)
     
@@ -229,8 +233,11 @@ if __name__ == '__main__':
     # moved from below!
     locals().update(args_dict)
 
-    flags = [flag.lstrip('--') for flag in sys.argv[1:] if not flag.startswith('--save_dir')]
+    eval_only = int(args_dict.pop('eval_only'))
+
+    flags = [flag.lstrip('--') for flag in sys.argv[1:] if (not flag.startswith('--save_dir') and not flag.startswith('--eval_only'))]
     exp_description = '_'.join(flags)
+
 
     fname = args_dict.pop('fname')
     if fname is None:
@@ -301,24 +308,29 @@ if __name__ == '__main__':
         t3 = time.time()
         times['compile'] = t3 - t2
 
-        print "begin training"
-        result = train_model(network, save_, save_path,
-                        tr_x,tr_y,
-                        va_x,va_y,
-                                                        te_x, te_y,
-                                                        y_mean, y_std,
-                        lr0,lrdecay,bs,epochs,anneal,
-                        taus=taus)
-        tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs, train_time, eval_time = result
+        if eval_only:
+            network.load(save_path + '_final.npy')
+            print "skipping training (eval_only=1)"
 
-        t4 = time.time()
-        times['train'] = train_time
-        times['eval'] = eval_time
+        else:
+            print "begin training"
+            result = train_model(network, save_, save_path,
+                            tr_x,tr_y,
+                            va_x,va_y,
+                                                            te_x, te_y,
+                                                            y_mean, y_std,
+                            lr0,lrdecay,bs,epochs,anneal,
+                            taus=taus)
+            tr_LLs, tr_RMSEs, va_LLs, va_RMSEs, te_LLs, te_RMSEs, train_time, eval_time = result
+
+            t4 = time.time()
+            times['train'] = train_time
+            times['eval'] = eval_time
 
         print "done training, begin final evaluation"
         #tr_RMSE, tr_LL = evaluate_model(network.predict, tr_x, tr_y, n_mc=10000, taus=taus)  
-        va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=10000, taus=taus)  
-        te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=10000, taus=taus)  
+        va_RMSE, va_LL = evaluate_model(network.predict, va_x, va_y, n_mc=1000, taus=taus, y_mean=y_mean, y_std=y_std) 
+        te_RMSE, te_LL = evaluate_model(network.predict, te_x, te_y, n_mc=1000, taus=taus, y_mean=y_mean, y_std=y_std) 
         #total_runtime = time.time() - t0 
         #print "total_runtime=", total_runtime 
 
@@ -326,46 +338,56 @@ if __name__ == '__main__':
         times['final_eval'] = t5 - t4
         
         if save_:
-            # final params
-            network.save(save_path + '_final')
+            if eval_only: 
+                # we only overwrite the _FINAL_ results
+                np.savetxt(save_path + "__eval_only__FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
+                np.savetxt(save_path + "__eval_only__FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
+                for n, tau in enumerate(taus):
+                    np.savetxt(save_path + '_tau=' + str(tau) + "__eval_only__FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
+                    np.savetxt(save_path + '_tau=' + str(tau) + "__eval_only__FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
 
-            # learning curves
-            save_list(save_path + "_tr_RMSEs", tr_RMSEs)
-            save_list(save_path + "_va_RMSEs", va_RMSEs)
-            save_list(save_path + "_te_RMSEs", te_RMSEs)
-            for n, tau in enumerate(taus):
-                save_list(save_path + '_tau=' + str(tau) + "_tr_LLs", tr_LLs[n])
-                save_list(save_path + '_tau=' + str(tau) + "_va_LLs", va_LLs[n])
-                save_list(save_path + '_tau=' + str(tau) + "_te_LLs", te_LLs[n])
 
-            # final results (with full evaluation) TODO: EARLY STOPPING!!!
-            #np.savetxt(save_path + "_FINAL_tr_RMSE=" + str(np.round(tr_RMSE, 3)), [tr_RMSE])
-            np.savetxt(save_path + "_FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
-            np.savetxt(save_path + "_FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
-            for n, tau in enumerate(taus):
-                #np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_tr_LL=" + str(np.round(tr_LL[n], 3)), [tr_LL[n]])
-                np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
-                np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
+            else:
+                # final params
+                network.save(save_path + '_final')
 
-            t6 = time.time()
-            times['saving'] = t6 - t5
-            total_runtime = t6 - t0
-        
-            print "total_runtime=", total_runtime
-            print "sum(times.values())", sum(times.values())
-            for k,v in times.items():
-                print k, np.round(v, 4)
+                # learning curves
+                save_list(save_path + "_tr_RMSEs", tr_RMSEs)
+                save_list(save_path + "_va_RMSEs", va_RMSEs)
+                save_list(save_path + "_te_RMSEs", te_RMSEs)
+                for n, tau in enumerate(taus):
+                    save_list(save_path + '_tau=' + str(tau) + "_tr_LLs", tr_LLs[n])
+                    save_list(save_path + '_tau=' + str(tau) + "_va_LLs", va_LLs[n])
+                    save_list(save_path + '_tau=' + str(tau) + "_te_LLs", te_LLs[n])
 
-            # TODO: save times
-            np.savetxt(save_path + "________________total_runtime=" + str(total_runtime), [total_runtime])
+                # final results (with full evaluation) TODO: EARLY STOPPING!!!
+                #np.savetxt(save_path + "_FINAL_tr_RMSE=" + str(np.round(tr_RMSE, 3)), [tr_RMSE])
+                np.savetxt(save_path + "_FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
+                np.savetxt(save_path + "_FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
+                for n, tau in enumerate(taus):
+                    #np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_tr_LL=" + str(np.round(tr_LL[n], 3)), [tr_LL[n]])
+                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
+                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
 
-            def to_str(times_dict):
-                rval = '____timing____'
-                for k, v in times_dict.items():
-                    rval += k + '_' + str(np.round(v, 3)) + '__'
-                return rval
+                t6 = time.time()
+                times['saving'] = t6 - t5
+                total_runtime = t6 - t0
+            
+                print "total_runtime=", total_runtime
+                print "sum(times.values())", sum(times.values())
+                for k,v in times.items():
+                    print k, np.round(v, 4)
 
-            np.save(save_path + to_str(times), times)
+                # TODO: save times
+                np.savetxt(save_path + "________________total_runtime=" + str(total_runtime), [total_runtime])
+
+                def to_str(times_dict):
+                    rval = '____timing____'
+                    for k, v in times_dict.items():
+                        rval += k + '_' + str(np.round(v, 3)) + '__'
+                    return rval
+
+                np.save(save_path + to_str(times), times)
 
 
 

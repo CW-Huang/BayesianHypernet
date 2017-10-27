@@ -12,12 +12,12 @@ n = data.shape[ 0 ]
 
 # We generate the training test splits
 
-n_splits = 0
+n_splits = 1
 for i in range(n_splits):
 
     permutation = np.random.choice(range(n), n, replace = False)
 
-    end_train = round(n * 9.0 / 10)
+    end_train = int(round(n * 9.0 / 10))
     end_test = n
 
     index_train = permutation[ 0 : end_train ]

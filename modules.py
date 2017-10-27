@@ -9,7 +9,7 @@ import theano
 import theano.tensor as T
 import numpy as np
 floatX = theano.config.floatX
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import lasagne
 from lasagne import init
 from lasagne import nonlinearities
@@ -1086,6 +1086,7 @@ if __name__ == '__main__':
         density = U(prior_noise)
         f0 = theano.function([prior_noise],density)
         
+        """
         fig = plt.figure()
         
         ax = fig.add_subplot(1,2,1)
@@ -1107,6 +1108,7 @@ if __name__ == '__main__':
         plt.xlim((-10,10))
         plt.ylim((-10,10))
         plt.axis('off')
+        """
         
         
         #plt.savefig('autoregressive_ex_toroid.jpg')

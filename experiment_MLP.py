@@ -6,10 +6,9 @@ Created on Sun May 14 19:49:51 2017
 @author: Chin-Wei
 """
 
-from BHNs import MLPWeightNorm_BHN
 #from concrete_dropout import MLPConcreteDropout_BHN
 from ops import load_mnist
-from utils import log_normal, log_laplace, train_model, evaluate_model
+from utils import train_model, evaluate_model
 import numpy as np
 
 import lasagne
@@ -25,10 +24,10 @@ from FGS_eval import evaluate as adv_evaluate
 
 lrdefault = 1e-3    
     
-class MCdropout_MLP(object):
+class MLP(object):
 
     def __init__(self,n_hiddens,n_units, n_inputs=784,
-                 clip_output=True):
+                 clip_output=False):
         
         layer = lasagne.layers.InputLayer([None,n_inputs])
         
@@ -47,19 +46,19 @@ class MCdropout_MLP(object):
                 layer,ws[1],
                 nonlinearity=lasagne.nonlinearities.rectify
             )
-            if j!=len(self.weight_shapes)-1:
-                layer = lasagne.layers.dropout(layer)
-        
+
         layer.nonlinearity = lasagne.nonlinearities.softmax
         self.input_var = T.matrix('input_var')
         self.target_var = T.matrix('target_var')
         self.learning_rate = T.scalar('leanring_rate')
         
         self.layer = layer
-        self.y = T.clip(lasagne.layers.get_output(layer,self.input_var),
-                        0.001, 0.999)
-        self.y_unclipped = lasagne.layers.get_output(layer,self.input_var)
-        
+        if clip_output:
+            self.y = T.clip(lasagne.layers.get_output(layer,self.input_var),
+                            0.001, 0.999)
+        else:
+            self.y = lasagne.layers.get_output(layer,self.input_var)
+            
         self.y_det = lasagne.layers.get_output(layer,self.input_var,
                                                deterministic=True)
         self.output_var = self.y # aliasing
@@ -108,39 +107,86 @@ class MCdropout_MLP(object):
         return notes
 
 
+        
+
+               
+def fgm_grad(x, prediction, y):
+    loss = T.nnet.categorical_crossentropy(prediction,y)    
+    grad = T.grad(loss.mean(), x)
+    return theano.function([x,y],grad)
     
+
+def evaluate_save(X,Y,predict_proba,
+                  input_var,target_var,prediction,
+                  eps=[0,0.001,0.002,0.003,0.004,0.005,0.008,0.01,0.012,0.015,
+                       0.02,0.025,0.03,0.04,0.05,0.075,0.1,0.15,0.2,0.3,0.5],
+                  max_n=100,n_classes=10,
+                  save_dir='.'):
+    
+    print 'compiling attacker ...'
+
+    grad = fgm_grad(input_var,prediction,target_var)
+    
+    def att(x,y,ep):
+        grads = grad(x,y)
+        signed = np.sign(grads)
+        return x + ep * signed
+    
+    
+    N = X.shape[0]
+    num_batches = np.ceil(N / float(max_n)).astype(int)
+    
+    def per_ep(ep):
+        Xa = np.zeros(X.shape,dtype='float32')
+        for j in range(num_batches):
+            x = X[j*max_n:(j+1)*max_n]
+            y = Y[j*max_n:(j+1)*max_n]
+            xa = att(x,y,ep)
+            Xa[j*max_n:(j+1)*max_n] = xa
+        
+        pred = np.zeros((X.shape[0],n_classes),dtype='float32')    
+        for j in range(num_batches):
+            x = Xa[j*max_n:(j+1)*max_n]
+            pred[j*max_n:(j+1)*max_n] = predict_proba(x)
+    
+        Y_proba = pred
+        
+        # generalization
+        Y_pred = Y_proba.argmax(-1)
+        Y_true = Y.argmax(-1)
+        corr = np.equal(Y_pred,Y_true)
+        return ep, corr.mean(), Xa
+    
+    for ep in eps:
+        
+        ep, corr, Xa = per_ep(ep)
+        
+        print ep, corr
+        np.save('{}/{}'.format(save_dir,ep),Xa)
+        
+        
+        
 if __name__ == '__main__':
     
     import argparse
     
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--perdatapoint',default=0,type=int)
     parser.add_argument('--lrdecay',default=0,type=int)      
     parser.add_argument('--lr0',default=0.0001,type=float)  
-    parser.add_argument('--coupling',default=0,type=int) 
-    parser.add_argument('--lbda',default=1,type=float)  
     parser.add_argument('--size',default=2000,type=int)      
     parser.add_argument('--bs',default=32,type=int)  
     parser.add_argument('--epochs',default=10,type=int)
-    parser.add_argument('--prior',default='log_normal',type=str)
-    parser.add_argument('--model',default='BHN_MLPWN',type=str, 
-                        choices=['BHN_MLPWN', 'BHN_MLPCD', 'MCdropout_MLP','MCdropout_MLP_NC']) 
+    parser.add_argument('--model',default='MLP',type=str, 
+                        choices=['MLP','MLP_NC']) 
                         # TODO: concrete dropout
-    parser.add_argument('--anneal',default=0,type=int)
     parser.add_argument('--n_hiddens',default=1,type=int)
     parser.add_argument('--n_units',default=200,type=int)
     parser.add_argument('--totrain',default=1,type=int)
     parser.add_argument('--adv_eval',default=1,type=int)
-    parser.add_argument('--avg',default=1,type=int)
     parser.add_argument('--seed',default=427,type=int)
     parser.add_argument('--override',default=1,type=int)
-    parser.add_argument('--reinit',default=1,type=int)
-    parser.add_argument('--flow',default='RealNVP',type=str, 
-                        choices=['RealNVP', 'IAF'])
-    parser.add_argument('--alpha',default=2, type=float)
-    parser.add_argument('--beta',default=1, type=float)
-    parser.add_argument('--save_dir',default='./models',type=str)
+    parser.add_argument('--save_dir',default='./models_MLP',type=str)
     
     
     args = parser.parse_args()
@@ -151,61 +197,34 @@ if __name__ == '__main__':
     np.random.seed(args.seed+1000)
 
     
-    if args.prior == 'log_normal':
-        pr = 0
-    if args.prior == 'log_laplace':
-        pr = 1
     
-    
-    if args.model == 'BHN_MLPCD':
-        md = 2
-    if args.model == 'BHN_MLPWN':
-        md = 0
-    if args.model == 'MCdropout_MLP':
+    if args.model == 'MLP':
         md = 1
-    if args.model == 'MCdropout_MLP_NC':
-        md = 3
+    if args.model == 'MLP_NC':
+        md = 2
     
     
     path = args.save_dir
     if not os.path.exists(path):
         os.makedirs(path)
 
-    name = '{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}alpha{}beta{}flow{}'.format(
+    name = '{}/mnistWN_md{}nh{}nu{}lr0{}lrd{}s{}seed{}'.format(
         path,
         md,
         args.n_hiddens,
         args.n_units,
-        args.coupling,
-        pr,
-        args.lbda,
         args.lr0,
         args.lrdecay,
-        args.anneal,
         args.size,
         args.seed,
-        args.reinit,
-        args.alpha,
-        args.beta,
-        args.flow
     )
 
-    coupling = args.coupling
-    perdatapoint = args.perdatapoint
     lrdecay = args.lrdecay
     lr0 = args.lr0
-    lbda = np.cast['float32'](args.lbda)
     bs = args.bs
     epochs = args.epochs
     n_hiddens = args.n_hiddens
     n_units = args.n_units
-    anneal = args.anneal
-    if args.prior=='log_normal':
-        prior = log_normal
-    elif args.prior=='log_laplace':
-        prior = log_laplace
-    else:
-        raise Exception('no prior named `{}`'.format(args.prior))
     size = max(10,min(50000,args.size))
     
     if os.path.isfile('/data/lisa/data/mnist.pkl.gz'):
@@ -221,40 +240,14 @@ if __name__ == '__main__':
 
     train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
     
-    if args.reinit:
-        init_batch_size = min(64, size)
-        init_batch = train_x[:size][-init_batch_size:].reshape(init_batch_size,784)
-    else:
-        init_batch = None
         
-    if args.model == 'BHN_MLPWN':
-        model = MLPWeightNorm_BHN(lbda=lbda,
-                                  perdatapoint=perdatapoint,
-                                  srng = RandomStreams(seed=args.seed+2000),
-                                  prior=prior,
-                                  coupling=coupling,
-                                  n_hiddens=n_hiddens,
-                                  n_units=n_units,
-                                  flow=args.flow,
-                                  init_batch=init_batch)
-    elif args.model == 'BHN_MLPCD':
-        model = MLPConcreteDropout_BHN(lbda=lbda,
-                                  alpha=args.alpha,
-                                  beta=args.beta,
-                                  perdatapoint=perdatapoint,
-                                  srng = RandomStreams(seed=args.seed+2000),
-                                  prior=prior,
-                                  coupling=coupling,
-                                  n_hiddens=n_hiddens,
-                                  n_units=n_units,
-                                  flow=args.flow,
-                                  init_batch=init_batch)
-    elif args.model == 'MCdropout_MLP':
-        model = MCdropout_MLP(n_hiddens=n_hiddens,
-                              n_units=n_units)
-    elif args.model == 'MCdropout_MLP_NC':
-        model = MCdropout_MLP(n_hiddens=n_hiddens,
-                              n_units=n_units,clip_output=False)
+    
+    if args.model == 'MLP':
+        model = MLP(n_hiddens=n_hiddens,
+                    n_units=n_units)
+    elif args.model == 'MLP_NC':
+        model = MLP(n_hiddens=n_hiddens,
+                    n_units=n_units,clip_output=False)
     else:
         raise Exception('no model named `{}`'.format(args.model))
 
@@ -278,7 +271,7 @@ if __name__ == '__main__':
         train_model(model,
                     train_x[:size],train_y[:size],
                     valid_x,valid_y,
-                    lr0,lrdecay,bs,epochs,anneal,name,
+                    lr0,lrdecay,bs,epochs,0,name,
                     e0,rec,print_every=999999)
     else:
         print '\nno training'
@@ -305,13 +298,13 @@ if __name__ == '__main__':
 
         
     if args.adv_eval == 1:
-        results = adv_evaluate(test_x,
-                               test_y,
-                               model.predict_proba,
-                               model.input_var,
-                               model.target_var,
-                               model.y_unclipped,
-                               avg=args.avg)
+        results = evaluate_save(test_x,
+                                test_y,
+                                model.predict_proba,
+                                model.input_var,
+                                model.target_var,
+                                model.y,
+                                save_dir=path)
         
         np.save(name+'_adv',results)
         

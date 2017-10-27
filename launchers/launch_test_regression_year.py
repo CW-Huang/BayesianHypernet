@@ -68,7 +68,7 @@ else: # TODO: SLURM
     #assert False
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
     #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
-    job_prefix += 'sbatch --gres=gpu --mem=4000 --qos=high -t 0-' + str(hours_per_job)
+    job_prefix += 'sbatch --gres=gpu --mem=10000 --qos=high -t 0-' + str(hours_per_job)
 
 
 # --------------------------------------------------
@@ -84,7 +84,7 @@ job_prefix += exp_script
 
 
 model_strs = []
-model_strs += [" --model=MCD --drop_prob=.01", "--model=BHN --flow=IAF --coupling=4"]
+model_strs += [" --model=MCD --drop_prob=.01", " --model=BHN --flow=IAF --coupling=4"]
 
 
 grid = [] 
@@ -93,7 +93,7 @@ grid += [["lbda", 100.**np.arange(-3,2)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
 grid += [['dataset', ['year']]]
 grid += [['n_units', ['100']]]
-grid += [['epochs', ['200']]]
+grid += [['epochs', ['100']]]
 grid += [['split', range(1)]]
 
 #
