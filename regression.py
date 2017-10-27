@@ -177,8 +177,6 @@ def evaluate_model(predict,X,Y,
     if y_mean is not None:
         MCt += y_mean
 
-    import ipbd; ipdb.set_trace()
-
     LLs = [ get_LL(MCt, Y, tau) for tau in taus]
     y_hat = MCt.mean(0)
     RMSE = rmse(y_hat, Y)
