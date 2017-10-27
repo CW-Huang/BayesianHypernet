@@ -19,8 +19,8 @@ Toy regression example
 import numpy as np
 import matplotlib.pyplot as plt
 from BHNs import Base_BHN
-from modules import LinearFlowLayer, IndexLayer, PermuteLayer, ReverseLayer, NormalizingPlanarFlowLayer
-from modules import CoupledDenseLayer, stochasticDenseLayer2, stochasticDenseLayer
+#from modules import LinearFlowLayer, IndexLayer, PermuteLayer, ReverseLayer, NormalizingPlanarFlowLayer
+#from modules import CoupledDenseLayer, stochasticDenseLayer2, stochasticDenseLayer
 from utils import log_normal, log_laplace
 import theano
 import theano.tensor as T
@@ -247,6 +247,7 @@ elif DATASET == 'identity':
     t = f(x)
     # 
     n_ = 1000
+    assert False
     f_ = lambda x: (1*x)
     xx = np.linspace(4,15,n_).astype(floatX).reshape(n_,1)
     yy = f_(xx)
