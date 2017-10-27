@@ -211,6 +211,7 @@ if __name__ == '__main__':
     parser.add_argument('--reinit',default=1,type=int)
     # 
     parser.add_argument('--dataset',default='airfoil',type=str, choices=['airfoil', 'parkinsons'] + ['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year'])
+    parser.add_argument('--train_on_valid',default=0, type=int, help="whether to train on the validation set")
     parser.add_argument('--data_path',default=None, type=str)
     parser.add_argument('--flow',default='IAF',type=str, choices=['RealNVP', 'IAF'])
     parser.add_argument('--save_dir',default=None, type=str)
@@ -223,6 +224,7 @@ if __name__ == '__main__':
     parser.add_argument('--fname',default=None, type=str) # override this for launching with SLURM!!!
     parser.add_argument('--split',default=0, type=str) # TODO: , help="defaults to None, in which case this script will launch a copy of itself on ALL of the available splits")
     parser.add_argument('--eval_only',default=0, type=int, help="just run the final evaluation, NO training!")
+    #parser.add_argument('--analyze',default=0, type=int, help="just run the final evaluation, NO training!")
 
     #parser.add_argument('--save_results',default='./results/',type=str)
     
@@ -278,6 +280,11 @@ if __name__ == '__main__':
     # 
     if 1:
         input_dim, tr_x, tr_y, va_x, va_y, te_x, te_y, y_mean, y_std = get_regression_dataset(dataset, split, data_path=data_path)
+        if train_on_valid:
+            print tr_x.shape
+            tr_x = np.concatenate((tr_x, va_x), axis=0)
+            print tr_x.shape
+            tr_y = np.concatenate((tr_y, va_y), axis=0)
         if model == 'MCD':
             #lbda = get_lbda(tau, length_scale, drop_prob)
             #print drop_prob, lbda
@@ -311,6 +318,7 @@ if __name__ == '__main__':
         if eval_only:
             network.load(save_path + '_final.npy')
             print "skipping training (eval_only=1)"
+            t4 = time.time()
 
         else:
             print "begin training"
