@@ -9,6 +9,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
 parser.add_argument('--hours_per_job', type=int, default=10, help="expected run time, in hours")
+parser.add_argument('--eval_only', type=int, default=0)
 parser.add_argument('--train_on_valid', type=int, default=0)
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
