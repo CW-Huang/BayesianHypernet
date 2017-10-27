@@ -91,8 +91,7 @@ job_prefix += exp_script
 
 
 model_strs = []
-# FIXME: missing space!
-model_strs += [" --model=MCD --drop_prob=.01", "--model=BHN --flow=IAF --coupling=4"]
+model_strs += [" --model=MCD --drop_prob=.01", " --model=BHN --flow=IAF --coupling=4"]
 
 
 grid = [] 
