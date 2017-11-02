@@ -8,7 +8,7 @@ import subprocess
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
-#parser.add_argument('--hours_per_job', type=int, default=3, help="expected run time, in hours")
+parser.add_argument('--eval_only', type=int, default=0)
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
 
@@ -54,11 +54,13 @@ def test():
 # --------------------------------------------------
 
 
-job_prefix = ""
 
-# TODO
-if subprocess.check_output("hostname").startswith("hades"):
-    job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
+job_prefix = "python "
+
+
+# # TODO
+# if subprocess.check_output("hostname").startswith("hades"):
+#     job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
 
 
 # --------------------------------------------------
@@ -70,7 +72,9 @@ if subprocess.check_output("hostname").startswith("hades"):
 
 
 # TODO
-exp_script = ' $HOME/BayesianHypernetCW/regression.py '
+
+exp_script = '/home/ml/rislam4/Documents/BH_2/Final_BayesianHypernet/BayesianHypernet/regression.py ' 
+
 job_prefix += exp_script
 
 
@@ -84,23 +88,31 @@ model_strs += [" --model=BHN --flow=IAF --coupling=4"]
 grid = [] 
 grid += [["lr0", ['.01']]]
 grid += [["lbda", [1]]]
-grid += [["split", [0]]]
+grid += [["split",  range(20)   ]]
 grid += [["epochs", [100]]]
-grid += [['dataset', ['airfoil', 'parkinsons'] + ['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year --epochs=10']]]
+
+grid += [['dataset',  ['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht']]]
+
+
+
+save_results_dir = '/home/ml/rislam4/Documents/BH_2/Final_BayesianHypernet/BayesianHypernet/regression_final_results/'
+
+
 
 #
 launcher_name = os.path.basename(__file__)
 
+
 job_strs = []
 for settings in grid_search(grid):
     job_str = job_prefix + settings
-    # TODO
-    job_str += " --save_dir=" + os.environ["SAVE_PATH"] + "/" + launcher_name
+    job_str += " --save_dir=" + save_results_dir + "/" + launcher_name
+    if eval_only:
+        job_str += ' --eval_only=1'
     for model_str in model_strs:
         _job_str = job_str + model_str
         print _job_str
         job_strs.append(_job_str)
-
 print "njobs", len(job_strs)
 
 
