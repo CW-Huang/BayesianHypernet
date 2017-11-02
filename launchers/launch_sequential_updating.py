@@ -120,7 +120,7 @@ grid = []
 #
 grid += [["n_hiddens", [1,2]]]
 grid += [["n_units", [200,800]]]
-grid += [["n_splits", 2**(range(13))]
+grid += [["n_splits", 2**np.arange(13)]]
 grid += [["lr", [.01, .003, .001, .0003, .0001, .00003, .00001]]]
 grid += [["random_biases", [0,1]]]
 #grid += [["seed", ['1', '2']]]
