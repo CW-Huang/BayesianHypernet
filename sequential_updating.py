@@ -219,7 +219,7 @@ parser.add_argument('--random_biases', type=int, default=1)
 #parser.add_argument('--optimizer', type=str, default='sgd', choices=['adam', 'momentum', 'sgd'])
 parser.add_argument('--save_dir', type=str, default="./")
 parser.add_argument('--seed', type=int, default=1337)
-parser.add_argument('--verbose', type=int, default=1)
+parser.add_argument('--verbose', type=int, default=0)
 
 
 # ---------------------------------------------------------------

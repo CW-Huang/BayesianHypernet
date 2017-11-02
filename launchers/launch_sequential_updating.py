@@ -112,28 +112,22 @@ else: # TODO: SLURM
 
 
 
-exp_script = ' $HOME/BayesianHypernetCW/experiment_MLP_WN.py '
+exp_script = ' $HOME/BayesianHypernetCW/sequential_updating.py '
 job_prefix += exp_script
 
 
 grid = [] 
-grid += [["coupling", ['4']]]
-grid += [["flow", ['IAF']]]
 #
-grid += [["lr0", ['.001', '.0001']]]
-grid += [["model", ['BHN_MLPCD', 'BHN_MLPWN']]]
-grid += [["noise_distribution", ['spherical_gaussian', 'exponential_MoG']]]
+grid += [["n_hiddens", [1,2]]]
+grid += [["n_units", [200,800]]]
+grid += [["n_splits", 2**(range(13))]
+grid += [["lr", [.01, .003, .001, .0003, .0001, .00003, .00001]]]
+grid += [["random_biases", [0,1]]]
 #grid += [["seed", ['1', '2']]]
 
 # not really a grid...
-grid += [["epochs", ['200']]]
-#grid += [["save", ['1']]]
-#grid += [["beta", ['1', '2', '3']]]
-grid += [["n_hiddens", ['2']]]
-grid += [["n_units", ['800']]]
-grid += [["reinit", ['1']]]
-grid += [["size", ['5000']]]
-grid += [["totrain", ['1']]]
+grid += [["n_epochs", ['500']]]
+grid += [["n_train", [5000]]]
 
 # TODO: savepath should also contain exp_script? 
 #   (actually, we should make a log of everything in a text file or something...)
