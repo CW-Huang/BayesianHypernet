@@ -78,6 +78,7 @@ class Full_BHN(Base_BHN):
                  n_inputs=784,
                  n_classes=10,
                  output_type = 'categorical',
+                 random_biases=1,
                  **kargs):
         
         self.__dict__.update(locals())
@@ -92,7 +93,10 @@ class Full_BHN(Base_BHN):
         else:
             self.weight_shapes = [(n_inputs, n_classes)]
 
-        self.num_params = sum((ws[0]+1)*ws[1] for ws in self.weight_shapes)
+        if self.random_biases:
+            self.num_params = sum((ws[0]+1)*ws[1] for ws in self.weight_shapes)
+        else:
+            self.num_params = sum((ws[0])*ws[1] for ws in self.weight_shapes)
         
         super(Full_BHN, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
@@ -125,16 +129,26 @@ class Full_BHN(Base_BHN):
         p_net = lasagne.layers.InputLayer([None,self.n_inputs])
         inputs = {p_net:self.input_var}
         for ws in self.weight_shapes:
-            num_param = (ws[0]+1) * ws[1]
-            weight_and_bias = self.weights[:,t:t+num_param]#.reshape((self.wd1,ws[0], ws[1]))
-            weight = weight_and_bias[:,:ws[0]*ws[1]].reshape((self.wd1, ws[0], ws[1]))
-            bias = weight_and_bias[:,ws[0]*ws[1]:].reshape((self.wd1, ws[1]))
-            #bias = weight_and_bias[:,ws[0]*ws[1]:].reshape((ws[1],))
-            w_layer = lasagne.layers.InputLayer((None,ws[0]*ws[1]))
-            inputs[w_layer] = weight
-            b_layer = lasagne.layers.InputLayer((None,ws[1]))
-            inputs[b_layer] = bias
-            p_net = modules.stochasticDenseLayerWithBias([p_net, w_layer, b_layer], num_units=self.n_units)
+            if self.random_biases:
+                num_param = (ws[0]+1) * ws[1]
+                weight_and_bias = self.weights[:,t:t+num_param]#.reshape((self.wd1,ws[0], ws[1]))
+                weight = weight_and_bias[:,:ws[0]*ws[1]].reshape((self.wd1, ws[0], ws[1]))
+                w_layer = lasagne.layers.InputLayer((None,ws[0]*ws[1]))
+                inputs[w_layer] = weight
+                bias = weight_and_bias[:,ws[0]*ws[1]:].reshape((self.wd1, ws[1]))
+                b_layer = lasagne.layers.InputLayer((None,ws[1]))
+                inputs[b_layer] = bias
+                p_net = modules.stochasticDenseLayerWithBias([p_net, w_layer, b_layer], num_units=ws[1])
+            else:
+                num_param = (ws[0]) * ws[1]
+                weight_and_bias = self.weights[:,t:t+num_param]#.reshape((self.wd1,ws[0], ws[1]))
+                weight = weight_and_bias[:,:ws[0]*ws[1]].reshape((self.wd1, ws[0], ws[1]))
+                w_layer = lasagne.layers.InputLayer((None,ws[0]*ws[1]))
+                inputs[w_layer] = weight
+                #bias = weight_and_bias[:,ws[0]*ws[1]:].reshape((self.wd1, ws[1]))
+                #b_layer = lasagne.layers.InputLayer((None,ws[1]))
+                #inputs[b_layer] = bias
+                p_net = modules.stochasticDenseLayer([p_net, w_layer], num_units=ws[1])
 
             #print p_net.output_shape
             t += num_param
@@ -193,10 +207,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--bs', type=int, default=32)
 parser.add_argument('--lr', type=float, default=.001)
 #
-parser.add_argument('--n_epochs', type=int, default=10)
+parser.add_argument('--n_epochs', type=int, default=11)
+parser.add_argument('--n_hiddens', type=int, default=1)
+parser.add_argument('--n_units', type=int, default=200)
 parser.add_argument('--n_splits', type=int, default=1)
 parser.add_argument('--n_train', type=int, default=5000)
 parser.add_argument('--n_valid', type=int, default=1000) # using less examples so it's faster
+#
+parser.add_argument('--random_biases', type=int, default=1)
 
 #parser.add_argument('--optimizer', type=str, default='sgd', choices=['adam', 'momentum', 'sgd'])
 parser.add_argument('--save_dir', type=str, default="./")
@@ -284,7 +302,10 @@ for split in range(n_splits):
     model = Full_BHN(
                  srng=srng,
                  prior_mean=prior_mean,
-                 prior_log_var=prior_log_var)
+                 prior_log_var=prior_log_var,
+                 n_hiddens=n_hiddens,
+                 n_units=n_units,
+                 random_biases=random_biases)
 
     model.input_var.tag.test_value = train_x[:32]
     model.target_var.tag.test_value = train_x[:32]
@@ -294,6 +315,7 @@ for split in range(n_splits):
                 lr0=lr,lrdecay=0,bs=bs,epochs=n_epochs,
                 #anneal=0,name='0', e0=0,rec=0,
                 save=0,
+                verbose=verbose,
                 print_every=9999999999)
 
     va_accs[split] = va_acc

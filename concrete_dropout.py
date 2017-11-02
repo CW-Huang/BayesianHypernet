@@ -129,8 +129,10 @@ class MLPConcreteDropout_BHN(Base_BHN):
                  n_hiddens=1,
                  n_units=200,
                  n_classes=10,
+                 noise_distribution='spherical_gaussian',
                  **kargs):
         
+        self.__dict__.update(locals())
         self.n_hiddens = n_hiddens
         self.n_units = n_units
         self.n_classes = n_classes
@@ -156,8 +158,12 @@ class MLPConcreteDropout_BHN(Base_BHN):
     
     def _get_hyper_net(self):
         # inition random noise
-        ep = self.srng.normal(size=(self.wd1,
-                                    self.num_params),dtype=floatX) # why doesn't that work?
+        if self.noise_distribution == 'spherical_gaussian':
+            self.ep = self.srng.normal(size=(self.wd1,
+                                    self.num_params),dtype=floatX)
+        elif self.noise_distribution == 'exponential_MoG':
+            self.ep = self.srng.normal(size=(self.wd1, self.num_params), dtype=floatX)
+            self.ep += 2 * self.srng.binomial(size=(self.wd1, self.num_params), dtype=floatX) - 1
         logdets_layers = []
         h_net = lasagne.layers.InputLayer([None,self.num_params])
         
@@ -179,9 +185,9 @@ class MLPConcreteDropout_BHN(Base_BHN):
                 logdets_layers.append(IndexLayer(layer_temp,1))
         
         self.h_net = h_net
-        self.logits = lasagne.layers.get_output(h_net,ep)
+        self.logits = lasagne.layers.get_output(h_net,self.ep)
         self.drop_probs = T.nnet.sigmoid(self.logits)
-        self.logdets = sum([lasagne.layers.get_output(ld,ep) for ld in logdets_layers])
+        self.logdets = sum([lasagne.layers.get_output(ld,self.ep) for ld in logdets_layers])
         # TODO: test this!
         self.logdets += T.log(T.grad(T.sum(self.drop_probs), self.logits)).sum()
         self.logqw = - self.logdets

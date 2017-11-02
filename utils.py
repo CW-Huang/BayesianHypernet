@@ -136,6 +136,7 @@ def shuffle(X,Y):
 def train_model(model,X,Y,Xv,Yv,
                 lr0=0.001,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
                 e0=0,rec=0,print_every=100,v_mc=20,n_classes=10,toshuffle=False,
+                verbose=False,
                 save=1):
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
@@ -179,6 +180,10 @@ def train_model(model,X,Y,Xv,Yv,
                 #print '\tvalid acc: {}'.format(va_acc)
             t+=1
         
+        if verbose:
+            tr_acc = evaluate_model(model.predict_proba,X,Y,n_mc=v_mc,
+                                    n_classes=n_classes)
+            print '\n\ntr acc at epochs {}: {}'.format(e,tr_acc)    
         va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=v_mc,
                                 n_classes=n_classes)
         print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    

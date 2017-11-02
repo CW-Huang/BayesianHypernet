@@ -139,6 +139,7 @@ if __name__ == '__main__':
     parser.add_argument('--flow',default='RealNVP',type=str, 
                         choices=['RealNVP', 'IAF'])
     parser.add_argument('--noise_distribution',default='spherical_gaussian',type=str)
+    # alpha > beta  ==>  we prefer units to have high dropout probability
     parser.add_argument('--alpha',default=2, type=float)
     parser.add_argument('--beta',default=1, type=float)
     parser.add_argument('--save_dir',default='./models',type=str)
@@ -251,6 +252,7 @@ if __name__ == '__main__':
                                   n_hiddens=n_hiddens,
                                   n_units=n_units,
                                   flow=args.flow,
+                                  noise_distribution=args.noise_distribution,
                                   init_batch=init_batch)
     elif args.model == 'MCdropout_MLP':
         model = MCdropout_MLP(n_hiddens=n_hiddens,
