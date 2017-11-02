@@ -585,6 +585,36 @@ class stochasticDenseLayer(lasagne.layers.base.MergeLayer):
         return self.nonlinearity(activation)
 
     
+class stochasticDenseLayerWithBias(lasagne.layers.base.MergeLayer):
+    
+    def __init__(self, incomings, num_units, 
+                 b=None, nonlinearity=nonlinearities.rectify,
+                 num_leading_axes=1, **kwargs):
+        super(stochasticDenseLayerWithBias, self).__init__(incomings, **kwargs)
+        self.nonlinearity = (nonlinearities.identity if nonlinearity is None
+                             else nonlinearity)
+        self.num_units = num_units
+        
+    def get_output_shape_for(self,input_shapes):
+        input_shape = input_shapes[0]
+        weight_shape = input_shapes[1]
+        try:
+            return (input_shape[0], weight_shape[2])
+        except:
+            return (input_shape[0], weight_shape[1])
+        
+    def get_output_for(self, inputs, **kwargs):
+        """
+        inputs[0].shape = (None, num_inputs)
+        inputs[1].shape = (None/1, num_inputs, num_units)
+        """
+        input = inputs[0]
+        W = inputs[1]
+        b = inputs[2]
+        activation = T.sum(input.dimshuffle(0,1,'x') * W, axis = 1) + b
+        return self.nonlinearity(activation)
+
+    
 
 class stochasticDenseLayer2(lasagne.layers.base.MergeLayer):
     """

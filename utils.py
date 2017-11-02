@@ -135,7 +135,8 @@ def shuffle(X,Y):
     
 def train_model(model,X,Y,Xv,Yv,
                 lr0=0.001,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
-                e0=0,rec=0,print_every=100,v_mc=20,n_classes=10,toshuffle=False):
+                e0=0,rec=0,print_every=100,v_mc=20,n_classes=10,toshuffle=False,
+                save=1):
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
@@ -144,6 +145,10 @@ def train_model(model,X,Y,Xv,Yv,
     va_recs = list()
     tr_recs = list()
     
+    # DK Nov1
+    rval = None
+    va_accs = []
+
     t = 0
     for e in range(epochs):
         
@@ -179,22 +184,28 @@ def train_model(model,X,Y,Xv,Yv,
         print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
         
         va_recs.append(va_acc)
+        va_accs.append(va_acc)
         
-        if va_acc > rec:
-            print '.... save best model .... '
-            model.save(save_path,[e])
-            rec = va_acc
-    
-            with open(va_rec_name,'a') as rec_file:
-                for r in va_recs:
-                    rec_file.write(str(r)+'\n')
-            
-            va_recs = list()
+        if save:
+            if va_acc > rec:
+                print '.... save best model .... '
+                model.save(save_path,[e])
+                rec = va_acc
+        
+                with open(va_rec_name,'a') as rec_file:
+                    for r in va_recs:
+                        rec_file.write(str(r)+'\n')
+                
+                va_recs = list()
+        else:
+            rval = va_accs
             
         print '\n\n'
         
         if toshuffle:
             X, Y = shuffle(X,Y)
+
+    return rval
 
 
 def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100,n_classes=10):
