@@ -292,6 +292,7 @@ class MLPWeightNorm_BHN(Base_BHN):
                  n_inputs=784,
                  n_classes=10,
                  output_type = 'categorical',
+                 noise_distribution='spherical_gaussian',
                  **kargs):
         
         self.__dict__.update(locals())
@@ -313,8 +314,12 @@ class MLPWeightNorm_BHN(Base_BHN):
     
     def _get_hyper_net(self):
         # inition random noise
-        self.ep = self.srng.normal(size=(self.wd1,
+        if self.noise_distribution == 'spherical_gaussian':
+            self.ep = self.srng.normal(size=(self.wd1,
                                     self.num_params),dtype=floatX)
+        elif self.noise_distribution == 'exponential_MoG':
+            self.ep = self.srng.normal(size=(self.wd1, self.num_params), dtype=floatX)
+            self.ep += 2 * self.srng.binomial(size=(self.wd1, self.num_params), dtype=floatX) - 1
         logdets_layers = []
         h_net = lasagne.layers.InputLayer([None,self.num_params])
         
