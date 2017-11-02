@@ -58,7 +58,7 @@ def KL(prior_mean, prior_log_var, posterior_mean, posterior_log_var, delta=.001)
     """
     prior_var = T.exp(prior_log_var) + delta
     posterior_var = T.exp(posterior_log_var) + delta
-    return T.log(prior_var) - T.log(posterior_var) + (posterior_var**2 + (prior_mean - posterior_mean)**2) / 2. / prior_var**2  - .5
+    return .5 * (T.log(prior_var) - T.log(posterior_var) + (posterior_var + (prior_mean - posterior_mean)**2) / prior_var  - 1)
 
 
 class Full_BHN(Base_BHN):
@@ -79,12 +79,16 @@ class Full_BHN(Base_BHN):
                  n_classes=10,
                  output_type = 'categorical',
                  random_biases=1,
+                 weight=1.,# the weight of the KL term
                  **kargs):
         
         self.__dict__.update(locals())
         assert coupling == 0# TODO
 
-        self.weight_shapes = list()        
+
+
+        self.weight_shapes = []
+
         if n_hiddens > 0:
             self.weight_shapes.append((n_inputs,n_units))
             for i in range(1,n_hiddens):
@@ -114,7 +118,8 @@ class Full_BHN(Base_BHN):
         h_net = lasagne.layers.InputLayer([None,self.num_params])
         
         # mean and variation of the initial noise
-        layer_temp = LinearFlowLayer(h_net)
+        #layer_temp = LinearFlowLayer(h_net, W=init.Normal(0.01,-7))
+        layer_temp = LinearFlowLayer(h_net, b=init.Normal(.01), W=init.Normal(0.000000000001,-22))
         self.mean = layer_temp.b
         self.log_var = layer_temp.W
         self.delta = .001 # default value from modules.py
@@ -168,8 +173,8 @@ class Full_BHN(Base_BHN):
         else:
             assert False
 
-    # TODO
     def _get_elbo(self):
+        # NTS: is KL waaay too big??
         self.kl = KL(self.prior_mean, self.prior_log_var,
                      self.mean, self.log_var).sum(-1).mean()
 
@@ -186,7 +191,7 @@ class Full_BHN(Base_BHN):
         params = self.params
         ds = self.dataset_size
         self.logpyx_grad = flatten_list(T.grad(-self.logpyx, params, disconnected_inputs='warn')).norm(2)
-        self.monitored = [self.logpyx, self.kl]
+        self.monitored = [self.logpyx, self.logpyx_grad, self.kl]#, self.target_var]
 
         
     def _get_useful_funcs(self):
@@ -194,6 +199,12 @@ class Full_BHN(Base_BHN):
         self.predict = theano.function([self.input_var],self.y.argmax(1))
         self.predict_fixed_mask = theano.function([self.input_var, self.weights],self.y)
         self.sample_weights = theano.function([], self.weights)
+        self.monitor_fn = theano.function([self.input_var, self.target_var], self.monitored)#, (self.predict(x) == y).sum()
+        
+    def monitor_fn(self, x, y):
+        rval = self.monitor_fn(x,y)
+        print "logpyx, kl, acc = ", rval
+        return rval 
     
 
 # ---------------------------------------------------------------
@@ -204,22 +215,24 @@ import numpy
 np = numpy
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--bs', type=int, default=32)
+parser.add_argument('--bs', type=int, default=64)
 parser.add_argument('--lr', type=float, default=.001)
 #
 parser.add_argument('--n_epochs', type=int, default=11)
 parser.add_argument('--n_hiddens', type=int, default=1)
-parser.add_argument('--n_units', type=int, default=200)
+parser.add_argument('--n_units', type=int, default=50)
 parser.add_argument('--n_splits', type=int, default=1)
-parser.add_argument('--n_train', type=int, default=5000)
-parser.add_argument('--n_valid', type=int, default=1000) # using less examples so it's faster
+parser.add_argument('--n_train', type=int, default=2000)
+parser.add_argument('--n_valid', type=int, default=100) # using less examples so it's faster
 #
 parser.add_argument('--random_biases', type=int, default=1)
 
 #parser.add_argument('--optimizer', type=str, default='sgd', choices=['adam', 'momentum', 'sgd'])
 parser.add_argument('--save_dir', type=str, default="./")
-parser.add_argument('--seed', type=int, default=1337)
+parser.add_argument('--seed', type=int, default=None)
 parser.add_argument('--verbose', type=int, default=0)
+parser.add_argument('--print_every', type=int, default=999999999)
+parser.add_argument('--kl_weight', type=float, default=1.)
 
 
 # ---------------------------------------------------------------
@@ -274,6 +287,7 @@ else:
     print '\n\tdownloading mnist'
     import download_datasets.mnist
     filename = r'./data/mnist.pkl.gz'
+
 train_x, train_y, valid_x, valid_y, test_x, test_y = load_mnist(filename)
 train_x = train_x[:n_train]
 train_y = train_y[:n_train]
@@ -281,7 +295,7 @@ va_x = valid_x[:n_valid]
 va_y = valid_y[:n_valid]
 
 len_split = n_train / n_splits
-va_accs = np.zeros((n_splits, n_epochs))
+va_accs = np.zeros((n_splits, n_epochs-1))
 # TODO: some analysis...
 #va_means = np.zeros((n_splits, n_epochs))
 
@@ -305,6 +319,7 @@ for split in range(n_splits):
                  prior_log_var=prior_log_var,
                  n_hiddens=n_hiddens,
                  n_units=n_units,
+                 weight=kl_weight,
                  random_biases=random_biases)
 
     model.input_var.tag.test_value = train_x[:32]
@@ -316,7 +331,7 @@ for split in range(n_splits):
                 #anneal=0,name='0', e0=0,rec=0,
                 save=0,
                 verbose=verbose,
-                print_every=9999999999)
+                print_every=print_every)
 
     va_accs[split] = va_acc
 

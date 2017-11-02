@@ -173,7 +173,11 @@ def train_model(model,X,Y,Xv,Yv,
             loss = model.train_func(x,y,N,lr,w)
             
             if t%print_every==0:
-                print 'epoch: {} {}, loss:{}'.format(e,t,loss)
+                if verbose:
+                    print model.monitor_fn(x,y)
+                else:
+                    print 'epoch: {} {}, loss:{}'.format(e,t,loss)
+                    #model.monitor_fn(Xv,Yv)
                 #tr_acc = (model.predict(X)==Y.argmax(1)).mean()
                 #va_acc = (model.predict(Xv)==Yv.argmax(1)).mean()
                 #print '\ttrain acc: {}'.format(tr_acc)
@@ -186,7 +190,8 @@ def train_model(model,X,Y,Xv,Yv,
             print '\n\ntr acc at epochs {}: {}'.format(e,tr_acc)    
         va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=v_mc,
                                 n_classes=n_classes)
-        print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
+        #print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
+        print 'va acc at epochs {}: {}'.format(e,va_acc)    
         
         va_recs.append(va_acc)
         va_accs.append(va_acc)
@@ -205,7 +210,7 @@ def train_model(model,X,Y,Xv,Yv,
         else:
             rval = va_accs
             
-        print '\n\n'
+        #print '\n\n'
         
         if toshuffle:
             X, Y = shuffle(X,Y)
