@@ -137,6 +137,7 @@ def train_model(model,X,Y,Xv,Yv,
                 lr0=0.001,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
                 e0=0,rec=0,print_every=100,v_mc=20,n_classes=10,toshuffle=False,
                 verbose=False,
+                kl_weight=1.0,
                 save=1):
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
@@ -164,7 +165,8 @@ def train_model(model,X,Y,Xv,Yv,
         if anneal:
             w = min(1.0,0.001+e/(epochs/2.))
         else:
-            w = 1.0         
+            #w = 1.0         
+            w = kl_weight#model.weight.eval()
             
         for i in range(N/bs):
             x = X[i*bs:(i+1)*bs]
@@ -231,3 +233,5 @@ def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100,n_classes=10):
     Y_pred = MCt.mean(0).argmax(-1)
     Y_true = Y.argmax(-1)
     return np.equal(Y_pred,Y_true).mean()
+
+
