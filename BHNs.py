@@ -12,6 +12,7 @@ from modules import LinearFlowLayer, IndexLayer, PermuteLayer, SplitLayer, Rever
 from modules import CoupledDenseLayer, ConvexBiasLayer, CoupledWNDenseLayer, \
                     stochasticDenseLayer2, stochasticConv2DLayer, \
                     stochastic_weight_norm
+from modules import MNFLayer
 from modules import *
 from utils import log_normal
 import theano
@@ -272,7 +273,6 @@ class Base_BHN(object):
         gs_.set_value(new_gs*old_gs)
 
     
-    
 
 class MLPWeightNorm_BHN(Base_BHN):
     """
@@ -391,6 +391,182 @@ class MLPWeightNorm_BHN(Base_BHN):
     def sample_qyx(self):
         """ return a function that will make predictions with a fixed random mask"""
         return lambda x : self.predict_fixed_mask(x, self.sample_weights())
+
+
+    
+
+# TODO: implement NF^-1() (_get_flow_r)
+class MNF_MLP_BHN(Base_BHN):
+    """
+    implementation of MNF (TODO)
+    """
+
+    
+    def __init__(self,
+                 lbda=1,
+                 perdatapoint=True, # assert True!
+                 srng = RandomStreams(seed=427),
+                 prior = log_normal,
+                 coupling=True,
+                 n_hiddens=1,
+                 n_units=200,
+                 n_inputs=784,
+                 n_classes=10,
+                 output_type = 'categorical',
+                 **kargs):
+
+        assert perdatapoint
+        
+        self.__dict__.update(locals())
+
+        self.weight_shapes = list()        
+        self.weight_shapes.append((n_inputs,n_units))
+        for i in range(1,n_hiddens):
+            self.weight_shapes.append((n_units,n_units))
+        self.weight_shapes.append((n_units,n_classes))
+        self.num_params = sum(ws[1] for ws in self.weight_shapes)
+        
+        super(MNF_MLP_BHN, self).__init__(lbda=lbda,
+                                                perdatapoint=perdatapoint,
+                                                srng=srng,
+                                                prior=prior,
+                                                output_type = output_type,
+                                                **kargs)
+    
+    
+    def _get_hyper_net(self):
+        # inition random noise
+        self.ep = self.srng.normal(size=(self.wd1,
+                                    self.num_params),dtype=floatX)
+        logdets_layers = []
+        h_net = lasagne.layers.InputLayer([None,self.num_params])
+        
+        # mean and variation of the initial noise
+        layer_temp = LinearFlowLayer(h_net)
+        h_net = IndexLayer(layer_temp,0)
+        logdets_layers.append(IndexLayer(layer_temp,1))
+        
+        if self.flow == 'RealNVP':
+            if self.coupling:
+                layer_temp = CoupledDenseLayer(h_net,200)
+                h_net = IndexLayer(layer_temp,0)
+                logdets_layers.append(IndexLayer(layer_temp,1))
+                for c in range(self.coupling-1):
+                    h_net = PermuteLayer(h_net,self.num_params)
+                    layer_temp = CoupledDenseLayer(h_net,200)
+                    h_net = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        elif self.flow == 'IAF':
+            layer_temp = IAFDenseLayer(h_net,200,1,L=self.coupling,cond_bias=False)
+            h_net = IndexLayer(layer_temp,0)
+            logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
+        
+        self.h_net = h_net
+        self.weights = lasagne.layers.get_output(h_net,self.ep)
+        self.logdets = sum([get_output(ld,self.ep) for ld in logdets_layers])
+        
+        self._get_flow_r()
+
+    # TODO (this should probably operate independently on each weight matrix, given the way the code is implemented so far.... but that might also be easy to change)
+    def _get_flow_r(self):
+	self.z_T_f = self.weights
+        self.z_T_b = 0
+    
+    def _get_primary_net(self):
+        self.mus = []
+        self.sigs = []
+        self.z_T_fs = [] # self.weights, split by layers
+        # TODO: figure out why I can't run at school anymore (DK)  >:( 
+        t = 0#np.cast['int32'](0) # TODO: what's wrong with np.cast
+        p_net = lasagne.layers.InputLayer([None,self.n_inputs])
+        inputs = {p_net:self.input_var}
+        for ws in self.weight_shapes:
+            # using weightnorm reparameterization
+            # only need ws[1] parameters (for rescaling of the weight matrix)
+            num_param = ws[1]
+            w_layer = lasagne.layers.InputLayer((None,num_param))
+            weight = self.weights[:,t:t+num_param].reshape((self.wd1, num_param))
+            inputs[w_layer] = weight
+            self.z_T_fs.append(weight)
+            #p_net = lasagne.layers.DenseLayer(p_net,ws[1])
+            p_net, mu, sig = MNFLayer([p_net,w_layer], num_param)
+            self.mus.append(mu)
+            self.sigs.append(sig)
+            print p_net.output_shape
+            t += num_param
+            
+        if self.output_type == 'categorical':
+            p_net.nonlinearity = nonlinearities.softmax
+            y = T.clip(get_output(p_net,inputs), 0.001, 0.999) # stability
+            self.p_net = p_net
+            self.y = y
+            self.y_unclipped = get_output(p_net,inputs)
+        elif self.output_type == 'real':
+            p_net.nonlinearity = nonlinearities.linear
+            y = get_output(p_net,inputs)
+            self.p_net = p_net
+            self.y = y
+            self.y_unclipped = get_output(p_net,inputs)
+        else:
+            assert False
+
+
+    def _get_elbo(self):
+        """
+        negative elbo, an upper bound on NLL
+        """
+
+        # eqn14
+        kl_q_w_z_p = 0
+        for mu, sig, z_T_f in zip(self.mus, self.sigs, self.z_T_fs):
+            kl_q_w_z_p += (sig**2).sum() - T.log(sig**2).sum() + mu**2 * z_T_f**2 # leaving off the -1
+        kl_q_w_z_p *= 0.5
+
+        # eqn15
+        self.log_r_z_T_f_W = 0
+        # TODO: make self.z_T_bs, self.cs, self.b_mus, self.b_sigs (this can all happen in self._get_flow_r)
+        for mu, sig, z_T_b, c, b_mu, b_sig in zip(self.mus, self.sigs, self.z_T_bs, self.cs, self.b_mus, self.b_sigs): # we'll compute this seperately for every layer's W
+            # reparametrization trick for eqn 9/10 
+            cTW_mu = T.dot(c, mu)
+            cTW_sig = T.dot(c, sig**2)**.5
+            the_scalar = T.tanh(cTW_mu + cTW_sig * self.srng.normal(sig.shape))
+            # scaling b by the_scalar (TODO: check broadcastable is correct)
+            mu_tilde = (b_mu * the_scalar).squeeze()
+            log_sig_tilde = (b_sig * the_scalar).squeeze()
+            self.log_r_z_T_f_W += (-.5 * T.exp(log_sig_tilde) * (z_T_b - mu_tilde)**2 - .5 * T.log(2 * np.pi) + .5 * log_sig_tilde).sum()
+
+        # eqn13
+        self.kl = self.logdets + kl_q_w_z_p - self.log_r_z_T_f_W
+
+        if self.output_type == 'categorical':
+            self.logpyx = - cc(self.y,self.target_var).mean()
+        elif self.output_type == 'real':
+            self.logpyx = - se(self.y,self.target_var).mean()
+        else:
+            assert False
+        self.loss = - (self.logpyx - \
+                       self.weight * self.kl/T.cast(self.dataset_size,floatX))
+
+        # DK - extra monitoring
+        params = self.params
+        ds = self.dataset_size
+        self.monitored = []
+        
+    # TODO: does anything here need to be changed (for implementing MNF)
+    def _get_useful_funcs(self):
+        """
+        # FIXME
+        self.predict_proba = theano.function([self.input_var],self.y, allow_input_downcast=True)
+        self.predict = theano.function([self.input_var],self.y.argmax(1), allow_input_downcast=True)
+        self.predict_fixed_mask = theano.function([self.input_var, self.weights],self.y, allow_input_downcast=True)
+        self.sample_weights = theano.function([], self.weights, allow_input_downcast=True)
+        """
+        self.predict_proba = theano.function([self.input_var],self.y)
+        self.predict = theano.function([self.input_var],self.y.argmax(1))
+        self.predict_fixed_mask = theano.function([self.input_var, self.weights],self.y)
+        self.sample_weights = theano.function([], self.weights)
 
 
 class HyperWN_CNN(Base_BHN):

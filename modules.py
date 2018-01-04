@@ -30,7 +30,9 @@ exp = lambda x: T.exp(x) + delta
 
 delta = 0.001
 
-
+# DK
+from theano.tensor.shared_randomstreams import RandomStreams
+srng = RandomStreams(seed=427)
 
 # TODO: separate primary/hnet layers!
     
@@ -678,6 +680,61 @@ def stochasticConv2DLayer(incomings, num_filters, filter_size, stride=(1, 1),
 
     return layer
     
+        
+# TODO: implement MNF (done?)
+class MNFLayer(lasagne.layers.base.MergeLayer):
+    
+    def __init__(self, incomings, num_units, 
+                 b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
+                 srgn=srng,
+                 W_mu=lasagne.init.Normal(0.05), 
+                 W_sigma=lasagne.init.Normal(0.05), 
+                 num_leading_axes=1, **kwargs):
+        super(MNFLayer, self).__init__(incomings, **kwargs)
+        self.nonlinearity = (nonlinearities.identity if nonlinearity is None
+                             else nonlinearity)
+        self.num_units = num_units
+        self.srng = srng
+        self.W_mu = W_mu
+        self.W_sigma = W_sigma
+        
+        if b is None:
+            self.b = None
+        else:
+            self.b = self.add_param(b, (num_units,), name="stocds_b",
+                                    regularizable=False)
+                                    
+    # TODO: rm?
+    def get_output_shape_for(self,input_shapes):
+        input_shape = input_shapes[0]
+        weight_shape = input_shapes[1]
+        try:
+            return (input_shape[0], weight_shape[2])
+        except:
+            return (input_shape[0], weight_shape[1])
+        
+    def get_output_for(self, inputs, **kwargs):
+        """
+        inputs[0].shape = (None, num_inputs)
+        inputs[1].shape = (None, num_inputs)
+        """
+        input = inputs[0]
+        Z = inputs[1] # Z_{T_f}
+        activation = input * Z
+        mu = T.sum(activation.dimshuffle(0,1,'x') * self.W_mu, axis = 1)
+        sig = T.sum((input**2).dimshuffle(0,1,'x') * self.W_sigma, axis = 1)**.5
+        ep = self.srng.normal(size=var.shape,dtype=floatX)
+        activation = mu + ep * std
+        if self.b is not None:
+            activation = activation + self.b
+        return self.nonlinearity(activation), mu, sig
+
+
+
+
+
+
+
 
 
 
