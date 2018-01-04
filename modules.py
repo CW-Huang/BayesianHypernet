@@ -590,7 +590,7 @@ class stochasticDenseLayer(lasagne.layers.base.MergeLayer):
 class stochasticDenseLayerWithBias(lasagne.layers.base.MergeLayer):
     
     def __init__(self, incomings, num_units, 
-                 b=None, nonlinearity=nonlinearities.rectify,
+                 nonlinearity=nonlinearities.rectify,
                  num_leading_axes=1, **kwargs):
         super(stochasticDenseLayerWithBias, self).__init__(incomings, **kwargs)
         self.nonlinearity = (nonlinearities.identity if nonlinearity is None
@@ -711,28 +711,28 @@ def stochasticConv2DLayer(incomings, num_filters, filter_size, stride=(1, 1),
     return layer
     
         
-# TODO: implement MNF (done?)
+# TODO: implement MNF (done?) 
 class MNFLayer(lasagne.layers.base.MergeLayer):
     
     def __init__(self, incomings, num_units, 
-                 b=init.Constant(0.), nonlinearity=nonlinearities.rectify,
+                 nonlinearity=nonlinearities.rectify,
                  srgn=srng,
                  W_mu=lasagne.init.Normal(0.05), 
-                 W_sigma=lasagne.init.Normal(0.05), 
+                 b_mu=init.Constant(0.), 
+                 W_logsig=lasagne.init.Normal(0.05 * 1e-6, -9), 
+                 b_logsig=lasagne.init.Normal(0.05 * 1e-6, -9),
                  num_leading_axes=1, **kwargs):
         super(MNFLayer, self).__init__(incomings, **kwargs)
         self.nonlinearity = (nonlinearities.identity if nonlinearity is None
                              else nonlinearity)
         self.num_units = num_units
         self.srng = srng
-        self.W_mu = W_mu
-        self.W_sigma = W_sigma
-        
-        if b is None:
-            self.b = None
-        else:
-            self.b = self.add_param(b, (num_units,), name="stocds_b",
-                                    regularizable=False)
+
+        # add params
+        self.W_mu = self.add_param(W_mu, (None, num_units,), name="W_mu", regularizable=False)
+        self.W_logsig = self.add_param(W_logsig, (None, num_units,), name="W_logsig", regularizable=False)
+        self.b_mu = self.add_param(b_mu, (num_units,), name="b_mu", regularizable=False)
+        self.b_logsig = self.add_param(b_logsig, (num_units,), name="b_logsig", regularizable=False)
                                     
     # TODO: rm?
     def get_output_shape_for(self,input_shapes):
@@ -751,13 +751,11 @@ class MNFLayer(lasagne.layers.base.MergeLayer):
         input = inputs[0]
         Z = inputs[1] # Z_{T_f}
         activation = input * Z
-        mu = T.sum(activation.dimshuffle(0,1,'x') * self.W_mu, axis = 1)
-        sig = T.sum((input**2).dimshuffle(0,1,'x') * self.W_sigma, axis = 1)**.5
+        mu = T.sum(activation.dimshuffle(0,1,'x') * self.W_mu, axis = 1) + self.b_mu
+        sig = T.sum((input**2).dimshuffle(0,1,'x') * T.exp(self.W_logsig), axis = 1)**.5 + T.exp(self.b_logsig)
         ep = self.srng.normal(size=var.shape,dtype=floatX)
-        activation = mu + ep * std
-        if self.b is not None:
-            activation = activation + self.b
-        return self.nonlinearity(activation), mu, sig
+        preactivation = mu + ep * std
+        return self.nonlinearity(preactivation), mu, sig
 
 
 
@@ -769,16 +767,24 @@ class MNFLayer(lasagne.layers.base.MergeLayer):
 
 
 class WeightNormLayer(lasagne.layers.Layer):
+    """
+    bias is a new feature I added which allows us to put a posterior over the biases of the model - DK
+    """
     def __init__(self, incoming, b=lasagne.init.Constant(0.), 
                  g=lasagne.init.Constant(1.),
                  W=lasagne.init.Normal(0.05), 
-                 nonlinearity=nonlinearities.rectify, **kwargs):
+                 nonlinearity=nonlinearities.rectify, 
+                 bias=None,
+                 **kwargs):
                      
         super(WeightNormLayer, self).__init__(incoming, **kwargs)
+        self.bias = bias
         self.nonlinearity = nonlinearity
         k = self.input_shape[1]
         if b is not None:
             self.b = self.add_param(b, (k,), name="b", regularizable=False)
+        if bias is not None:
+            self.b = bias
         if type(g) == tv:
             self.g = g
         elif g is not None:
@@ -812,11 +818,13 @@ class WeightNormLayer(lasagne.layers.Layer):
             input /= stdv.dimshuffle(*self.dimshuffle_args)
             self.init_updates = [(self.b, -m/stdv), (self.g, self.g/stdv)]
         elif hasattr(self,'b'):
-            input += self.b.dimshuffle(*self.dimshuffle_args)
+            # FIXME (?): we should do this even if self.bias is not None!? (else we aren't using the random biases!?)
+            if self.bias is None: # else we sample a different bias for each mini-batch (??)
+                input += self.b.dimshuffle(*self.dimshuffle_args)
             
         return self.nonlinearity(input)
         
-def stochastic_weight_norm(layer, weight, **kwargs):
+def stochastic_weight_norm(layer, weight, bias=None, **kwargs):
     nonlinearity = getattr(layer, 'nonlinearity', None)
     if nonlinearity is not None:
         layer.nonlinearity = lasagne.nonlinearities.identity
@@ -825,7 +833,9 @@ def stochastic_weight_norm(layer, weight, **kwargs):
         layer.b = None
         
     layer_out = WeightNormLayer(layer, g = weight,
-                                nonlinearity=nonlinearity, **kwargs)     
+                                nonlinearity=nonlinearity, 
+                                bias=bias,
+                                **kwargs)     
     return layer_out
 
 

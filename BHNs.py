@@ -429,7 +429,7 @@ class MNF_MLP_BHN(Base_BHN):
         for i in range(1,n_hiddens):
             self.weight_shapes.append((n_units,n_units))
         self.weight_shapes.append((n_units,n_classes))
-        self.num_params = sum(ws[1] for ws in self.weight_shapes)
+        self.num_params = sum(ws[0] for ws in self.weight_shapes)
         
         super(MNF_MLP_BHN, self).__init__(lbda=lbda,
                                                 perdatapoint=perdatapoint,
@@ -490,13 +490,14 @@ class MNF_MLP_BHN(Base_BHN):
         for ws in self.weight_shapes:
             # using weightnorm reparameterization
             # only need ws[1] parameters (for rescaling of the weight matrix)
-            num_param = ws[1]
+            num_param = ws[0]
             w_layer = lasagne.layers.InputLayer((None,num_param))
             weight = self.weights[:,t:t+num_param].reshape((self.wd1, num_param))
             inputs[w_layer] = weight
             self.z_T_fs.append(weight)
             #p_net = lasagne.layers.DenseLayer(p_net,ws[1])
-            p_net, mu, sig = MNFLayer([p_net,w_layer], num_param)
+            p_net__ = MNFLayer([p_net,w_layer], num_param) # TODO: better naming
+            p_net, mu, sig = [IndexLayer(p_net__, i) for i in range(3)]
             self.mus.append(mu)
             self.sigs.append(sig)
             print p_net.output_shape
