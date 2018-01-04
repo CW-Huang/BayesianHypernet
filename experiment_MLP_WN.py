@@ -7,7 +7,7 @@ Created on Sun May 14 19:49:51 2017
 """
 
 from BHNs import MLPWeightNorm_BHN
-#from concrete_dropout import MLPConcreteDropout_BHN
+from concrete_dropout import MLPConcreteDropout_BHN
 from ops import load_mnist
 from utils import log_normal, log_laplace, train_model, evaluate_model
 import numpy as np
@@ -138,6 +138,8 @@ if __name__ == '__main__':
     parser.add_argument('--reinit',default=1,type=int)
     parser.add_argument('--flow',default='RealNVP',type=str, 
                         choices=['RealNVP', 'IAF'])
+    parser.add_argument('--noise_distribution',default='spherical_gaussian',type=str)
+    # alpha > beta  ==>  we prefer units to have high dropout probability
     parser.add_argument('--alpha',default=2, type=float)
     parser.add_argument('--beta',default=1, type=float)
     parser.add_argument('--save_dir',default='./models',type=str)
@@ -171,7 +173,7 @@ if __name__ == '__main__':
     if not os.path.exists(path):
         os.makedirs(path)
 
-    name = '{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}alpha{}beta{}flow{}'.format(
+    name = '{}/mnistWN_md{}nh{}nu{}c{}pr{}lbda{}lr0{}lrd{}an{}s{}seed{}reinit{}alpha{}beta{}flow{}noise{}'.format(
         path,
         md,
         args.n_hiddens,
@@ -187,7 +189,8 @@ if __name__ == '__main__':
         args.reinit,
         args.alpha,
         args.beta,
-        args.flow
+        args.flow,
+        args.noise_distribution
     )
 
     coupling = args.coupling
@@ -236,6 +239,7 @@ if __name__ == '__main__':
                                   n_hiddens=n_hiddens,
                                   n_units=n_units,
                                   flow=args.flow,
+                                  noise_distribution=args.noise_distribution,
                                   init_batch=init_batch)
     elif args.model == 'BHN_MLPCD':
         model = MLPConcreteDropout_BHN(lbda=lbda,
@@ -248,6 +252,7 @@ if __name__ == '__main__':
                                   n_hiddens=n_hiddens,
                                   n_units=n_units,
                                   flow=args.flow,
+                                  noise_distribution=args.noise_distribution,
                                   init_batch=init_batch)
     elif args.model == 'MCdropout_MLP':
         model = MCdropout_MLP(n_hiddens=n_hiddens,

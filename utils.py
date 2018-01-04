@@ -135,7 +135,10 @@ def shuffle(X,Y):
     
 def train_model(model,X,Y,Xv,Yv,
                 lr0=0.001,lrdecay=1,bs=20,epochs=50,anneal=0,name='0',
-                e0=0,rec=0,print_every=100,v_mc=20,n_classes=10,toshuffle=False):
+                e0=0,rec=0,print_every=100,v_mc=20,n_classes=10,toshuffle=False,
+                verbose=False,
+                kl_weight=1.0,
+                save=1):
     
     print 'trainset X.shape:{}, Y.shape:{}'.format(X.shape,Y.shape)
     N = X.shape[0]    
@@ -144,6 +147,10 @@ def train_model(model,X,Y,Xv,Yv,
     va_recs = list()
     tr_recs = list()
     
+    # DK Nov1
+    rval = None
+    va_accs = []
+
     t = 0
     for e in range(epochs):
         
@@ -158,7 +165,8 @@ def train_model(model,X,Y,Xv,Yv,
         if anneal:
             w = min(1.0,0.001+e/(epochs/2.))
         else:
-            w = 1.0         
+            #w = 1.0         
+            w = kl_weight#model.weight.eval()
             
         for i in range(N/bs):
             x = X[i*bs:(i+1)*bs]
@@ -167,34 +175,49 @@ def train_model(model,X,Y,Xv,Yv,
             loss = model.train_func(x,y,N,lr,w)
             
             if t%print_every==0:
-                print 'epoch: {} {}, loss:{}'.format(e,t,loss)
+                if verbose:
+                    print model.monitor_fn(x,y)
+                else:
+                    print 'epoch: {} {}, loss:{}'.format(e,t,loss)
+                    #model.monitor_fn(Xv,Yv)
                 #tr_acc = (model.predict(X)==Y.argmax(1)).mean()
                 #va_acc = (model.predict(Xv)==Yv.argmax(1)).mean()
                 #print '\ttrain acc: {}'.format(tr_acc)
                 #print '\tvalid acc: {}'.format(va_acc)
             t+=1
         
+        if verbose:
+            tr_acc = evaluate_model(model.predict_proba,X,Y,n_mc=v_mc,
+                                    n_classes=n_classes)
+            print '\n\ntr acc at epochs {}: {}'.format(e,tr_acc)    
         va_acc = evaluate_model(model.predict_proba,Xv,Yv,n_mc=v_mc,
                                 n_classes=n_classes)
-        print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
+        #print '\n\nva acc at epochs {}: {}'.format(e,va_acc)    
+        print 'va acc at epochs {}: {}'.format(e,va_acc)    
         
         va_recs.append(va_acc)
+        va_accs.append(va_acc)
         
-        if va_acc > rec:
-            print '.... save best model .... '
-            model.save(save_path,[e])
-            rec = va_acc
-    
-            with open(va_rec_name,'a') as rec_file:
-                for r in va_recs:
-                    rec_file.write(str(r)+'\n')
+        if save:
+            if va_acc > rec:
+                print '.... save best model .... '
+                model.save(save_path,[e])
+                rec = va_acc
+        
+                with open(va_rec_name,'a') as rec_file:
+                    for r in va_recs:
+                        rec_file.write(str(r)+'\n')
+                
+                va_recs = list()
+        else:
+            rval = va_accs
             
-            va_recs = list()
-            
-        print '\n\n'
+        #print '\n\n'
         
         if toshuffle:
             X, Y = shuffle(X,Y)
+
+    return rval
 
 
 def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100,n_classes=10):
@@ -210,3 +233,5 @@ def evaluate_model(predict_proba,X,Y,n_mc=100,max_n=100,n_classes=10):
     Y_pred = MCt.mean(0).argmax(-1)
     Y_true = Y.argmax(-1)
     return np.equal(Y_pred,Y_true).mean()
+
+

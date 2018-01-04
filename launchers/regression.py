@@ -45,7 +45,7 @@ times['imports'] = t1 - t0
 
 
 # TODO:
-n_mc = 20
+n_mc = 50
 
 
 """
@@ -73,7 +73,7 @@ def get_LL(y_hat, y, tau):
     # this is eqn (8) from https://arxiv.org/pdf/1506.02142.pdf (Gal)
     n_mc = len(y_hat)
     #print "get_LL... n_mc=", n_mc
-    return (logsumexp(-.5*tau*(y_hat-y)**2, axis=0) - np.log(n_mc) - .5*np.log(2*np.pi) - .5*np.log(tau**-1)).mean()
+    return logsumexp(-.5*tau*(y_hat-y)**2) - np.log(n_mc) - .5*np.log(2*np.pi) - .5*np.log(tau**-1)
 
 
 def train_model(model, save_,save_path,
@@ -121,39 +121,36 @@ def train_model(model, save_,save_path,
             loss = model.train_func(x,y,N,lr,w)
 
          
-        if verbose:
-            if timing:
-                eval_start = time.time()
-            tr_rmse, tr_LL = evaluate_model(model.predict, X, Y, n_mc=n_mc, taus=taus)  
-            va_rmse, va_LL = evaluate_model(model.predict,Xv,Yv, n_mc=n_mc, taus=taus, y_mean=y_mean, y_std=y_std)
-            te_rmse, te_LL = evaluate_model(model.predict,Xt,Yt, n_mc=n_mc, taus=taus, y_mean=y_mean, y_std=y_std)
-            if timing:
-                eval_time += time.time() - eval_start
+        if timing:
+            eval_start = time.time()
+        tr_rmse, tr_LL = evaluate_model(model.predict, X, Y, n_mc=n_mc, taus=taus)  
+        va_rmse, va_LL = evaluate_model(model.predict,Xv,Yv, n_mc=n_mc, taus=taus, y_mean=y_mean, y_std=y_std)
+        te_rmse, te_LL = evaluate_model(model.predict,Xt,Yt, n_mc=n_mc, taus=taus, y_mean=y_mean, y_std=y_std)
+        if timing:
+            eval_time += time.time() - eval_start
 
-            if e % 5 == 0:
-                if 0: #verbose
-                    print '\n'
-                    print 'tr LL at epochs {}: {}'.format(e,tr_LL)    
-                    print 'tr rmse at epochs {}: {}'.format(e,tr_rmse)    
-                print 'va LL at epochs {}: {}'.format(e,va_LL)    
-                #print 'va rmse at epochs {}: {}'.format(e,va_rmse)    
-            
-            tr_RMSEs.append(tr_rmse)
-            va_RMSEs.append(va_rmse)
-            te_RMSEs.append(te_rmse)
-            # 
-            [tr_LLs[n].append(tr_LL[n]) for n, _ in enumerate(taus)]
-            [va_LLs[n].append(va_LL[n]) for n, _ in enumerate(taus)]
-            [te_LLs[n].append(te_LL[n]) for n, _ in enumerate(taus)]
-            
-            for n, tau in enumerate(taus):
-                if va_LL[n] > best_va_LLs[n]:
-                    best_va_LLs[n] = va_LL[n]
-                    if save_:
-                        best_params = [p.get_value() for p in model.params]#save(save_path + '_best_tau=' + str(tau))
+        if e % 5 == 0:
+            if 0: #verbose
+                print '\n'
+                print 'tr LL at epochs {}: {}'.format(e,tr_LL)    
+                print 'tr rmse at epochs {}: {}'.format(e,tr_rmse)    
+            print 'va LL at epochs {}: {}'.format(e,va_LL)    
+            #print 'va rmse at epochs {}: {}'.format(e,va_rmse)    
+        
+        tr_RMSEs.append(tr_rmse)
+        va_RMSEs.append(va_rmse)
+        te_RMSEs.append(te_rmse)
+        # 
+        [tr_LLs[n].append(tr_LL[n]) for n, _ in enumerate(taus)]
+        [va_LLs[n].append(va_LL[n]) for n, _ in enumerate(taus)]
+        [te_LLs[n].append(te_LL[n]) for n, _ in enumerate(taus)]
+        
+        for n, tau in enumerate(taus):
+            if va_LL[n] > best_va_LLs[n]:
+                best_va_LLs[n] = va_LL[n]
+                if save_:
+                    model.save(save_path + '_best_tau=' + str(tau))
 
-    if verbose:
-        np.save(save_path + '_best_tau=' + str(tau), best_params)
 
     if timing:
         train_time = time.time() - start_time - eval_time
@@ -192,7 +189,7 @@ def evaluate_model(predict,X,Y,
 if __name__ == '__main__':
     
 
-    taus = 10.**np.arange(-3,6)
+    taus = 10.**np.arange(-1,6)
 
     import argparse
     
@@ -214,7 +211,6 @@ if __name__ == '__main__':
     parser.add_argument('--reinit',default=1,type=int)
     # 
     parser.add_argument('--dataset',default='airfoil',type=str, choices=['airfoil', 'parkinsons'] + ['boston', 'concrete', 'energy', 'kin8nm', 'naval', 'power', 'protein', 'wine', 'yacht', 'year'])
-    parser.add_argument('--train_on_valid',default=0, type=int, help="whether to train on the validation set")
     parser.add_argument('--data_path',default=None, type=str)
     parser.add_argument('--flow',default='IAF',type=str, choices=['RealNVP', 'IAF'])
     parser.add_argument('--save_dir',default=None, type=str)
@@ -227,8 +223,6 @@ if __name__ == '__main__':
     parser.add_argument('--fname',default=None, type=str) # override this for launching with SLURM!!!
     parser.add_argument('--split',default=0, type=str) # TODO: , help="defaults to None, in which case this script will launch a copy of itself on ALL of the available splits")
     parser.add_argument('--eval_only',default=0, type=int, help="just run the final evaluation, NO training!")
-    parser.add_argument('--verbose',default=1, type=int)
-    #parser.add_argument('--analyze',default=0, type=int, help="just run the final evaluation, NO training!")
 
     #parser.add_argument('--save_results',default='./results/',type=str)
     
@@ -240,11 +234,8 @@ if __name__ == '__main__':
     locals().update(args_dict)
 
     eval_only = int(args_dict.pop('eval_only'))
-    verbose = int(args_dict.pop('verbose'))
 
-    flags = [flag.lstrip('--') for flag in sys.argv[1:] if (not flag.startswith('--save_dir') and 
-                                                            not flag.startswith('--eval_only') and
-                                                            not flag.startswith('--verbose'))]
+    flags = [flag.lstrip('--') for flag in sys.argv[1:] if not flag.startswith('--save_dir')]
     exp_description = '_'.join(flags)
 
 
@@ -279,7 +270,8 @@ if __name__ == '__main__':
     np.random.seed(seed+1000)
 
     if data_path is None:
-        data_path = os.path.join(os.environ['HOME'], 'BayesianHypernetCW/')
+        #data_path = '/home/ml/rislam4/Documents/BH_2/Final_BayesianHypernet/BayesianHypernet/'
+        data_path = '/Users/Riashat/Documents/PhD_Research/Bayesian_DNNs/BayesianHypernets/Final_BayesianHypernet/BayesianHypernet/'
     
     t2 = time.time()
     times['setup'] = t2 - t1
@@ -287,11 +279,6 @@ if __name__ == '__main__':
     # 
     if 1:
         input_dim, tr_x, tr_y, va_x, va_y, te_x, te_y, y_mean, y_std = get_regression_dataset(dataset, split, data_path=data_path)
-        if train_on_valid:
-            print tr_x.shape
-            tr_x = np.concatenate((tr_x, va_x), axis=0)
-            print tr_x.shape
-            tr_y = np.concatenate((tr_y, va_y), axis=0)
         if model == 'MCD':
             #lbda = get_lbda(tau, length_scale, drop_prob)
             #print drop_prob, lbda
@@ -325,7 +312,6 @@ if __name__ == '__main__':
         if eval_only:
             network.load(save_path + '_final.npy')
             print "skipping training (eval_only=1)"
-            t4 = time.time()
 
         else:
             print "begin training"
@@ -362,7 +348,7 @@ if __name__ == '__main__':
                     np.savetxt(save_path + '_tau=' + str(tau) + "__eval_only__FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
 
 
-            elif verbose:
+            else:
                 # final params
                 network.save(save_path + '_final')
 
@@ -395,31 +381,6 @@ if __name__ == '__main__':
 
                 # TODO: save times
                 np.savetxt(save_path + "________________total_runtime=" + str(total_runtime), [total_runtime])
-
-                def to_str(times_dict):
-                    rval = '____timing____'
-                    for k, v in times_dict.items():
-                        rval += k + '_' + str(np.round(v, 3)) + '__'
-                    return rval
-
-                np.save(save_path + to_str(times), times)
-
-            else:
-                np.savetxt(save_path + "_FINAL_va_RMSE=" + str(np.round(va_RMSE, 3)), [va_RMSE])
-                np.savetxt(save_path + "_FINAL_te_RMSE=" + str(np.round(te_RMSE, 3)), [te_RMSE])
-                for n, tau in enumerate(taus):
-                    #np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_tr_LL=" + str(np.round(tr_LL[n], 3)), [tr_LL[n]])
-                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_va_LL=" + str(np.round(va_LL[n], 3)), [va_LL[n]])
-                    np.savetxt(save_path + '_tau=' + str(tau) + "_FINAL_te_LL=" + str(np.round(te_LL[n], 3)), [te_LL[n]])
-
-                t6 = time.time()
-                times['saving'] = t6 - t5
-                total_runtime = t6 - t0
-            
-                print "total_runtime=", total_runtime
-                print "sum(times.values())", sum(times.values())
-                for k,v in times.items():
-                    print k, np.round(v, 4)
 
                 def to_str(times_dict):
                     rval = '____timing____'

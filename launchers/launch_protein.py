@@ -8,7 +8,7 @@ import subprocess
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--launch', type=int, default=1, help="set to 0 for a dry_run")
-parser.add_argument('--hours_per_job', type=int, default=10, help="expected run time, in hours")
+parser.add_argument('--eval_only', type=int, default=0)
 parser.add_argument('--train_on_valid', type=int, default=0)
 #parser.add_argument('--exp_script', type=str, default='$HOME/memgen/dk_mlp.py')
 locals().update(parser.parse_args().__dict__)
@@ -60,16 +60,24 @@ job_prefix = ""
 
 # TODO: tensorflow...
 # Check which cluster we're using
-if subprocess.check_output("hostname").startswith("hades"):
+#if subprocess.check_output("hostname").startswith("lg-1r17-n04"):
+if os.path.exists('/home/capybara/this_is_guillimin'):
+    #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
+    #job_prefix += "smart-dispatch --walltime=10:00:00 --queue=@guillimin launch THEANO_FLAGS=floatX=float32 python "
+    job_prefix += "smart-dispatch --walltime=10:00:00 launch THEANO_FLAGS=floatX=float32 python "
+elif subprocess.check_output("hostname").startswith("hades"):
     #launch_str = "smart-dispatch --walltime=48:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32"
     job_prefix += "smart-dispatch --walltime=24:00:00 --queue=@hades launch THEANO_FLAGS=device=gpu,floatX=float32 python "
 elif subprocess.check_output("hostname").startswith("helios"):
     job_prefix += "jobdispatch --gpu --queue=gpu_1 --duree=12:00H --env=THEANO_FLAGS=device=gpu,floatX=float32 --project=jvb-000-ag python "
+elif subprocess.check_output("hostname").startswith("ip05"):
+    # TODO: mp2
+    job_prefix += "smart-dispatch -t 00:04:29:00 -q qwork@mp2 launch python "
 else: # TODO: SLURM
     #assert False
     print "running at MILA, assuming job takes about", hours_per_job, "hours_per_job"
     #job_prefix += 'sbatch --gres=gpu -C"gpu6gb|gpu12gb" --mem=4000 -t 0-' + str(hours_per_job)
-    job_prefix += 'sbatch --gres=gpu --mem=10000 --qos=high -t 0-' + str(hours_per_job)
+    job_prefix += 'sbatch --gres=gpu --mem=4000 --qos=high -t 0-' + str(hours_per_job)
 
 
 # --------------------------------------------------
@@ -85,17 +93,17 @@ job_prefix += exp_script
 
 
 model_strs = []
-model_strs += [" --model=MCD --drop_prob=.01", " --model=BHN --flow=IAF --coupling=4"]
+model_strs += [" --model=MCD --drop_prob=.01", "--model=BHN --flow=IAF --coupling=4"]
 
 
 grid = [] 
-grid += [["lr0", ['.01', '.001']]]
-grid += [["lbda", 100.**np.arange(-3,2)]]
 #grid += [["length_scale", ['1e-6', '1e-4', '1e-2', '1e-1', '1']]]
-grid += [['dataset', ['year']]]
-grid += [['n_units', ['100']]]
-grid += [['epochs', ['100']]]
-grid += [['split', range(1)]]
+grid += [['dataset', ['protein']]]
+grid += [['epochs', [200]]]
+grid += [["lbda", 100.**np.arange(-3,2)]]
+grid += [["lr0", [.01, .001]]]
+grid += [['n_units', [100]]]
+grid += [['split', range(5)]]
 
 #
 launcher_name = os.path.basename(__file__)
