@@ -711,10 +711,9 @@ def stochasticConv2DLayer(incomings, num_filters, filter_size, stride=(1, 1),
     return layer
     
         
-# TODO: implement MNF (done?) 
 class MNFLayer(lasagne.layers.base.MergeLayer):
     
-    def __init__(self, incomings, num_units, 
+    def __init__(self, incomings, num_units, num_inputs,
                  nonlinearity=nonlinearities.rectify,
                  srgn=srng,
                  W_mu=lasagne.init.Normal(0.05), 
@@ -729,12 +728,11 @@ class MNFLayer(lasagne.layers.base.MergeLayer):
         self.srng = srng
 
         # add params
-        self.W_mu = self.add_param(W_mu, (None, num_units,), name="W_mu", regularizable=False)
-        self.W_logsig = self.add_param(W_logsig, (None, num_units,), name="W_logsig", regularizable=False)
+        self.W_mu = self.add_param(W_mu, (num_inputs, num_units,), name="W_mu", regularizable=False)
+        self.W_logsig = self.add_param(W_logsig, (num_inputs, num_units,), name="W_logsig", regularizable=False)
         self.b_mu = self.add_param(b_mu, (num_units,), name="b_mu", regularizable=False)
         self.b_logsig = self.add_param(b_logsig, (num_units,), name="b_logsig", regularizable=False)
                                     
-    # TODO: rm?
     def get_output_shape_for(self,input_shapes):
         input_shape = input_shapes[0]
         weight_shape = input_shapes[1]
@@ -751,11 +749,12 @@ class MNFLayer(lasagne.layers.base.MergeLayer):
         input = inputs[0]
         Z = inputs[1] # Z_{T_f}
         activation = input * Z
+        # TODO: here (what is going on?)
         mu = T.sum(activation.dimshuffle(0,1,'x') * self.W_mu, axis = 1) + self.b_mu
         sig = T.sum((input**2).dimshuffle(0,1,'x') * T.exp(self.W_logsig), axis = 1)**.5 + T.exp(self.b_logsig)
-        ep = self.srng.normal(size=var.shape,dtype=floatX)
-        preactivation = mu + ep * std
-        return self.nonlinearity(preactivation), mu, sig
+        ep = self.srng.normal(size=sig.shape,dtype=floatX)
+        preactivation = mu + ep * sig
+        return self.nonlinearity(preactivation)#, mu, sig
 
 
 

@@ -59,6 +59,7 @@ class Base_BHN(object):
                  opt='adam',
                  prior = log_normal,
                  output_type = 'categorical',
+                 test_values=None,
                  init_batch = None):
         
         self.__dict__.update(locals())
@@ -106,6 +107,14 @@ class Base_BHN(object):
         self.learning_rate = T.scalar('learning_rate')
         # TODO: fix name
         self.weight = T.scalar('weight')
+
+        # test values
+        if self.test_values is not None:
+            self.input_var.tag.test_value = self.test_values[0]
+            self.target_var.tag.test_value = self.test_values[1]
+            self.dataset_size.tag.test_value = self.test_values[2]
+            self.learning_rate.tag.test_value = self.test_values[3]
+            self.weight.tag.test_value = self.test_values[4]
         
     def _get_hyper_net(self):
         """
@@ -293,6 +302,7 @@ class MLPWeightNorm_BHN(Base_BHN):
                  n_classes=10,
                  output_type = 'categorical',
                  noise_distribution='spherical_gaussian',
+                 test_values=None,
                  **kargs):
         
         self.__dict__.update(locals())
@@ -309,6 +319,7 @@ class MLPWeightNorm_BHN(Base_BHN):
                                                 srng=srng,
                                                 prior=prior,
                                                 output_type = output_type,
+                                                test_values=test_values,
                                                 **kargs)
     
     
@@ -400,12 +411,19 @@ class MLPWeightNorm_BHN(Base_BHN):
 
     
 
-# TODO: implement NF^-1() (_get_flow_r)
+
+# TODO: test
 class MNF_MLP_BHN(Base_BHN):
     """
-    implementation of MNF (TODO)
+    def _get_theano_variables(self):
+    def _get_hyper_net(self):
+    def _get_primary_net(self):
+    def _get_params(self):
+    def _get_elbo(self):
+    def _get_grads(self):
+    def _get_train_func(self):
+    def _get_useful_funcs(self):
     """
-
     
     def __init__(self,
                  lbda=1,
@@ -418,9 +436,11 @@ class MNF_MLP_BHN(Base_BHN):
                  n_inputs=784,
                  n_classes=10,
                  output_type = 'categorical',
+                                                test_values=None,
                  **kargs):
 
         assert perdatapoint
+        assert lbda == 1
         
         self.__dict__.update(locals())
 
@@ -436,6 +456,7 @@ class MNF_MLP_BHN(Base_BHN):
                                                 srng=srng,
                                                 prior=prior,
                                                 output_type = output_type,
+                                                test_values=test_values,
                                                 **kargs)
     
     
@@ -476,30 +497,61 @@ class MNF_MLP_BHN(Base_BHN):
 
     # TODO (this should probably operate independently on each weight matrix, given the way the code is implemented so far.... but that might also be easy to change)
     def _get_flow_r(self):
-	self.z_T_f = self.weights
-        self.z_T_b = 0
+        self.z_T_f = self.weights
+        # TODO:
+        logdets_layers = []
+        flow_r = lasagne.layers.InputLayer([None,self.num_params])
+        if 1: # we always use RNVP for this!
+            if self.coupling:
+                layer_temp = CoupledDenseLayer(flow_r,200)
+                flow_r = IndexLayer(layer_temp,0)
+                logdets_layers.append(IndexLayer(layer_temp,1))
+                for c in range(self.coupling-1):
+                    flow_r = PermuteLayer(flow_r,self.num_params)
+                    layer_temp = CoupledDenseLayer(flow_r,200)
+                    flow_r = IndexLayer(layer_temp,0)
+                    logdets_layers.append(IndexLayer(layer_temp,1))
+        else:
+            assert False
+        
+        self.flow_r = flow_r
+        self.z_T_b = lasagne.layers.get_output(self.flow_r,self.z_T_f)
+        # split z_T_b into the different layers:
+        self.z_T_bs = []
+        t = 0
+        for ws in self.weight_shapes:
+            self.z_T_bs.append(self.z_T_b[:,t:t+ws[0]])
+            t += ws[0]
+        # TODO
+        self.logdets_z_T_b = sum([get_output(ld,self.ep) for ld in logdets_layers])
     
+    # FIXME: use z*mu...
     def _get_primary_net(self):
         self.mus = []
         self.sigs = []
         self.z_T_fs = [] # self.weights, split by layers
-        # TODO: figure out why I can't run at school anymore (DK)  >:( 
-        t = 0#np.cast['int32'](0) # TODO: what's wrong with np.cast
+        self.cs = []
+        self.b_mus = []
+        self.b_logsigs = []
+        t = 0
         p_net = lasagne.layers.InputLayer([None,self.n_inputs])
         inputs = {p_net:self.input_var}
         for ws in self.weight_shapes:
             # using weightnorm reparameterization
             # only need ws[1] parameters (for rescaling of the weight matrix)
             num_param = ws[0]
+            print num_param
             w_layer = lasagne.layers.InputLayer((None,num_param))
-            weight = self.weights[:,t:t+num_param].reshape((self.wd1, num_param))
-            inputs[w_layer] = weight
+            weight = self.weights[:,t:t+num_param].reshape((self.wd1, num_param)) # bs, n_inp
             self.z_T_fs.append(weight)
-            #p_net = lasagne.layers.DenseLayer(p_net,ws[1])
-            p_net__ = MNFLayer([p_net,w_layer], num_param) # TODO: better naming
-            p_net, mu, sig = [IndexLayer(p_net__, i) for i in range(3)]
-            self.mus.append(mu)
-            self.sigs.append(sig)
+            inputs[w_layer] = weight
+            p_net = MNFLayer([p_net,w_layer], ws[1], ws[0])
+            # collect things for computing elbo later...
+            self.mus.append(p_net.W_mu)# * weight) # TODO: H * Z
+            self.sigs.append(T.exp(p_net.W_logsig))
+            self.cs.append(theano.shared((.05*np.random.normal(size=num_param)).astype('float32')))
+            self.b_mus.append(theano.shared((.05*np.random.normal(size=num_param)).astype('float32')))
+            self.b_logsigs.append(theano.shared((.05*np.random.normal(size=num_param)).astype('float32')))
             print p_net.output_shape
             t += num_param
             
@@ -518,11 +570,26 @@ class MNF_MLP_BHN(Base_BHN):
         else:
             assert False
 
+    def _get_params(self):
+        
+        params = lasagne.layers.get_all_params([self.h_net,self.p_net])
+        self.params = list()
+        for param in params:
+            if type(param) is not RSSV:
+                self.params.append(param)
+        
+        # add params for eqn9/10
+        self.params += self.cs
+        self.params += self.b_mus
+        self.params += self.b_logsigs
+
 
     def _get_elbo(self):
         """
         negative elbo, an upper bound on NLL
         """
+
+        # TODO: kldiv_bias = tf.reduce_sum(.5 * self.pvar_bias - .5 * self.logvar_bias + ((tf.exp(self.logvar_bias) + tf.square(self.mu_bias)) / (2 * tf.exp(self.pvar_bias))) - .5)
 
         # eqn14
         kl_q_w_z_p = 0
@@ -532,19 +599,22 @@ class MNF_MLP_BHN(Base_BHN):
 
         # eqn15
         self.log_r_z_T_f_W = 0
-        # TODO: make self.z_T_bs, self.cs, self.b_mus, self.b_sigs (this can all happen in self._get_flow_r)
-        for mu, sig, z_T_b, c, b_mu, b_sig in zip(self.mus, self.sigs, self.z_T_bs, self.cs, self.b_mus, self.b_sigs): # we'll compute this seperately for every layer's W
+        print '\n \n eqn15'
+        for mu, sig, z_T_b, c, b_mu, b_logsig in zip(self.mus, self.sigs, self.z_T_bs, self.cs, self.b_mus, self.b_logsigs): # we'll compute this seperately for every layer's W
+            print 'eqn15'
+            print [tt.shape for tt in [mu, sig, z_T_b, c, b_mu, b_logsig]]
             # reparametrization trick for eqn 9/10 
             cTW_mu = T.dot(c, mu)
             cTW_sig = T.dot(c, sig**2)**.5
-            the_scalar = T.tanh(cTW_mu + cTW_sig * self.srng.normal(sig.shape))
-            # scaling b by the_scalar (TODO: check broadcastable is correct)
+            the_scalar = T.tanh(cTW_mu + cTW_sig * self.srng.normal(cTW_sig.shape)).sum() # TODO: double check (does the sum belong here??)
+            # scaling b by the_scalar 
             mu_tilde = (b_mu * the_scalar).squeeze()
-            log_sig_tilde = (b_sig * the_scalar).squeeze()
+            log_sig_tilde = (b_logsig * the_scalar).squeeze()
             self.log_r_z_T_f_W += (-.5 * T.exp(log_sig_tilde) * (z_T_b - mu_tilde)**2 - .5 * T.log(2 * np.pi) + .5 * log_sig_tilde).sum()
+        self.log_r_z_T_f_W += self.logdets_z_T_b
 
-        # eqn13
-        self.kl = self.logdets + kl_q_w_z_p - self.log_r_z_T_f_W
+        # -eqn13
+        self.kl = (-self.logdets + kl_q_w_z_p - self.log_r_z_T_f_W).sum() # TODO: why do I need the mean/sum??
 
         if self.output_type == 'categorical':
             self.logpyx = - cc(self.y,self.target_var).mean()
@@ -552,6 +622,7 @@ class MNF_MLP_BHN(Base_BHN):
             self.logpyx = - se(self.y,self.target_var).mean()
         else:
             assert False
+        # FIXME: not a scalar!?
         self.loss = - (self.logpyx - \
                        self.weight * self.kl/T.cast(self.dataset_size,floatX))
 
